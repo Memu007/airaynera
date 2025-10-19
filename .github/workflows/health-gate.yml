@@ -1,0 +1,32 @@
+name: Health Gate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Start demo server
+        run: |
+          REQUIRE_AUTH=true JWT_SECRET=test-secret PORT=3001 node server-demo-funcional.js &
+          echo $! > server.pid
+          npx wait-on -t 15000 http://localhost:3001/health || (cat server.pid | xargs kill -9; exit 1)
+      - name: Gate on health not degraded
+        run: |
+          STATUS=$(curl -sS http://localhost:3001/health | jq -r .status)
+          echo "health=$STATUS"
+          if [ "$STATUS" != "ok" ]; then echo 'Health is degraded'; cat server.pid | xargs kill -9; exit 1; fi
+      - name: Stop server
+        if: always()
+        run: cat server.pid | xargs kill -9 || true
+
+

@@ -1,0 +1,30 @@
+name: E2E CRUD (API demo)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Start demo server (auth, relaxed rate-limits for CI)
+        run: |
+          REQUIRE_AUTH=true JWT_SECRET=test-secret REQUEST_LOGGING=false AUTH_RATE_LIMIT_MAX=1000 AUTH_RATE_LIMIT_WINDOW_MS=60000 RATE_LIMIT_MAX=1000 RATE_LIMIT_WINDOW_MS=60000 PORT=3001 node server-demo-funcional.js &
+          echo $! > server.pid
+          npx wait-on -t 15000 http://localhost:3001/health || (cat server.pid | xargs kill -9; exit 1)
+      - name: Run Cypress E2E (API flows)
+        run: |
+          npx cypress run --spec "cypress/e2e/crud-basic.cy.js,cypress/e2e/sessions-basic.cy.js,cypress/e2e/admin-metrics.cy.js,cypress/e2e/maintenance.cy.js,cypress/e2e/patients-filter.cy.js" --config baseUrl=http://localhost:3001
+      - name: Stop server
+        if: always()
+        run: cat server.pid | xargs kill -9 || true
+
+

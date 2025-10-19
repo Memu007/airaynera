@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Básico</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <h1>Página de prueba</h1>
+    <p>Esta es una página HTML simple para verificar que el servidor funciona correctamente.</p>
+    <button id="testBtn">Haz clic aquí</button>
+    <div id="resultado"></div>
+
+    <script>
+        // Verificar que jQuery funciona
+        $(document).ready(function() {
+            console.log("jQuery está funcionando");
+            
+            $("#testBtn").click(function() {
+                $("#resultado").html("<p style='color:green'>¡Todo funciona correctamente!</p>");
+            });
+        });
+    </script>
+</body>
+</html>

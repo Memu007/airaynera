@@ -1,0 +1,26 @@
+<!-- Widget de Dashboard de Monitoreo para AIRA -->
+<div id="dashboard-monitoreo" class="dashboard-container mt-4">
+  <!-- El contenido será generado dinámicamente por monitoreo-ui.js -->
+</div>
+
+<!-- Script para inicializar el dashboard -->
+<script>
+  // Inicializar el dashboard cuando el DOM esté listo
+  document.addEventListener('DOMContentLoaded', function() {
+    // Verificar que el componente esté disponible
+    if (window.MonitoreoUI) {
+      // Inicializar el dashboard
+      window.MonitoreoUI.inicializar('dashboard-monitoreo')
+        .then(function(resultado) {
+          if (!resultado) {
+            console.error('No se pudo inicializar el dashboard de monitoreo');
+          }
+        })
+        .catch(function(error) {
+          console.error('Error al inicializar el dashboard:', error);
+        });
+    } else {
+      console.error('El componente MonitoreoUI no está disponible');
+    }
+  });
+</script>

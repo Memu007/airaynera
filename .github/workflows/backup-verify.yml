@@ -1,0 +1,30 @@
+name: Backup Verify Weekly
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Ensure sample data directory exists
+        run: |
+          mkdir -p data
+          echo '{"ok": true}' > data/sample.json
+      - name: Create encrypted backup
+        env:
+          BACKUP_ENCRYPTION_KEY: test-key-ci
+        run: npm run backup:data
+      - name: Verify latest encrypted backup
+        env:
+          BACKUP_ENCRYPTION_KEY: test-key-ci
+        run: npm run backup:verify
+
+

@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIRA - Tu Asistente Médico Inteligente en WhatsApp</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- AOS Animations -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary: #4a9d95;
+            --secondary: #6b73a9;
+            --success: #25D366;
+            --dark: #1a1a2e;
+            --light: #f8f9fa;
+            --gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            background: #ffffff;
+            color: #333;
+        }
+        
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            overflow: hidden;
+        }
+        
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(74, 157, 149, 0.1) 0%, transparent 70%);
+            animation: rotate 30s linear infinite;
+        }
+        
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Navigation */
+        .navbar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .navbar-brand img {
+            height: 40px;
+            transition: transform 0.3s ease;
+        }
+        
+        .navbar-brand:hover img {
+            transform: scale(1.05);
+        }
+        
+        /* Hero Content */
+        .hero-content h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+            animation: fadeInUp 0.8s ease;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .hero-subtitle {
+            font-size: 1.5rem;
+            color: #666;
+            margin-bottom: 30px;
+            animation: fadeInUp 0.8s ease 0.2s both;
+        }
+        
+        /* CTA Buttons */
+        .cta-primary {
+            background: var(--gradient);
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            color: white;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(74, 157, 149, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeInUp 0.8s ease 0.4s both;
+        }
+        
+        .cta-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(74, 157, 149, 0.4);
+        }
+        
+        .cta-secondary {
+            background: transparent;
+            border: 2px solid var(--primary);
+            padding: 13px 35px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            color: var(--primary);
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeInUp 0.8s ease 0.5s both;
+        }
+        
+        .cta-secondary:hover {
+            background: var(--primary);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        /* Hero Image/Animation */
+        .hero-visual {
+            position: relative;
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        .phone-mockup {
+            width: 350px;
+            height: 700px;
+            background: #000;
+            border-radius: 40px;
+            padding: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            border-radius: 30px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Features Grid */
+        .features {
+            padding: 100px 0;
+            background: #f8f9fa;
+        }
+        
+        .feature-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+            height: 100%;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+        
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--gradient);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 2rem;
+            color: white;
+        }
+        
+        /* Stats Section */
+        .stats {
+            background: var(--gradient);
+            padding: 80px 0;
+            color: white;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+        
+        /* Login Modal */
+        .modal-content {
+            border: none;
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            background: var(--gradient);
+            color: white;
+            border: none;
+            padding: 30px;
+        }
+        
+        .modal-body {
+            padding: 40px;
+        }
+        
+        .form-control {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 12px 20px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 0.2rem rgba(74, 157, 149, 0.25);
+        }
+        
+        /* Floating Elements */
+        .floating-whatsapp {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: var(--success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2rem;
+            box-shadow: 0 5px 20px rgba(37, 211, 102, 0.5);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 999;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 5px 20px rgba(37, 211, 102, 0.5); }
+            50% { box-shadow: 0 5px 30px rgba(37, 211, 102, 0.8); }
+            100% { box-shadow: 0 5px 20px rgba(37, 211, 102, 0.5); }
+        }
+        
+        .floating-whatsapp:hover {
+            transform: scale(1.1);
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero-content h1 {
+                font-size: 2.5rem;
+            }
+            
+            .hero-subtitle {
+                font-size: 1.2rem;
+            }
+            
+            .phone-mockup {
+                width: 250px;
+                height: 500px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <img src="images/aira-logo.svg" alt="AIRA">
+            </a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+                <ul class="navbar-nav align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#features">Características</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#pricing">Precios</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-toggle="modal" data-target="#loginModal">Ingresar</a>
+                    </li>
+                    <li class="nav-item ml-3">
+                        <button class="btn cta-primary btn-sm" onclick="showDemo()">
+                            <i class="fas fa-play"></i> Ver Demo
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Hero Section -->
+    <section class="hero" id="hero">
+        <div class="container">
+            <div class="row align-items-center min-vh-100 pt-5">
+                <div class="col-lg-6">
+                    <div class="hero-content">
+                        <h1>Tu Asistente Médico Inteligente en WhatsApp</h1>
+                        <p class="hero-subtitle">
+                            Gestiona tu consultorio, pacientes y sesiones desde WhatsApp con IA avanzada
+                        </p>
+                        <div class="d-flex flex-wrap gap-3">
+                            <button class="btn cta-primary" data-toggle="modal" data-target="#registerModal">
+                                <i class="fas fa-rocket"></i> Empezar Gratis
+                            </button>
+                            <button class="btn cta-secondary" onclick="showDemo()">
+                                <i class="fas fa-play-circle"></i> Ver Demo
+                            </button>
+                        </div>
+                        <div class="mt-4">
+                            <small class="text-muted">
+                                <i class="fas fa-check-circle text-success"></i> 14 días gratis
+                                <i class="fas fa-check-circle text-success ml-3"></i> Sin tarjeta de crédito
+                                <i class="fas fa-check-circle text-success ml-3"></i> Cancela cuando quieras
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="hero-visual">
+                        <div class="phone-mockup">
+                            <div class="phone-screen">
+                                <div class="whatsapp-header bg-success text-white p-3 d-flex align-items-center">
+                                    <img src="images/aira-logo.svg" alt="AIRA" width="40" height="40" class="rounded-circle bg-white p-1 mr-3">
+                                    <div>
+                                        <h6 class="mb-0">AIRA Bot</h6>
+                                        <small>En línea</small>
+                                    </div>
+                                </div>
+                                <div class="chat-messages p-3" style="height: calc(100% - 70px); overflow-y: auto;">
+                                    <div class="message-in mb-3">
+                                        <div class="bg-light p-3 rounded" style="max-width: 80%;">
+                                            ¡Hola! 👋 Soy AIRA, tu asistente médico inteligente. ¿En qué puedo ayudarte hoy?
+                                        </div>
+                                    </div>
+                                    <div class="message-out mb-3 text-right">
+                                        <div class="bg-success text-white p-3 rounded d-inline-block" style="max-width: 80%;">
+                                            Registrar nuevo paciente
+                                        </div>
+                                    </div>
+                                    <div class="message-in mb-3">
+                                        <div class="bg-light p-3 rounded" style="max-width: 80%;">
+                                            Por supuesto! Te ayudo a registrar un nuevo paciente. Por favor, enviame el nombre completo.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-4 font-weight-bold">Todo lo que necesitas en un solo lugar</h2>
+                <p class="lead text-muted">Potenciado por Inteligencia Artificial</p>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fab fa-whatsapp"></i>
+                        </div>
+                        <h4>100% WhatsApp</h4>
+                        <p class="text-muted">Gestiona todo tu consultorio directamente desde WhatsApp. Sin apps adicionales.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="200">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <h4>IA Médica Avanzada</h4>
+                        <p class="text-muted">Análisis automático de sesiones, detección de patrones y alertas de crisis.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="300">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h4>Seguridad Médica</h4>
+                        <p class="text-muted">Cumple con HIPAA y normativas médicas. Tus datos están 100% protegidos.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="400">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <h4>Ahorra 5h/semana</h4>
+                        <p class="text-muted">Automatiza tareas administrativas y dedica más tiempo a tus pacientes.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="500">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h4>Dashboard Inteligente</h4>
+                        <p class="text-muted">Visualiza estadísticas, tendencias y el progreso de tus pacientes en tiempo real.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="600">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-bell"></i>
+                        </div>
+                        <h4>Alertas Automáticas</h4>
+                        <p class="text-muted">Recibe notificaciones de situaciones críticas y recordatorios importantes.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Stats Section -->
+    <section class="stats">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-3 mb-4">
+                    <div class="stat-item" data-aos="zoom-in" data-aos-delay="100">
+                        <div class="stat-number">500+</div>
+                        <p>Profesionales Activos</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="stat-item" data-aos="zoom-in" data-aos-delay="200">
+                        <div class="stat-number">10k+</div>
+                        <p>Pacientes Gestionados</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="stat-item" data-aos="zoom-in" data-aos-delay="300">
+                        <div class="stat-number">99.9%</div>
+                        <p>Uptime Garantizado</p>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="stat-item" data-aos="zoom-in" data-aos-delay="400">
+                        <div class="stat-number">4.9⭐</div>
+                        <p>Calificación Usuarios</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section> 
+    
+    <!-- Testimonials Section -->
+    <section class="testimonials py-5">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-4 font-weight-bold">Lo que dicen nuestros usuarios</h2>
+                <p class="lead text-muted">Profesionales de la salud confían en AIRA</p>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+                    <div class="testimonial-card p-4 bg-white rounded shadow-sm h-100">
+                        <div class="mb-3">
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                        </div>
+                        <p class="text-muted">"AIRA transformó mi práctica. Ahora puedo gestionar todo desde WhatsApp mientras estoy en movimiento. Es increíblemente intuitivo."</p>
+                        <div class="d-flex align-items-center mt-3">
+                            <div class="avatar bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                DM
+                            </div>
+                            <div class="ml-3">
+                                <h6 class="mb-0">Dra. María López</h6>
+                                <small class="text-muted">Psicóloga Clínica</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="200">
+                    <div class="testimonial-card p-4 bg-white rounded shadow-sm h-100">
+                        <div class="mb-3">
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                        </div>
+                        <p class="text-muted">"La detección de crisis me ha permitido intervenir a tiempo en varios casos. Es una herramienta invaluable para cualquier profesional."</p>
+                        <div class="d-flex align-items-center mt-3">
+                            <div class="avatar bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                JR
+                            </div>
+                            <div class="ml-3">
+                                <h6 class="mb-0">Dr. Juan Rodríguez</h6>
+                                <small class="text-muted">Psiquiatra</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="300">
+                    <div class="testimonial-card p-4 bg-white rounded shadow-sm h-100">
+                        <div class="mb-3">
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                            <i class="fas fa-star text-warning"></i>
+                        </div>
+                        <p class="text-muted">"Ahorro más de 5 horas semanales en tareas administrativas. AIRA es como tener un asistente personal las 24 horas."</p>
+                        <div class="d-flex align-items-center mt-3">
+                            <div class="avatar bg-success text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                AG
+                            </div>
+                            <div class="ml-3">
+                                <h6 class="mb-0">Lic. Ana García</h6>
+                                <small class="text-muted">Terapeuta</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- CTA Section -->
+    <section class="cta-section py-5" style="background: var(--gradient);">
+        <div class="container text-center text-white">
+            <h2 class="display-4 font-weight-bold mb-4">¿Listo para transformar tu práctica?</h2>
+            <p class="lead mb-4">Únete a cientos de profesionales que ya gestionan su consultorio con AIRA</p>
+            <button class="btn btn-light btn-lg px-5 py-3" data-toggle="modal" data-target="#registerModal">
+                <i class="fas fa-rocket mr-2"></i> Empezar Prueba Gratis
+            </button>
+            <p class="mt-3 mb-0">
+                <small>Sin compromiso • 14 días gratis • Cancela cuando quieras</small>
+            </p>
+        </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4">
+        <div class="container text-center">
+            <p class="mb-0">&copy; 2024 AIRA. Todos los derechos reservados.</p>
+        </div>
+    </footer>
+    
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-white">
+                        <img src="images/aira-logo.svg" alt="AIRA" width="30" height="30" class="mr-2">
+                        Ingresá a tu cuenta
+                    </h5>
+                    <button type="button" class="close text-white" data-dismiss="modal">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="loginForm">
+                        <div class="form-group">
+                            <label for="loginEmail">Email</label>
+                            <input type="email" class="form-control" id="loginEmail" placeholder="tu@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="loginPassword" placeholder="Tu contraseña" required>
+                                <div class="input-group-append">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('loginPassword')">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group form-check">
+                            <input type="checkbox" class="form-check-input" id="rememberMe">
+                            <label class="form-check-label" for="rememberMe">Recordarme</label>
+                        </div>
+                        <button type="submit" class="btn cta-primary btn-block">
+                            <i class="fas fa-sign-in-alt mr-2"></i> Ingresar
+                        </button>
+                        <div class="text-center mt-3">
+                            <a href="#" class="text-primary">¿Olvidaste tu contraseña?</a>
+                        </div>
+                    </form>
+                    <hr>
+                    <div class="text-center">
+                        <p class="mb-2">¿No tenés cuenta?</p>
+                        <button class="btn btn-outline-primary" data-dismiss="modal" data-toggle="modal" data-target="#registerModal">
+                            Crear cuenta gratis
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Register Modal -->
+    <div class="modal fade" id="registerModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-white">
+                        <img src="images/aira-logo.svg" alt="AIRA" width="30" height="30" class="mr-2">
+                        Crear tu cuenta profesional
+                    </h5>
+                    <button type="button" class="close text-white" data-dismiss="modal">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="registerForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="regName">Nombre Completo</label>
+                                    <input type="text" class="form-control" id="regName" placeholder="Dr. Juan Pérez" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="regSpecialty">Especialidad</label>
+                                    <select class="form-control" id="regSpecialty" required>
+                                        <option value="">Seleccioná...</option>
+                                        <option>Psicólogo/a</option>
+                                        <option>Psiquiatra</option>
+                                        <option>Médico/a General</option>
+                                        <option>Otro</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="regEmail">Email</label>
+                                    <input type="email" class="form-control" id="regEmail" placeholder="tu@email.com" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="regPhone">Teléfono</label>
+                                    <input type="tel" class="form-control" id="regPhone" placeholder="+54 11 1234-5678" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="regPassword">Contraseña</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="regPassword" placeholder="Mínimo 8 caracteres" required>
+                                <div class="input-group-append">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('regPassword')">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <small class="form-text text-muted">Usa al menos 8 caracteres con letras y números</small>
+                        </div>
+                        <div class="form-group form-check">
+                            <input type="checkbox" class="form-check-input" id="acceptTerms" required>
+                            <label class="form-check-label" for="acceptTerms">
+                                Acepto los <a href="#">términos y condiciones</a> y la <a href="#">política de privacidad</a>
+                            </label>
+                        </div>
+                        <button type="submit" class="btn cta-primary btn-block btn-lg">
+                            <i class="fas fa-rocket mr-2"></i> Crear Cuenta y Empezar Prueba Gratis
+                        </button>
+                        <p class="text-center text-muted mt-3 mb-0">
+                            <small>14 días gratis • Sin tarjeta de crédito • Cancela cuando quieras</small>
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Floating WhatsApp Button -->
+    <div class="floating-whatsapp" onclick="openWhatsApp()">
+        <i class="fab fa-whatsapp"></i>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    
+    <script>
+        // Initialize AOS
+        AOS.init({
+            duration: 1000,
+            once: true
+        });
+        
+        // Toggle password visibility
+        function togglePassword(fieldId) {
+            const field = document.getElementById(fieldId);
+            const icon = field.nextElementSibling.querySelector('i');
+            
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                field.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+        
+        // Open WhatsApp
+        function openWhatsApp() {
+            const message = 'Hola! Me interesa conocer más sobre AIRA para mi consultorio médico.';
+            const phoneNumber = '5491112345678'; // Cambiar por número real
+            const url = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+            window.open(url, '_blank');
+        }
+        
+        // Show Demo
+        function showDemo() {
+            // Redirigir a la ruta unificada de demo
+            window.location.href = '/demo';
+        }
+        
+        // Handle login form
+        $('#loginForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            // Aquí iría la lógica de login
+            const email = $('#loginEmail').val();
+            const password = $('#loginPassword').val();
+            
+            // Simulación de login
+            console.log('Login attempt:', email);
+            
+            // Mostrar loading
+            const $btn = $(this).find('button[type="submit"]');
+            const originalText = $btn.html();
+            $btn.html('<i class="fas fa-spinner fa-spin mr-2"></i> Ingresando...').prop('disabled', true);
+            
+            // Simular llamada al servidor
+            setTimeout(() => {
+                // En producción, aquí se verificarían las credenciales
+                console.info('Login simulado deshabilitado en producción.');
+                $btn.html(originalText).prop('disabled', false);
+                $('#loginModal').modal('hide');
+            }, 1500);
+        });
+        
+        // Handle register form
+        $('#registerForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            // Validar formulario
+            if (!$('#acceptTerms').is(':checked')) {
+                console.warn('Debe aceptar términos y condiciones');
+                return;
+            }
+            
+            const formData = {
+                name: $('#regName').val(),
+                specialty: $('#regSpecialty').val(),
+                email: $('#regEmail').val(),
+                phone: $('#regPhone').val(),
+                password: $('#regPassword').val()
+            };
+            
+            console.log('Register attempt:', formData);
+            
+            // Mostrar loading
+            const $btn = $(this).find('button[type="submit"]');
+            const originalText = $btn.html();
+            $btn.html('<i class="fas fa-spinner fa-spin mr-2"></i> Creando cuenta...').prop('disabled', true);
+            
+            // Simular registro
+            setTimeout(() => {
+                console.info('Cuenta creada (simulada). En producción se enviaría confirmación por email.');
+                $btn.html(originalText).prop('disabled', false);
+                $('#registerModal').modal('hide');
+                
+                // Redirigir al demo
+                setTimeout(() => {
+                    showDemo();
+                }, 500);
+            }, 2000);
+        });
+        
+        // Smooth scroll for navigation links
+        $('a[href^="#"]').on('click', function(e) {
+            e.preventDefault();
+            const target = $(this.getAttribute('href'));
+            if (target.length) {
+                $('html, body').animate({
+                    scrollTop: target.offset().top - 80
+                }, 1000);
+            }
+        });
+        
+        // Change navbar background on scroll
+        $(window).scroll(function() {
+            if ($(this).scrollTop() > 50) {
+                $('.navbar').css('background', 'rgba(255, 255, 255, 0.98)');
+            } else {
+                $('.navbar').css('background', 'rgba(255, 255, 255, 0.95)');
+            }
+        });
+        
+        // Animate numbers in stats section
+        function animateNumbers() {
+            $('.stat-number').each(function() {
+                const $this = $(this);
+                const countTo = $this.text();
+                
+                $({ countNum: 0 }).animate({
+                    countNum: parseInt(countTo)
+                }, {
+                    duration: 2000,
+                    easing: 'swing',
+                    step: function() {
+                        $this.text(Math.floor(this.countNum) + '+');
+                    },
+                    complete: function() {
+                        $this.text(countTo);
+                    }
+                });
+            });
+        }
+        
+        // Trigger number animation when stats section is visible
+        let statsAnimated = false;
+        $(window).scroll(function() {
+            const statsTop = $('.stats').offset().top;
+            const scrollTop = $(window).scrollTop();
+            const windowHeight = $(window).height();
+            
+            if (!statsAnimated && scrollTop + windowHeight > statsTop + 100) {
+                animateNumbers();
+                statsAnimated = true;
+            }
+        });
+        
+        // Add floating animation to hero visual
+        setInterval(() => {
+            $('.hero-visual').toggleClass('floating');
+        }, 3000);
+    </script>
+</body>
+</html> 

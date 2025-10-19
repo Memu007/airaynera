@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Demo - AIRA</title>
+    <script>
+        // Test simple para verificar que startDemo funcione
+        function testDemo() {
+            console.log("Test demo ejecutándose...");
+            alert("¡El botón de demo funciona! Redirigiendo a la página principal...");
+            window.location.href = "/demopagina.html?v=" + Date.now();
+        }
+    </script>
+</head>
+<body>
+    <h1>Test de Funcionalidad Demo</h1>
+    <p>Esta es una página de prueba para verificar que los botones funcionen.</p>
+    
+    <button onclick="testDemo()" style="padding: 10px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 5px;">
+        🧪 Test Demo
+    </button>
+    
+    <br><br>
+    
+    <a href="/demopagina.html?v=123456" style="padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 5px;">
+        🔄 Ir a página principal (sin cache)
+    </a>
+    
+    <br><br>
+    
+    <p><strong>Instrucciones:</strong></p>
+    <ol>
+        <li>Hacé clic en "Test Demo" para verificar que JavaScript funcione</li>
+        <li>Hacé clic en "Ir a página principal (sin cache)" para cargar la página sin cache</li>
+        <li>Una vez en la página principal, probá el botón "Ver Demo"</li>
+        <li>Para probar la demo post-registro: "Comenzar Gratis" → completar registro → completar pago</li>
+    </ol>
+</body>
+</html>

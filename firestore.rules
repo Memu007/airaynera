@@ -1,0 +1,174 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===== FUNCIONES HELPER =====
+    
+    // Verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Verificar si es el mismo usuario
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Obtener datos del usuario autenticado
+    function getAuthUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    // Obtener rol del usuario
+    function getUserRole() {
+      return getAuthUser().data.role;
+    }
+    
+    // Verificar si es admin
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+    
+    // Verificar si es doctor
+    function isDoctor() {
+      return isAuthenticated() && getUserRole() in ['doctor', 'admin'];
+    }
+    
+    // Verificar si es staff (doctor o assistant)
+    function isStaff() {
+      return isAuthenticated() && getUserRole() in ['doctor', 'assistant', 'admin'];
+    }
+    
+    // Verificar si el usuario está activo
+    function isActiveUser() {
+      return isAuthenticated() && getAuthUser().data.status == 'active';
+    }
+    
+    // ===== REGLAS PARA USUARIOS =====
+    match /users/{userId} {
+      // Solo usuarios activos pueden acceder
+      allow read: if isActiveUser() && (isOwner(userId) || isAdmin());
+      
+      // Registro público permitido (crear usuario)
+      allow create: if request.auth.uid == userId && 
+        request.resource.data.role == 'doctor' &&
+        request.resource.data.status == 'active';
+      
+      // Actualización del perfil propio (sin cambiar role/status)
+      allow update: if isActiveUser() && isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'permissions']);
+      
+      // Admin puede actualizar cualquier campo
+      allow update: if isAdmin();
+      
+      // Solo admin puede eliminar usuarios
+      allow delete: if isAdmin();
+    }
+    
+    // ===== REGLAS PARA PACIENTES =====
+    match /patients/{patientId} {
+      // Doctors activos pueden crear pacientes
+      allow create: if isActiveUser() && isDoctor() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.createdAt == request.time;
+      
+      // Leer pacientes propios o si es admin
+      allow read: if isActiveUser() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Actualizar solo pacientes propios
+      allow update: if isActiveUser() && isDoctor() && 
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid; // No cambiar owner
+      
+      // Soft delete preferido, pero permitir delete físico solo a admin
+      allow delete: if isAdmin();
+    }
+    
+    // ===== REGLAS PARA SESIONES =====
+    match /sessions/{sessionId} {
+      // Validar que el paciente existe y pertenece al usuario
+      function ownsPatient(patientId) {
+        return exists(/databases/$(database)/documents/patients/$(patientId)) &&
+          get(/databases/$(database)/documents/patients/$(patientId)).data.userId == request.auth.uid;
+      }
+      
+      // Crear sesiones para pacientes propios
+      allow create: if isActiveUser() && isDoctor() && 
+        ownsPatient(request.resource.data.patientId) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.createdAt == request.time;
+      
+      // Leer sesiones de pacientes propios
+      allow read: if isActiveUser() && 
+        (ownsPatient(resource.data.patientId) || isAdmin());
+      
+      // Actualizar sesiones propias (sin cambiar patientId o userId)
+      allow update: if isActiveUser() && isDoctor() && 
+        ownsPatient(resource.data.patientId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['patientId', 'userId', 'createdAt']);
+      
+      // NO permitir eliminación de sesiones (auditoría médica)
+      allow delete: if false;
+    }
+    
+    // ===== REGLAS PARA LOGS DE AUDITORÍA =====
+    match /audit_logs/{logId} {
+      // Solo crear, nunca modificar o eliminar
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.timestamp == request.time;
+      allow read: if isAdmin();
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // ===== REGLAS PARA CONFIGURACIÓN =====
+    match /config/{configId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+    
+    // ===== REGLAS PARA ROLES =====
+    match /roles/{roleId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+    
+    // ===== REGLAS PARA TEMPLATES DE MENSAJES =====
+    match /message_templates/{templateId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+    
+    // ===== REGLAS PARA BACKUPS =====
+    match /backups/{backupId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.timestamp == request.time;
+      allow update, delete: if false;
+    }
+    
+    // ===== REGLAS PARA MENSAJES =====
+    match /messages/{messageId} {
+      // Staff puede crear mensajes
+      allow create: if isActiveUser() && isStaff() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.timestamp == request.time;
+      
+      // Leer mensajes propios o si es admin
+      allow read: if isActiveUser() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // No se pueden modificar mensajes enviados
+      allow update, delete: if false;
+    }
+    
+    // ===== REGLA POR DEFECTO: DENEGAR TODO =====
+    // Cualquier colección no especificada arriba está bloqueada
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

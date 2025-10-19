@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AIRA - Asistente Inteligente para Reporte y Atención">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>A</text></svg>">
+    <title>AIRA - Panel Médico Profesional</title>
+    
+    <!-- Bootstrap 4 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+
+    <!-- Intro.js for tutorials -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intro.js/7.2.0/introjs.min.css">
+    
+    <style>
+        /* Sistema de notificaciones - Completamente nuevo */
+        #nuevo-notificaciones {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 9999;
+            width: 300px;
+        }
+
+        .nueva-notificacion {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+            padding: 15px;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+            animation: deslizarDesdeDerechaEntrada 0.4s ease forwards;
+        }
+
+        .nueva-notificacion.salida {
+            animation: deslizarDerechaSalida 0.4s ease forwards;
+        }
+
+        @keyframes deslizarDesdeDerechaEntrada {
+            from { transform: translateX(110%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes deslizarDerechaSalida {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(110%); opacity: 0; }
+        }
+
+        .nueva-notificacion-icono {
+            margin-right: 12px;
+            font-size: 20px;
+        }
+
+        .nueva-notificacion-contenido {
+            flex-grow: 1;
+        }
+
+        .nueva-notificacion-titulo {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .nueva-notificacion-mensaje {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .nueva-notificacion-success .nueva-notificacion-icono {
+            color: #28a745;
+        }
+
+        .nueva-notificacion-error .nueva-notificacion-icono {
+            color: #dc3545;
+        }
+
+        .nueva-notificacion-warning .nueva-notificacion-icono {
+            color: #ffc107;
+        }
+
+        .nueva-notificacion-info .nueva-notificacion-icono {
+            color: #17a2b8;
+        }
+
+        .nueva-notificacion-barra-progreso {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background-color: rgba(0,0,0,0.1);
+            width: 100%;
+        }
+
+        .notification-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background-color: var(--aira-primary);
+            width: 100%;
+            animation: progress 3s linear forwards;
+        }
+
+        @keyframes progress {
+            from { width: 100%; }
+            to { width: 0; }
+        }
+
+        /* Componentes basados en tokens */
+        .password-progress {
+            height: 5px;
+        }
+        
+        /* Estilos adicionales */
+        .main-footer {
+            background-color: #343a40;
+            color: white;
+        }
+        
+        .avatar-sm {
+            width: 35px;
+            height: 35px;
+            font-size: 0.875rem;
+        }
+        
+        .search-group {
+            max-width: 300px;
+        }
+        
+        .logout-btn {
+            border: 2px solid var(--aira-danger);
+            color: var(--aira-danger);
+            font-weight: 500;
+        }
+        
+        .hidden-section {
+            display: none;
+        }
+        
+        .whatsapp-footer {
+            background-color: #f0f0f0;
+            border-top: 1px solid #ddd;
+        }
+        
+        .patient-name {
+            color: var(--aira-dark);
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(45, 55, 72, 0.85);
+            -webkit-backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        .loading-large {
+            width: 50px;
+            height: 50px;
+            border-width: 5px;
+            border-top-color: white;
+        }
+        
+        .patient-avatar-lg {
+            width: 40px;
+            height: 40px;
+            font-size: 1rem;
+        }
+        .landing-phone {
+            background: #e4e4e4;
+            border-radius: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        .app-icon {
+            font-size: 3rem;
+        }
+        
+        .footer-credits {
+            color: rgba(255,255,255,0.7) !important;
+        }
+        
+        /* Estilos WhatsApp */
+        .whatsapp-footer {
+            display: none;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: #f0f0f0;
+            border-top: 1px solid #ddd;
+            z-index: 10;
+            height: 60px;
+        }
+        
+        .whatsapp-chat {
+            display: flex; 
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 60px; /* Espacio para el botón de continuar */
+            max-height: calc(100% - 60px); /* Altura total menos espacio del botón */
+        }
+        .whatsapp-modal-dialog {
+            max-width: 320px;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .whatsapp-modal-content {
+            border-radius: 30px;
+            background: #000;
+        }
+        
+        .whatsapp-phone-content {
+            height: 500px;
+            max-height: 500px;
+            min-height: 500px; /* Asegura altura fija */
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .whatsapp-status {
+            opacity: 0.8;
+        }
+        
+        /* Estilos para el dashboard */
+        .dashboard-card {
+            border-radius: var(--aira-radius-lg);
+            box-shadow: var(--aira-shadow-sm);
+            transition: transform 0.2s, box-shadow 0.2s;
+            overflow: hidden;
+        }
+        
+        /* Alineación del botón exportar con los filtros */
+        #exportButton {
+            height: 38px; /* Misma altura que los inputs de fecha */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Estilos para el selector de estado emocional */
+        .mood-selector {
+            margin-bottom: 1.5rem;
+        }
+        
+        .mood-option {
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            width: 18%;
+        }
+        
+        .mood-option:hover {
+            background-color: rgba(0, 123, 255, 0.1);
+        }
+        
+        .mood-emoji {
+            font-size: 2rem;
+            display: block;
+            margin-bottom: 0.25rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .mood-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        
+        .mood-option input[type="radio"]:checked + .mood-emoji {
+            transform: scale(1.2);
+        }
+        
+        .mood-option input[type="radio"]:checked + .mood-emoji + .mood-label {
+            color: #007bff;
+            font-weight: 500;
+        }
+        
+        /* Estilos para el medidor de fortaleza de contraseña */
+        .password-strength .progress {
+            height: 5px;
+        }
+        
+        /* Estilos para tooltips informativos */
+        .tooltip-info {
+            color: #17a2b8;
+            cursor: help;
+            margin-left: 0.25rem;
+        }
+        
+        /* Estilos para notificaciones */
+        .custom-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 2100;
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            min-width: 300px;
+            transform: translateX(120%);
+            transition: all 0.4s ease;
+        }
+        
+        .notification-icon {
+            margin-right: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .notification-message {
+            font-weight: 500;
+            color: #32325d;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            color: #8898aa;
+            font-size: 1.2rem;
+            cursor: pointer;
+            line-height: 1;
+            margin-left: 1rem;
+        }
+        
+        .notification-success {
+            border-left: 4px solid #51d88a;
+        }
+        
+        .notification-warning {
+            border-left: 4px solid #f6993f;
+        }
+        
+        .notification-error {
+            border-left: 4px solid #e3342f;
+        }
+        
+        .notification-info {
+            border-left: 4px solid #667eea;
+        }
+        
+        /* Estilos para elementos que tenían estilos inline */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(45, 55, 72, 0.85);
+            -webkit-backdrop-filter: blur(5px);
+            backdrop-filter: blur(5px);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border-width: 5px;
+            border-top-color: white;
+        }
+    </style>
+</head>
+<body>
+    <!-- ... (el resto del contenido del archivo) ... -->
+</body>
+</html>

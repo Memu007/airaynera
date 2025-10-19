@@ -1,0 +1,116 @@
+/* Estilos para el dashboard técnico AIRA */
+
+/* Estilos generales */
+body {
+  background-color: #f5f5f5;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.main-container {
+  background-color: white;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+/* Estilos para secciones */
+.seccion-dashboard {
+  display: none;
+}
+
+.seccion-dashboard.active {
+  display: block;
+}
+
+/* Estilos para tablas */
+.table th.w-fecha {
+  width: 160px;
+}
+
+.table th.w-nivel {
+  width: 80px;
+}
+
+.table th.w-servicio {
+  width: 120px;
+}
+
+/* Estilos para tarjetas y contenedores */
+.card-header {
+  background-color: #f8f9fa;
+}
+
+.card-stats {
+  border-left: 4px solid #007bff;
+  transition: transform 0.2s;
+}
+
+.card-stats:hover {
+  transform: translateY(-5px);
+}
+
+.card-stats .icon {
+  font-size: 2rem;
+  opacity: 0.7;
+}
+
+.card-stats .stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.card-stats .stat-label {
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+/* Estilos para notificaciones */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1050;
+}
+
+/* Estilos para gráficos */
+.chart-container {
+  position: relative;
+  height: 250px;
+}
+
+/* Estilos para badges y estados */
+.badge-success {
+  background-color: #28a745;
+}
+
+.badge-danger {
+  background-color: #dc3545;
+}
+
+.badge-warning {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.badge-info {
+  background-color: #17a2b8;
+}
+
+/* Estilos para columnas específicas */
+.col-fecha {
+  width: 160px;
+}
+
+.col-nivel {
+  width: 80px;
+}
+
+.col-servicio {
+  width: 120px;
+}

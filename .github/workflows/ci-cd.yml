@@ -1,0 +1,308 @@
+name: AIRA CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '18.x'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ===== TESTING =====
+  test:
+    runs-on: ubuntu-latest
+    name: 🧪 Tests y Linting
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: 📋 Instalar dependencias
+      run: npm ci
+      
+    - name: 🔍 Linting
+      run: |
+        npx eslint src/ --ext .js --format stylish || echo "ESLint no configurado"
+        
+    - name: 🧪 Tests unitarios
+      run: npm run test:ci
+      env:
+        NODE_ENV: test
+        JWT_SECRET: test-secret-key
+        
+    - name: 📊 Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        fail_ci_if_error: false
+
+  # ===== SECURITY SCAN =====
+  security:
+    runs-on: ubuntu-latest
+    name: 🔒 Análisis de Seguridad
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: 📋 Instalar dependencias
+      run: npm ci
+      
+    - name: 🔐 Audit de seguridad npm
+      run: npm audit --audit-level moderate
+      
+    - name: 🛡️ Snyk Security Scan
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high
+      continue-on-error: true
+      
+    - name: 📋 Tests de seguridad
+      run: npm run test:security
+
+  # ===== BUILD =====
+  build:
+    runs-on: ubuntu-latest
+    name: 🏗️ Build y Optimización
+    needs: [test, security]
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: 📋 Instalar dependencias
+      run: npm ci
+      
+    - name: 🏗️ Build optimizado
+      run: |
+        node build/optimize-assets.js
+        npm run build:nlp
+        
+    - name: 📦 Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-files
+        path: |
+          dist/
+          js/nlp.bundle.js
+        retention-days: 7
+
+  # ===== DOCKER BUILD =====
+  docker:
+    runs-on: ubuntu-latest
+    name: 🐳 Docker Build
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🐳 Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 🔑 Login to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 📦 Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-files
+        
+    - name: 🏷️ Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: 🏗️ Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # ===== DEPLOY STAGING =====
+  deploy-staging:
+    runs-on: ubuntu-latest
+    name: 🚀 Deploy a Staging
+    needs: [docker]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: ☁️ Deploy to Google Cloud Run (Staging)
+      uses: google-github-actions/deploy-cloudrun@v1
+      with:
+        service: aira-staging
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        region: us-central1
+        env_vars: |
+          NODE_ENV=staging
+          LOG_LEVEL=info
+        secrets: |
+          JWT_SECRET=${{ secrets.JWT_SECRET_STAGING }}
+          GOOGLE_CLOUD_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        flags: |
+          --port=8082
+          --memory=1Gi
+          --cpu=1
+          --min-instances=0
+          --max-instances=10
+          --allow-unauthenticated
+
+  # ===== DEPLOY PRODUCTION =====
+  deploy-production:
+    runs-on: ubuntu-latest
+    name: 🌟 Deploy a Producción
+    needs: [docker]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: 🎯 Deploy to Google Cloud Run (Production)
+      uses: google-github-actions/deploy-cloudrun@v1
+      with:
+        service: aira-production
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        region: us-central1
+        env_vars: |
+          NODE_ENV=production
+          LOG_LEVEL=warn
+        secrets: |
+          JWT_SECRET=${{ secrets.JWT_SECRET_PROD }}
+          GOOGLE_CLOUD_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+        flags: |
+          --port=8082
+          --memory=2Gi
+          --cpu=2
+          --min-instances=1
+          --max-instances=50
+          --allow-unauthenticated
+
+  # ===== MONITORING Y NOTIFICACIONES =====
+  monitoring:
+    runs-on: ubuntu-latest
+    name: 📊 Setup Monitoring
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📊 Configure monitoring
+      run: |
+        echo "Setting up monitoring and alerts..."
+        # Aquí se configurarían las alertas de monitoreo
+        
+    - name: 💬 Notify deployment success
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#deployments'
+        message: |
+          ✅ AIRA desplegado exitosamente en producción
+          📦 Commit: ${{ github.sha }}
+          👤 Por: ${{ github.actor }}
+          🔗 URL: https://aira-production.run.app
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      if: success()
+        
+    - name: 🚨 Notify deployment failure
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#deployments'
+        message: |
+          ❌ Error en el deploy de AIRA
+          📦 Commit: ${{ github.sha }}
+          👤 Por: ${{ github.actor }}
+          🔗 Ver logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      if: failure()
+
+  # ===== PERFORMANCE TESTING =====
+  performance:
+    runs-on: ubuntu-latest
+    name: ⚡ Performance Testing
+    needs: [deploy-staging]
+    if: github.ref == 'refs/heads/develop'
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+      
+    - name: ⚡ Lighthouse CI
+      uses: treosh/lighthouse-ci-action@v10
+      with:
+        urls: |
+          https://aira-staging.run.app
+          https://aira-staging.run.app/api/health
+        configPath: '.github/lighthouse/config.json'
+        uploadArtifacts: true
+        
+    - name: 🧪 Load testing con k6
+      uses: grafana/k6-action@v0.3.1
+      with:
+        filename: tests/performance/load-test.js
+      env:
+        K6_CLOUD_PROJECT_ID: ${{ secrets.K6_PROJECT_ID }}
+        K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+
+# ===== SECRETS REQUERIDOS =====
+# En GitHub Secrets configurar:
+# - JWT_SECRET_STAGING
+# - JWT_SECRET_PROD  
+# - GCP_PROJECT_ID
+# - GEMINI_API_KEY
+# - WHATSAPP_ACCESS_TOKEN
+# - SNYK_TOKEN
+# - SLACK_WEBHOOK
+# - K6_PROJECT_ID
+# - K6_CLOUD_TOKEN 

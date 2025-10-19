@@ -1,0 +1,135 @@
+# Prueba de carga para AIRA Bot con Artillery
+# Ejecutar con: npx artillery run prueba-carga.yml
+
+config:
+  target: "http://localhost:3000"  # URL del servidor local
+  phases:
+    - duration: 5
+      arrivalRate: 10  # 10 usuarios nuevos/segundo
+      name: "Calentamiento"
+    - duration: 25
+      arrivalRate: 30  # 30 usuarios concurrentes
+      name: "Carga sostenida"
+    - duration: 5
+      arrivalRate: 50  # Pico de 50 usuarios
+      name: "Pico de carga"
+  
+  # Configuración de timeout y defaults
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+      
+  # Variables para generar datos aleatorios
+  variables:
+    dni: 
+      - "12345678"
+      - "23456789"
+      - "34567890"
+      - "45678901"
+      - "56789012"
+    nombres:
+      - "Juan Pérez"
+      - "María González"
+      - "Carlos López"
+      - "Ana Rodríguez"
+      - "Luis Fernández"
+    obras_sociales:
+      - "OSDE"
+      - "SWISS"
+      - "PAMI" 
+      - "IOMA"
+      - "GALENO"
+
+scenarios:
+  - name: "Registro de sesión"
+    flow:
+      # Autenticación
+      - post:
+          url: "/api/auth"
+          json:
+            dni: "20123456"  # DNI del profesional
+            pin: "1234"      # PIN de prueba
+          capture:
+            json: "$.token"
+            as: "token"
+      
+      # Crear una sesión
+      - post:
+          url: "/api/sessions"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            paciente_dni: "{{ dni }}"
+            observaciones: "Paciente con evolución favorable. Reporta mejora en síntomas de ansiedad y mejor calidad de sueño en la última semana."
+            fecha: "{{ $timestamp }}"
+      
+  - name: "Búsqueda de pacientes"
+    flow:
+      # Autenticación
+      - post:
+          url: "/api/auth"
+          json:
+            dni: "20123456"  # DNI del profesional
+            pin: "1234"      # PIN de prueba
+          capture:
+            json: "$.token"
+            as: "token"
+            
+      # Buscar pacientes
+      - get:
+          url: "/api/search?q=paciente"
+          headers:
+            Authorization: "Bearer {{ token }}"
+            
+  - name: "Registro de paciente y consulta"
+    flow:
+      # Autenticación
+      - post:
+          url: "/api/auth"
+          json:
+            dni: "20123456"
+            pin: "1234"
+          capture:
+            json: "$.token"
+            as: "token"
+            
+      # Registrar paciente
+      - post:
+          url: "/api/patients"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            nombre: "{{ nombres }}"
+            dni: "{{ dni }}"
+            obra_social: "{{ obras_sociales }}"
+            telefono: "+5491156781234"
+            
+      # Consultar paciente
+      - get:
+          url: "/api/patients/{{ dni }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  - name: "Consulta del historial"
+    flow:
+      # Autenticación
+      - post:
+          url: "/api/auth"
+          json:
+            dni: "20123456"
+            pin: "1234"
+          capture:
+            json: "$.token"
+            as: "token"
+            
+      # Ver historial de un paciente
+      - get:
+          url: "/api/patients/{{ dni }}/sessions"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+# Reportes y métricas
+ensure:
+  p95: 500  # 95% de las respuestas deben ser < 500ms
+  max: 2000 # Ninguna respuesta debe tardar más de 2s

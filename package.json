@@ -1,0 +1,53 @@
+{
+  "name": "aira-medical-frontend",
+  "version": "2.0.0",
+  "description": "AIRA Medical System - Frontend Server v2.0",
+  "main": "server-frontend.js",
+  "scripts": {
+    "start": "node server-frontend.js",
+    "dev": "nodemon server-frontend.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "echo \"Frontend build completed\"",
+    "lint": "echo \"Linting frontend files...\""
+  },
+  "keywords": [
+    "medical",
+    "healthcare",
+    "psychology",
+    "psychiatry",
+    "hipaa",
+    "modular-architecture",
+    "accessibility",
+    "frontend"
+  ],
+  "author": "AIRA Medical Development Team",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aira-medical/frontend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aira-medical/frontend/issues"
+  },
+  "homepage": "https://aira-medical.com",
+  "funding": {
+    "type": "company",
+    "url": "https://aira-medical.com/funding"
+  }
+}

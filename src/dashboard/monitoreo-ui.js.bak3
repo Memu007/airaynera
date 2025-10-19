@@ -1,0 +1,1233 @@
+/**
+ * Componente de UI para el dashboard de monitoreo
+ * Se integra con la página existente para mostrar el estado del sistema
+ */
+
+// Componente de monitoreo
+const MonitoreoUI = {
+  // Estado del componente
+  estado: {
+    cargando: false,
+    error: null,
+    datos: null,
+    ultimaActualizacion: null
+  },
+
+  /**
+   * Inicializa el componente de monitoreo
+   * @param {String} contenedorId - ID del elemento contenedor
+   * @returns {Promise<boolean>} - Resultado de la inicialización
+   */
+  async inicializar(contenedorId = 'dashboard-monitoreo') {
+    try {
+      console.log('Inicializando componente de monitoreo...');
+      
+      // Guardar referencia al contenedor
+      this.contenedor = document.getElementById(contenedorId);
+      if (!this.contenedor) {
+        console.error(`No se encontró el contenedor con ID: ${contenedorId}`);
+        return false;
+      }
+      
+      // Crear estructura inicial
+      this.crearEstructura();
+      
+      // Cargar datos iniciales
+      await this.cargarDatos();
+      
+      // Configurar actualización periódica
+      this.intervaloActualizacion = setInterval(() => {
+        this.cargarDatos().catch(error => {
+          console.error('Error al actualizar datos de monitoreo:', error);
+        });
+      }, 5 * 60 * 1000); // Actualizar cada 5 minutos
+      
+      console.log('Componente de monitoreo inicializado correctamente');
+      return true;
+    } catch (error) {
+      console.error('Error al inicializar componente de monitoreo:', error);
+      this.mostrarError('No se pudo inicializar el monitoreo');
+      return false;
+    }
+  },
+
+  /**
+   * Crea la estructura HTML del dashboard
+   */
+  crearEstructura() {
+    // Crear estructura básica
+    this.contenedor.innerHTML = `
+      <div class="dashboard-header">
+        <h2>Panel de Monitoreo</h2>
+        <div class="dashboard-controls">
+          <button id="btn-actualizar-monitoreo" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-sync-alt"></i> Actualizar
+          </button>
+          <span id="ultima-actualizacion" class="text-muted small ml-2">
+            Última actualización: Nunca
+          </span>
+        </div>
+      </div>
+      
+      <div id="dashboard-error" class="alert alert-danger d-none" role="alert">
+        Error al cargar datos de monitoreo
+      </div>
+      
+      <div id="dashboard-loader" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="sr-only">Cargando...</span>
+        </div>
+        <p class="mt-2">Cargando datos de monitoreo...</p>
+      </div>
+      
+      <div id="dashboard-content" class="d-none">
+        <div class="row">
+          <!-- Resumen de alertas -->
+          <div class="col-md-6 mb-4">
+            <div class="card h-100">
+              <div class="card-header bg-warning text-white">
+                <h5 class="card-title mb-0">
+                  <i class="fas fa-bell"></i> Alertas de Seguridad
+                </h5>
+              </div>
+              <div class="card-body" id="alertas-container">
+                <div class="text-center py-4">
+                  <div class="spinner-border text-warning" role="status">
+                    <span class="sr-only">Cargando...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Estado de tareas -->
+          <div class="col-md-6 mb-4">
+            <div class="card h-100">
+              <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                  <i class="fas fa-tasks"></i> Tareas Programadas
+                </h5>
+              </div>
+              <div class="card-body" id="tareas-container">
+                <div class="text-center py-4">
+                  <div class="spinner-border text-info" role="status">
+                    <span class="sr-only">Cargando...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="row">
+          <!-- Estadísticas -->
+          <div class="col-12 mb-4">
+            <div class="card">
+              <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                  <i class="fas fa-chart-bar"></i> Estadísticas del Sistema
+                </h5>
+              </div>
+              <div class="card-body" id="estadisticas-container">
+                <div class="text-center py-4">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Cargando...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Configurar eventos
+    document.getElementById('btn-actualizar-monitoreo').addEventListener('click', () => {
+      this.cargarDatos();
+    });
+  },
+
+  /**
+   * Carga los datos del dashboard desde la API
+   * @returns {Promise<Object>} - Datos del dashboard
+   */
+  async cargarDatos() {
+    try {
+      // Mostrar estado de carga
+      this.mostrarCargando(true);
+      this.estado.cargando = true;
+      this.estado.error = null;
+      
+      // Realizar petición a la API
+      const response = await fetch('/api/monitoreo/estado');
+      
+      if (!response.ok) {
+        throw new Error(`Error al obtener datos: ${response.status} ${response.statusText}`);
+      }
+      
+      // Procesar respuesta
+      const datos = await response.json();
+      
+      // Actualizar estado
+      this.estado.datos = datos;
+      this.estado.ultimaActualizacion = new Date();
+      this.estado.cargando = false;
+      
+      // Actualizar UI
+      this.actualizarUI();
+      
+      return datos;
+    } catch (error) {
+      console.error('Error al cargar datos de monitoreo:', error);
+      this.estado.error = error.message;
+      this.estado.cargando = false;
+      this.mostrarError(error.message);
+      return null;
+    }
+  },
+
+  /**
+   * Actualiza la interfaz con los datos cargados
+   */
+  actualizarUI() {
+    // Ocultar cargador y mostrar contenido
+    this.mostrarCargando(false);
+    
+    // Actualizar timestamp de última actualización
+    const ultimaActualizacionEl = document.getElementById('ultima-actualizacion');
+    if (ultimaActualizacionEl) {
+      ultimaActualizacionEl.textContent = `Última actualización: ${this.formatearFecha(this.estado.ultimaActualizacion)}`;
+    }
+    
+    // Actualizar cada sección
+    this.actualizarAlertas();
+    this.actualizarTareas();
+    this.actualizarEstadisticas();
+  },
+
+  /**
+   * Actualiza la sección de alertas
+   */
+  actualizarAlertas() {
+    const contenedor = document.getElementById('alertas-container');
+    if (!contenedor || !this.estado.datos?.alertas) return;
+    
+    const alertas = this.estado.datos.alertas;
+    
+    // Crear contenido HTML
+    let html = `
+      <div class="row text-center mb-4">
+        <div class="col-4">
+          <div class="alert alert-danger mb-0 alert-clickable" onclick="filtrarAlertas('alto')">
+            <h3>${alertas.altas || 0}</h3>
+            <p class="mb-0">Altas</p>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="alert alert-warning mb-0 alert-clickable" onclick="filtrarAlertas('medio')">
+            <h3>${alertas.medias || 0}</h3>
+            <p class="mb-0">Medias</p>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="alert alert-info mb-0 alert-clickable" onclick="filtrarAlertas('bajo')">
+            <h3>${alertas.bajas || 0}</h3>
+            <p class="mb-0">Bajas</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <strong>Total de alertas:</strong> ${alertas.total || 0}
+          <span class="badge badge-warning ml-2">${alertas.noLeidas || 0} no leídas</span>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Filtros de alertas">
+          <button type="button" class="btn btn-outline-secondary" onclick="filtrarAlertas('todas')" title="Mostrar todas las alertas">Todas</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="filtrarAlertas('no-leidas')" title="Mostrar alertas no leídas">No leídas</button>
+        </div>
+      </div>
+      
+      <div class="mb-3">
+        <div class="input-group input-group-sm">
+          <div class="input-group-prepend">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+          </div>
+          <input type="text" class="form-control" id="buscar-alertas" placeholder="Buscar alertas..." onkeyup="buscarAlertas(this.value)">
+          <div class="input-group-append">
+            <button class="btn btn-outline-secondary" type="button" onclick="limpiarBusquedaAlertas()" title="Limpiar búsqueda">×</button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Mostrar alertas recientes si hay
+    if (alertas.recientes && alertas.recientes.length > 0) {
+      html += `
+        <h6 class="mt-3">Alertas recientes:</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover" id="tabla-alertas">
+            <thead>
+              <tr>
+                <th>Nivel</th>
+                <th>Mensaje</th>
+                <th>Fecha</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      alertas.recientes.forEach(alerta => {
+        const nivelClase = this.obtenerClaseNivel(alerta.nivel);
+        const iconoLeida = alerta.leida ? 'fa-check-circle' : 'fa-exclamation-circle';
+        const claseLeida = alerta.leida ? '' : 'font-weight-bold';
+        
+        html += `
+          <tr class="${claseLeida}" data-alerta-id="${alerta.id}" data-nivel="${alerta.nivel}">
+            <td>
+              <span class="badge ${nivelClase}">${alerta.nivel}</span>
+            </td>
+            <td>${alerta.mensaje}</td>
+            <td><small>${this.formatearFecha(alerta.timestamp)}</small></td>
+            <td>
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-sm btn-outline-secondary" onclick="marcarAlertaLeida('${alerta.id}')" title="Marcar como leída">
+                  <i class="fas ${iconoLeida}"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-info" onclick="verDetallesAlerta('${alerta.id}')" title="Ver detalles">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+    } else {
+      html += `<p class="text-muted mt-3">No hay alertas recientes</p>`;
+    }
+    
+    html += `
+      <div class="d-flex justify-content-between mt-3">
+        <button class="btn btn-sm btn-success" onclick="ejecutarVerificacionSeguridad()" title="Ejecutar verificación de seguridad ahora">
+          <i class="fas fa-shield-alt mr-1"></i> Verificar seguridad
+        </button>
+        <a href="#" class="btn btn-sm btn-outline-warning" onclick="mostrarTodasAlertas(); return false;" title="Ver historial completo de alertas">
+          <i class="fas fa-history mr-1"></i> Ver historial completo
+        </a>
+      </div>
+    `;
+    
+    contenedor.innerHTML = html;
+    
+    // Inicializar eventos
+    this.inicializarEventosAlertas();
+  },
+  
+  /**
+   * Inicializa eventos para la sección de alertas
+   */
+  inicializarEventosAlertas() {
+    // Asignar eventos globales para las funciones de alertas
+    window.filtrarAlertas = (tipo) => this.filtrarAlertas(tipo);
+    window.buscarAlertas = (texto) => this.buscarAlertas(texto);
+    window.limpiarBusquedaAlertas = () => this.limpiarBusquedaAlertas();
+    window.marcarAlertaLeida = (id) => this.marcarAlertaLeida(id);
+    window.verDetallesAlerta = (id) => this.verDetallesAlerta(id);
+    window.ejecutarVerificacionSeguridad = () => this.ejecutarVerificacionSeguridad();
+  },
+  
+  /**
+   * Filtra las alertas por tipo
+   * @param {String} tipo - Tipo de filtro
+   */
+  filtrarAlertas(tipo) {
+    const tabla = document.getElementById('tabla-alertas');
+    if (!tabla) return;
+    
+    const filas = tabla.querySelectorAll('tbody tr');
+    
+    filas.forEach(fila => {
+      switch (tipo) {
+        case 'alto':
+          fila.style.display = fila.dataset.nivel === 'alto' ? '' : 'none';
+          break;
+        case 'medio':
+          fila.style.display = fila.dataset.nivel === 'medio' ? '' : 'none';
+          break;
+        case 'bajo':
+          fila.style.display = fila.dataset.nivel === 'bajo' ? '' : 'none';
+          break;
+        case 'no-leidas':
+          fila.style.display = fila.classList.contains('font-weight-bold') ? '' : 'none';
+          break;
+        default: // 'todas'
+          fila.style.display = '';
+      }
+    });
+    
+    // Actualizar botones de filtro
+    const botones = document.querySelectorAll('.btn-group[aria-label="Filtros de alertas"] .btn');
+    botones.forEach(btn => btn.classList.remove('active'));
+    
+    if (tipo === 'no-leidas') {
+      botones[1].classList.add('active');
+    } else if (tipo === 'todas') {
+      botones[0].classList.add('active');
+    }
+  },
+  
+  /**
+   * Busca alertas por texto
+   * @param {String} texto - Texto a buscar
+   */
+  buscarAlertas(texto) {
+    const tabla = document.getElementById('tabla-alertas');
+    if (!tabla) return;
+    
+    const filas = tabla.querySelectorAll('tbody tr');
+    const textoBusqueda = texto.toLowerCase();
+    
+    filas.forEach(fila => {
+      const contenido = fila.textContent.toLowerCase();
+      fila.style.display = contenido.includes(textoBusqueda) ? '' : 'none';
+    });
+  },
+  
+  /**
+   * Limpia la búsqueda de alertas
+   */
+  limpiarBusquedaAlertas() {
+    const input = document.getElementById('buscar-alertas');
+    if (input) {
+      input.value = '';
+      this.buscarAlertas('');
+    }
+  },
+  
+  /**
+   * Marca una alerta como leída
+   * @param {String} id - ID de la alerta
+   */
+  marcarAlertaLeida(id) {
+    // En un entorno real, esto haría una llamada a la API
+    console.log(`Marcando alerta ${id} como leída`);
+    
+    // Simulación de respuesta exitosa
+    const fila = document.querySelector(`tr[data-alerta-id="${id}"]`);
+    if (fila) {
+      fila.classList.remove('font-weight-bold');
+      const iconoBtn = fila.querySelector('.fa-exclamation-circle');
+      if (iconoBtn) {
+        iconoBtn.classList.remove('fa-exclamation-circle');
+        iconoBtn.classList.add('fa-check-circle');
+      }
+      
+      // Actualizar contador de no leídas
+      const badgeNoLeidas = document.querySelector('.badge-warning');
+      if (badgeNoLeidas) {
+        const contador = parseInt(badgeNoLeidas.textContent);
+        if (contador > 0) {
+          badgeNoLeidas.textContent = `${contador - 1} no leídas`;
+        }
+      }
+    }
+  },
+  
+  /**
+   * Muestra los detalles de una alerta
+   * @param {String} id - ID de la alerta
+   */
+  verDetallesAlerta(id) {
+    // En un entorno real, esto haría una llamada a la API para obtener detalles
+    console.log(`Mostrando detalles de alerta ${id}`);
+    
+    // Simulación de modal con detalles
+    alert(`Detalles de la alerta ${id}\n\nEn un entorno real, aquí se mostraría un modal con información detallada de la alerta, incluyendo acciones tomadas, IP afectada, usuario involucrado, etc.`);
+  },
+  
+  /**
+   * Ejecuta una verificación de seguridad manual
+   */
+  ejecutarVerificacionSeguridad() {
+    // En un entorno real, esto haría una llamada a la API
+    console.log('Ejecutando verificación de seguridad manual');
+    
+    // Simulación de proceso
+    const btnVerificar = document.querySelector('button.btn-success');
+    if (btnVerificar) {
+      const textoOriginal = btnVerificar.innerHTML;
+      btnVerificar.disabled = true;
+      btnVerificar.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Verificando...';
+      
+      setTimeout(() => {
+        btnVerificar.disabled = false;
+        btnVerificar.innerHTML = textoOriginal;
+        alert('Verificación de seguridad completada. No se encontraron nuevas alertas.');
+      }, 2000);
+    }
+  },
+
+  /**
+   * Actualiza la sección de tareas programadas
+   */
+  actualizarTareas() {
+    const contenedor = document.getElementById('tareas-container');
+    if (!contenedor || !this.estado.datos?.tareas) return;
+    
+    const tareas = this.estado.datos.tareas;
+    
+    // Crear contenido HTML
+    let html = `
+      <div class="row">
+    `;
+    
+    // Iterar sobre las tareas
+    const tareasInfo = [
+      {
+        id: 'backup',
+        nombre: 'Backup Automático',
+        tarea: tareas.backup
+      },
+      {
+        id: 'retencion',
+        nombre: 'Verificación de Retención',
+        tarea: tareas.retencion
+      },
+      {
+        id: 'alertas',
+        nombre: 'Monitoreo de Seguridad',
+        tarea: tareas.alertas
+      }
+    ];
+    
+    tareasInfo.forEach(info => {
+      const { id, nombre, tarea } = info;
+      const estadoClase = this.obtenerClaseEstadoTarea(tarea.estado);
+      const iconoEstado = this.obtenerIconoEstadoTarea(tarea.estado);
+      const deshabilitado = tarea.estado === 'en_progreso' ? 'disabled' : '';
+      const activa = tarea.estado !== 'inactivo';
+      
+      html += `
+        <div class="col-md-4 mb-3">
+          <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center ${estadoClase.replace('badge-', 'bg-')}">
+              <h5 class="card-title mb-0 text-white">${nombre}</h5>
+              <div class="custom-control custom-switch">
+                <input type="checkbox" class="custom-control-input" id="switch-${id}" 
+                  ${activa ? 'checked' : ''} onchange="toggleTarea('${id}', this.checked)">
+                <label class="custom-control-label text-white" for="switch-${id}"></label>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="d-flex justify-content-between mb-2">
+                <span>Estado:</span>
+                <span class="badge ${estadoClase}">
+                  <i class="fas ${iconoEstado} mr-1"></i>
+                  ${tarea.estado}
+                </span>
+              </div>
+              <div class="d-flex justify-content-between mb-2">
+                <span>Última ejecución:</span>
+                <span>${tarea.ultimaEjecucion ? this.formatearFecha(tarea.ultimaEjecucion) : 'Nunca'}</span>
+              </div>
+              <div class="d-flex justify-content-between mb-2">
+                <span>Próxima ejecución:</span>
+                <span>${tarea.proximaEjecucion ? this.formatearFecha(tarea.proximaEjecucion) : 'No programada'}</span>
+              </div>
+              
+              <div class="progress mt-3 mb-2">
+                <div class="progress-bar ${estadoClase.replace('badge-', 'bg-')}" role="progressbar" 
+                  style="width: ${this.calcularProgresoTarea(tarea)}%" 
+                  aria-valuenow="${this.calcularProgresoTarea(tarea)}" aria-valuemin="0" aria-valuemax="100">
+                  ${this.calcularProgresoTarea(tarea)}%
+                </div>
+              </div>
+              
+              <div class="mt-3 text-center">
+                <div class="btn-group btn-group-sm">
+                  <button class="btn btn-outline-primary" onclick="ejecutarTareaAhora('${id}')" ${deshabilitado} title="Ejecutar ahora">
+                    <i class="fas fa-play mr-1"></i> Ejecutar
+                  </button>
+                  <button class="btn btn-outline-secondary" onclick="configurarTarea('${id}')" title="Configurar">
+                    <i class="fas fa-cog"></i>
+                  </button>
+                  <button class="btn btn-outline-info" onclick="verLogsTarea('${id}')" title="Ver logs">
+                    <i class="fas fa-list-alt"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    
+    html += `
+      </div>
+      
+      <div class="card mt-3">
+        <div class="card-header bg-light">
+          <h5 class="card-title mb-0">Programación de tareas</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover">
+              <thead>
+                <tr>
+                  <th>Tarea</th>
+                  <th>Frecuencia</th>
+                  <th>Próxima ejecución</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+    `;
+    
+    // Agregar filas de programación
+    tareasInfo.forEach(info => {
+      const { id, nombre, tarea } = info;
+      const estadoClase = this.obtenerClaseEstadoTarea(tarea.estado);
+      const iconoEstado = this.obtenerIconoEstadoTarea(tarea.estado);
+      const deshabilitado = tarea.estado === 'en_progreso' ? 'disabled' : '';
+      
+      html += `
+        <tr>
+          <td>${nombre}</td>
+          <td>${tarea.frecuencia || 'Diaria'}</td>
+          <td>${tarea.proximaEjecucion ? this.formatearFecha(tarea.proximaEjecucion) : 'No programada'}</td>
+          <td><span class="badge ${estadoClase}"><i class="fas ${iconoEstado} mr-1"></i> ${tarea.estado}</span></td>
+          <td>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-sm btn-outline-primary" onclick="ejecutarTareaAhora('${id}')" ${deshabilitado} title="Ejecutar ahora">
+                <i class="fas fa-play"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="configurarTarea('${id}')" title="Configurar">
+                <i class="fas fa-cog"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+    
+    html += `
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    contenedor.innerHTML = html;
+    
+    // Inicializar eventos
+    this.inicializarEventosTareas();
+  },
+
+  /**
+   * Inicializa eventos para la sección de tareas
+   */
+  inicializarEventosTareas() {
+    // Asignar eventos globales para las funciones de tareas
+    window.toggleTarea = (id, activa) => this.toggleTarea(id, activa);
+    window.ejecutarTareaAhora = (id) => this.ejecutarTareaAhora(id);
+    window.configurarTarea = (id) => this.configurarTarea(id);
+    window.verLogsTarea = (id) => this.verLogsTarea(id);
+  },
+  
+  /**
+   * Activa o desactiva una tarea programada
+   * @param {String} id - ID de la tarea
+   * @param {Boolean} activa - Indica si la tarea debe estar activa
+   */
+  async toggleTarea(id, activa) {
+    try {
+      // Mostrar estado de carga
+      this.mostrarCargando(true);
+      
+      // Simular petición a la API
+      console.log(`Cambiando estado de tarea ${id} a ${activa ? 'activa' : 'inactiva'}`);
+      
+      // En producción, aquí iría la llamada real a la API
+      // const response = await fetch(`/api/monitoreo/tareas/${id}`, {
+      //   method: 'PUT',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ activa })
+      // });
+      
+      // Simular respuesta exitosa
+      setTimeout(() => {
+        // Actualizar estado local
+        if (this.estado.datos?.tareas && this.estado.datos.tareas[id]) {
+          this.estado.datos.tareas[id].estado = activa ? 'activo' : 'inactivo';
+          this.actualizarTareas();
+        }
+        
+        this.mostrarCargando(false);
+        
+        // Mostrar notificación
+        alert(`Tarea ${id} ${activa ? 'activada' : 'desactivada'} correctamente`);
+      }, 500);
+      
+    } catch (error) {
+      console.error(`Error al cambiar estado de tarea ${id}:`, error);
+      this.mostrarError(`No se pudo cambiar el estado de la tarea ${id}`);
+      this.mostrarCargando(false);
+    }
+  },
+  
+  /**
+   * Ejecuta una tarea programada inmediatamente
+   * @param {String} id - ID de la tarea
+   */
+  async ejecutarTareaAhora(id) {
+    try {
+      // Mostrar estado de carga
+      this.mostrarCargando(true);
+      
+      // Simular petición a la API
+      console.log(`Ejecutando tarea ${id} manualmente`);
+      
+      // En producción, aquí iría la llamada real a la API
+      // const response = await fetch(`/api/monitoreo/tareas/${id}/ejecutar`, {
+      //   method: 'POST'
+      // });
+      
+      // Simular respuesta exitosa
+      setTimeout(() => {
+        // Actualizar estado local
+        if (this.estado.datos?.tareas && this.estado.datos.tareas[id]) {
+          this.estado.datos.tareas[id].estado = 'en_progreso';
+          this.estado.datos.tareas[id].ultimaEjecucion = new Date();
+          this.actualizarTareas();
+          
+          // Simular finalización después de un tiempo
+          setTimeout(() => {
+            this.estado.datos.tareas[id].estado = 'activo';
+            this.actualizarTareas();
+          }, 3000);
+        }
+        
+        this.mostrarCargando(false);
+        
+        // Mostrar notificación
+        alert(`Tarea ${id} iniciada correctamente`);
+      }, 500);
+      
+    } catch (error) {
+      console.error(`Error al ejecutar tarea ${id}:`, error);
+      this.mostrarError(`No se pudo ejecutar la tarea ${id}`);
+      this.mostrarCargando(false);
+    }
+  },
+  
+  /**
+   * Muestra el modal de configuración de una tarea
+   * @param {String} id - ID de la tarea
+   */
+  configurarTarea(id) {
+    // Simular apertura de modal de configuración
+    alert(`Configuración de tarea ${id} (Simulado)`);
+    // En una implementación real, aquí se abriría un modal con opciones de configuración
+  },
+  
+  /**
+   * Muestra los logs de una tarea
+   * @param {String} id - ID de la tarea
+   */
+  verLogsTarea(id) {
+    // Simular apertura de modal con logs
+    alert(`Logs de tarea ${id} (Simulado)`);
+    // En una implementación real, aquí se abriría un modal con los logs de la tarea
+  },
+  
+  /**
+   * Calcula el porcentaje de progreso de una tarea
+   * @param {Object} tarea - Datos de la tarea
+   * @returns {Number} - Porcentaje de progreso
+   */
+  calcularProgresoTarea(tarea) {
+    // Si la tarea está en progreso, mostrar un valor entre 10 y 90%
+    if (tarea.estado === 'en_progreso') {
+      // Simular progreso basado en el tiempo transcurrido
+      const ahora = new Date();
+      const inicio = new Date(tarea.ultimaEjecucion);
+      const transcurrido = ahora - inicio;
+      
+      // Asumir que una tarea toma aproximadamente 30 segundos
+      const porcentaje = Math.min(90, Math.max(10, Math.floor((transcurrido / 30000) * 100)));
+      return porcentaje;
+    }
+    
+    // Si está completada, mostrar 100%
+    if (tarea.estado === 'completada') {
+      return 100;
+    }
+    
+    // Si está activa pero no en progreso, mostrar 0%
+    if (tarea.estado === 'activo') {
+      return 0;
+    }
+    
+    // Si está inactiva, mostrar 0%
+    return 0;
+  },
+  
+  /**
+   * Obtiene la clase CSS para un estado de tarea
+   * @param {String} estado - Estado de la tarea
+   * @returns {String} - Clase CSS
+   */
+  obtenerClaseEstadoTarea(estado) {
+    switch (estado) {
+      case 'activo':
+        return 'badge-success';
+      case 'en_progreso':
+        return 'badge-primary';
+      case 'completada':
+        return 'badge-info';
+      case 'error':
+        return 'badge-danger';
+      case 'inactivo':
+      default:
+        return 'badge-secondary';
+    }
+  },
+  
+  /**
+   * Obtiene el icono para un estado de tarea
+   * @param {String} estado - Estado de la tarea
+   * @returns {String} - Clase del icono
+   */
+  obtenerIconoEstadoTarea(estado) {
+    switch (estado) {
+      case 'activo':
+        return 'fa-check-circle';
+      case 'en_progreso':
+        return 'fa-spinner fa-spin';
+      case 'completada':
+        return 'fa-check-double';
+      case 'error':
+        return 'fa-exclamation-triangle';
+      case 'inactivo':
+      default:
+        return 'fa-pause-circle';
+    }
+  },
+            <div class="d-flex justify-content-between mb-2">
+              <span>Estado:</span>
+              <span class="badge ${estadoClase}">
+                <i class="fas ${iconoEstado} mr-1"></i>
+                ${tarea.estado}
+              </span>
+        <!-- Estadísticas de sesiones -->
+        <div class="col-md-4 mb-3">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">Sesiones</h5>
+              <div class="d-flex justify-content-between mb-2">
+                <span>Total:</span>
+                <strong>${estadisticas.sesiones.total || 0}</strong>
+              </div>
+              <div class="d-flex justify-content-between mb-2">
+                <span>Web:</span>
+                <strong>${estadisticas.sesiones.web || 0}</strong>
+              </div>
+              <div class="d-flex justify-content-between mb-2">
+                <span>WhatsApp:</span>
+                <strong>${estadisticas.sesiones.whatsapp || 0}</strong>
+              </div>
+              <div class="d-flex justify-content-between mb-2">
+                <span>Archivadas:</span>
+                <strong>${estadisticas.sesiones.archivadas || 0}</strong>
+              </div>
+              <div class="mt-3">
+                <canvas id="grafico-sesiones" width="100%" height="150"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Estadísticas de backups -->
+        <div class="col-md-4 mb-3">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">Backups</h5>
+              <div class="d-flex justify-content-between mb-2">
+                <span>Total:</span>
+                <strong>${estadisticas.backups.total || 0}</strong>
+              </div>
+              <div class="d-flex justify-content-between mb-2">
+                <span>Último exitoso:</span>
+                <strong>${estadisticas.backups.ultimoExitoso ? this.formatearFecha(estadisticas.backups.ultimoExitoso) : 'Nunca'}</strong>
+              </div>
+              <div class="mt-3">
+                <canvas id="grafico-backups" width="100%" height="150"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="row mt-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header bg-primary text-white">
+              <h5 class="card-title mb-0">Tendencias</h5>
+            </div>
+            <div class="card-body">
+              <div class="chart-container" style="position: relative; height:250px;">
+                <canvas id="grafico-tendencias"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    contenedor.innerHTML = html;
+    
+    // Crear gráficos una vez que el DOM esté actualizado
+    setTimeout(() => {
+      this.crearGraficoPacientes(estadisticas.pacientes);
+      this.crearGraficoSesiones(estadisticas.sesiones);
+      this.crearGraficoBackups(estadisticas.backups);
+      this.crearGraficoTendencias();
+    }, 50);
+  },
+  
+  /**
+   * Crea un gráfico de pacientes
+   * @param {Object} datos - Datos de pacientes
+   */
+  crearGraficoPacientes(datos) {
+    try {
+      const ctx = document.getElementById('grafico-pacientes');
+      if (!ctx) return;
+      
+      new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Activos', 'Archivados'],
+          datasets: [{
+            data: [datos.activos || 0, datos.archivados || 0],
+            backgroundColor: ['#28a745', '#6c757d'],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                boxWidth: 12
+              }
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error al crear gráfico de pacientes:', error);
+    }
+  },
+  
+  /**
+   * Crea un gráfico de sesiones
+   * @param {Object} datos - Datos de sesiones
+   */
+  crearGraficoSesiones(datos) {
+    try {
+      const ctx = document.getElementById('grafico-sesiones');
+      if (!ctx) return;
+      
+      new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Web', 'WhatsApp', 'Archivadas'],
+          datasets: [{
+            data: [datos.web || 0, datos.whatsapp || 0, datos.archivadas || 0],
+            backgroundColor: ['#007bff', '#17a2b8', '#6c757d'],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                boxWidth: 12
+              }
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error al crear gráfico de sesiones:', error);
+    }
+  },
+  
+  /**
+   * Crea un gráfico de backups
+   * @param {Object} datos - Datos de backups
+   */
+  crearGraficoBackups(datos) {
+    try {
+      const ctx = document.getElementById('grafico-backups');
+      if (!ctx) return;
+      
+      // Simular datos históricos para el ejemplo
+      const fechasSimuladas = [];
+      const datosSimulados = [];
+      
+      const hoy = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const fecha = new Date();
+        fecha.setDate(hoy.getDate() - i);
+        fechasSimuladas.push(fecha);
+        datosSimulados.push(Math.floor(Math.random() * 2) + 1); // 1 o 2 backups por día
+      }
+      
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: fechasSimuladas,
+          datasets: [{
+            label: 'Backups',
+            data: datosSimulados,
+            backgroundColor: '#ffc107',
+            borderColor: '#e0a800',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              type: 'time',
+              time: {
+                unit: 'day',
+                displayFormats: {
+                  day: 'DD/MM'
+                }
+              },
+              ticks: {
+                maxRotation: 0
+              }
+            },
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              display: false
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error al crear gráfico de backups:', error);
+    }
+  },
+  
+  /**
+   * Crea un gráfico de tendencias
+   */
+  crearGraficoTendencias() {
+    try {
+      const ctx = document.getElementById('grafico-tendencias');
+      if (!ctx) return;
+      
+      // Simular datos históricos para el ejemplo
+      const fechas = [];
+      const datosPacientes = [];
+      const datosSesiones = [];
+      
+      const hoy = new Date();
+      for (let i = 30; i >= 0; i--) {
+        const fecha = new Date();
+        fecha.setDate(hoy.getDate() - i);
+        fechas.push(fecha);
+        
+        // Simular crecimiento
+        datosPacientes.push(100 + Math.floor(i * 1.5) + Math.floor(Math.random() * 10));
+        datosSesiones.push(800 + Math.floor(i * 15) + Math.floor(Math.random() * 50));
+      }
+      
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: fechas,
+          datasets: [
+            {
+              label: 'Pacientes',
+              data: datosPacientes,
+              borderColor: '#28a745',
+              backgroundColor: 'rgba(40, 167, 69, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.4
+            },
+            {
+              label: 'Sesiones',
+              data: datosSesiones,
+              borderColor: '#007bff',
+              backgroundColor: 'rgba(0, 123, 255, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              type: 'time',
+              time: {
+                unit: 'day',
+                displayFormats: {
+                  day: 'DD/MM'
+                }
+              },
+              ticks: {
+                maxRotation: 0,
+                maxTicksLimit: 10
+              }
+            },
+            y: {
+              beginAtZero: false
+            }
+          },
+          plugins: {
+            tooltip: {
+              mode: 'index',
+              intersect: false
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error al crear gráfico de tendencias:', error);
+    }
+  },
+
+  /**
+   * Muestra u oculta el estado de carga
+   * @param {Boolean} mostrar - Indica si mostrar el cargador
+   */
+  mostrarCargando(mostrar) {
+    const loader = document.getElementById('dashboard-loader');
+    const content = document.getElementById('dashboard-content');
+    const error = document.getElementById('dashboard-error');
+    
+    if (loader) {
+      loader.classList.toggle('d-none', !mostrar);
+    }
+    
+    if (content) {
+      content.classList.toggle('d-none', mostrar || !!this.estado.error);
+    }
+    
+    if (error) {
+      error.classList.toggle('d-none', !this.estado.error);
+    }
+  },
+
+  /**
+   * Muestra un mensaje de error
+   * @param {String} mensaje - Mensaje de error
+   */
+  mostrarError(mensaje) {
+    const errorEl = document.getElementById('dashboard-error');
+    if (errorEl) {
+      errorEl.textContent = mensaje || 'Error al cargar datos de monitoreo';
+      errorEl.classList.remove('d-none');
+    }
+    
+    this.mostrarCargando(false);
+  },
+
+  /**
+   * Formatea una fecha para mostrarla en la UI
+   * @param {Date|String} fecha - Fecha a formatear
+   * @returns {String} - Fecha formateada
+   */
+  formatearFecha(fecha) {
+    if (!fecha) return 'N/A';
+    
+    try {
+      const date = fecha instanceof Date ? fecha : new Date(fecha);
+      return date.toLocaleString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      console.error('Error al formatear fecha:', error);
+      return 'Fecha inválida';
+    }
+  },
+
+  /**
+   * Obtiene la clase CSS para un nivel de alerta
+   * @param {String} nivel - Nivel de alerta
+   * @returns {String} - Clase CSS
+   */
+  obtenerClaseNivel(nivel) {
+    switch (nivel?.toLowerCase()) {
+      case 'alto':
+        return 'badge-danger';
+      case 'medio':
+        return 'badge-warning';
+      case 'bajo':
+        return 'badge-info';
+      default:
+        return 'badge-secondary';
+    }
+  },
+
+  /**
+   * Detiene el componente y libera recursos
+   */
+  detener() {
+    if (this.intervaloActualizacion) {
+      clearInterval(this.intervaloActualizacion);
+      this.intervaloActualizacion = null;
+    }
+    console.log('Componente de monitoreo detenido');
+  }
+};
+
+// Funciones globales para interactuar con el dashboard
+function mostrarTodasAlertas() {
+  // Redirigir a la página de alertas
+  window.location.href = '/alertas';
+}
+
+function mostrarConfiguracionTareas() {
+  // Redirigir a la página de configuración
+  window.location.href = '/configuracion';
+}
+
+// Exportar el componente
+window.MonitoreoUI = MonitoreoUI;

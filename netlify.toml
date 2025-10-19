@@ -1,0 +1,35 @@
+[build]
+  command = ""
+  publish = "."
+  environment = { NODE_VERSION = "18" }
+
+[functions]
+  directory = "functions"
+  node_bundler = "esbuild"
+
+# Configuración de redirecciones para SPA
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
+
+# Variables de entorno para el frontend (prefijo con VITE_ para Vite o REACT_APP_ para Create React App)
+[build.environment]
+  VITE_FIREBASE_API_KEY = "your-api-key"  # Reemplazar con tus credenciales reales
+  VITE_FIREBASE_AUTH_DOMAIN = "your-project-id.firebaseapp.com"
+  VITE_FIREBASE_PROJECT_ID = "your-project-id"
+  VITE_FIREBASE_STORAGE_BUCKET = "your-project-id.appspot.com"
+  VITE_FIREBASE_MESSAGING_SENDER_ID = "your-messaging-sender-id"
+  VITE_FIREBASE_APP_ID = "your-app-id"
+  VITE_FIREBASE_MEASUREMENT_ID = "your-measurement-id"
+
+# Configuración de cabeceras de seguridad
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.google.com https://www.gstatic.com/firebasejs/ https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com; frame-src 'self' https://www.google.com;"

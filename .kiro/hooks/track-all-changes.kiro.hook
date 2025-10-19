@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Track All Changes",
+  "description": "Monitors all file changes in the project to maintain a comprehensive list and prevent developers from stepping on each other's work",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A file has been modified. Please create or update a comprehensive list of all recent changes to help coordinate development work and prevent conflicts. Include the file path, type of change, and timestamp. Maintain this as a running log that all team members can reference."
+  }
+}

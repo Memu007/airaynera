@@ -1,0 +1,100 @@
+/* Mejoras para la sección de perfil */
+#profileSection {
+    padding: 20px 0;
+    background: #f8f9fa;
+}
+
+#profileSection .card {
+    border: none;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    border-radius: 12px;
+    margin-bottom: 25px;
+    transition: all 0.3s ease;
+}
+
+#profileSection .card:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    transform: translateY(-2px);
+}
+
+#profileSection .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 15px 20px;
+    border: none;
+}
+
+#profileSection .card-header h5 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+#profileSection .card-body {
+    padding: 25px;
+}
+
+#profileSection .form-group {
+    margin-bottom: 20px;
+}
+
+#profileSection .form-control {
+    border-radius: 8px;
+    border: 1px solid #e1e5e9;
+    padding: 12px 15px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+#profileSection .form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+#profileSection .btn {
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+#profileSection .btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+}
+
+#profileSection .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Indicador de completitud */
+.profile-completeness {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.profile-completeness h6 {
+    color: #495057;
+    font-weight: 600;
+    margin-bottom: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #profileSection .card-body {
+        padding: 20px 15px;
+    }
+    
+    #profileSection .row {
+        margin: 0 -10px;
+    }
+    
+    #profileSection .col-md-6 {
+        padding: 0 10px;
+    }
+}

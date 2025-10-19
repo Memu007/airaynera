@@ -1,0 +1,2233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Offline - AIRA Bot</title>
+    <script>
+    // Limpiar cualquier sesión existente al cargar la página de login
+    (function() {
+        // Ejecutar inmediatamente, sin esperar a window.onload
+        try {
+            // Limpiar sessionStorage y localStorage
+            sessionStorage.clear();
+            localStorage.clear();
+            
+            // Limpiar cookies relacionadas con la sesión
+            document.cookie.split(';').forEach(function(c) {
+                document.cookie = c.trim().split('=')[0] + '=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+            });
+            
+            console.log('Sesión limpiada al cargar página de login');
+            
+            // Verificar si venimos de /webaira o index.html
+            if (document.referrer.includes('/webaira') || document.referrer.includes('/index.html')) {
+                console.log('Redirigido desde dashboard, asegurando limpieza completa');
+                // Forzar recarga completa para limpiar cualquier recurso cacheado
+                if (performance && performance.navigation.type !== 1) { // 1 es RELOAD
+                    window.location.reload(true);
+                }
+            }
+        } catch (e) {
+            console.error('Error al limpiar sesión:', e);
+        }
+    })();
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <meta name="description" content="Demo offline de AIRA Bot - Asistente médico virtual">
+    <meta name="theme-color" content="#075e54">
+    <link rel="stylesheet" href="css/theme.css">
+    <style>
+        /* Estilos específicos que necesitan estar en línea */
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .login-logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .login-subtitle {
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-with-icon {
+            position: relative;
+            margin-bottom: 15px;
+        }
+        
+        .input-with-icon i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+        }
+        
+        .input-with-icon input {
+            width: 100%;
+            padding: 12px 15px 12px 40px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+        
+        .btn-primary {
+            width: 100%;
+            padding: 12px;
+            background-color: #25d366;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .error-message {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #e74c3c;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .login-footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .login-footer a {
+            color: #075e54;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .login-container h2 {
+            color: #075e54;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        .login-btn {
+            background: #075e54;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            width: 100%;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .login-btn:hover {
+            background: #054d44;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        
+
+        .phone-container {
+            width: 360px;
+            height: 740px;
+            background: #000;
+            border-radius: 30px;
+            padding: 8px;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.4);
+            position: relative;
+        
+
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            border-radius: 25px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        
+
+        .status-bar {
+            background: #075e54;
+            color: white;
+            padding: 8px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            font-weight: 500;
+        
+
+        .chat-header {
+            background: #075e54;
+            color: white;
+            padding: 12px 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        
+
+        .bot-avatar {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, #4a9d95, #6b73a9);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        
+
+        .chat-info h3 {
+            font-size: 16px;
+            margin-bottom: 2px;
+        
+
+        .chat-info .status {
+            font-size: 12px;
+            opacity: 0.8;
+        
+
+        .breadcrumbs {
+            background: #f0f0f0;
+            padding: 8px 15px;
+            font-size: 12px;
+            color: #666;
+            border-bottom: 1px solid #ddd;
+        
+
+        .state-indicator {
+            background: #e3f2fd;
+            padding: 6px 15px;
+            font-size: 11px;
+            color: #1976d2;
+            text-align: center;
+            border-bottom: 1px solid #bbdefb;
+        
+
+        .messages-container {
+            flex: 1;
+            background: linear-gradient(to bottom, #e5ddd5, #d1c7b8);
+            padding: 15px;
+            overflow-y: auto;
+            min-height: 0;
+        
+
+        .message {
+            max-width: 85%;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 15px;
+            font-size: 14px;
+            line-height: 1.4;
+            animation: slideIn 0.3s ease-out;
+            word-wrap: break-word;
+        
+
+        .message.bot {
+            background: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        
+
+        .message.user {
+            background: #dcf8c6;
+            align-self: flex-end;
+            margin-left: auto;
+            text-align: right;
+            border-bottom-right-radius: 5px;
+        
+
+        .message.audio {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        
+
+        .audio-indicator {
+            color: #075e54;
+            font-size: 16px;
+        
+
+        .audio-duration {
+            font-size: 11px;
+            color: #666;
+            margin-left: auto;
+        
+
+        .message-time {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+            text-align: right;
+        
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); 
+            to { opacity: 1; transform: translateY(0); 
+        
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 10px 12px;
+            background: white;
+            border-radius: 15px;
+            max-width: 60px;
+            margin-bottom: 8px;
+            border-bottom-left-radius: 5px;
+        
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: #999;
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite ease-in-out;
+        
+
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; 
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; 
+
+        @keyframes typingBounce {
+            0%, 80%, 100% { transform: scale(0); 
+            40% { transform: scale(1); 
+        
+
+        .quick-replies {
+            background: #f8f8f8;
+            padding: 10px 15px;
+            border-top: 1px solid #ddd;
+            max-height: 120px;
+            overflow-y: auto;
+        
+
+        .quick-reply {
+            display: inline-block;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 15px;
+            padding: 6px 12px;
+            margin: 2px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        
+
+        .quick-reply:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        
+
+        .quick-reply.primary {
+            background: #e3f2fd;
+            border-color: #2196f3;
+            color: #1976d2;
+        
+
+        .quick-reply.success {
+            background: #e8f5e8;
+            border-color: #4caf50;
+            color: #2e7d32;
+        
+
+        .quick-reply.danger {
+            background: #ffebee;
+            border-color: #f44336;
+            color: #c62828;
+        
+
+        .quick-reply.secondary {
+            background: #f3e5f5;
+            border-color: #9c27b0;
+            color: #7b1fa2;
+        
+
+        .input-container {
+            background: #f0f0f0;
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-top: 1px solid #ddd;
+        
+
+        .message-input {
+            flex: 1;
+            border: none;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            outline: none;
+            font-size: 14px;
+            max-height: 80px;
+            resize: none;
+        
+
+        .mic-btn, .send-btn {
+            background: #075e54;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 16px;
+        
+
+        .mic-btn:hover, .send-btn:hover {
+            background: #064e45;
+            transform: scale(1.05);
+        
+
+        .mic-btn.recording {
+            background: #f44336;
+            animation: pulse 1s infinite;
+        
+
+        @keyframes pulse {
+            0% { transform: scale(1); 
+            50% { transform: scale(1.1); 
+            100% { transform: scale(1); 
+        
+
+        .demo-controls {
+            position: absolute;
+            top: -60px;
+            left: 0;
+            right: 0;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        
+
+        .demo-btn {
+            background: rgba(255,255,255,0.9);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+        
+
+        .demo-btn:hover {
+            background: white;
+            transform: translateY(-1px);
+        
+
+        .system-status {
+            position: absolute;
+            top: -100px;
+            left: 0;
+            right: 0;
+            background: rgba(255,255,255,0.95);
+            padding: 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-online { 
+            background: #4caf50; 
+        }
+    </style>
+</head>
+<body>
+    <!-- Modal de Login -->
+    <div id="loginModal" class="login-overlay">
+        <div class="login-container">
+            <div class="login-logo">
+                <i class="fas fa-robot fa-3x" style="color: #075e54; margin-bottom: 15px;"></i>
+                <h2>Bienvenido a AIRA Bot</h2>
+                <p class="login-subtitle">Tu asistente médico virtual</p>
+            </div>
+            <div class="form-group">
+                <div class="input-with-icon">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="username" placeholder="Usuario" required>
+                </div>
+                <div class="input-with-icon">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" placeholder="Contraseña" required>
+                </div>
+            </div>
+            <button id="loginBtn" class="btn-primary">
+                <i class="fas fa-sign-in-alt"></i> Ingresar
+            </button>
+            <div id="loginError" class="error-message" style="display: none;">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>Usuario o contraseña incorrectos</span>
+            </div>
+            <div class="login-footer">
+                <p>¿Problemas para iniciar sesión? <a href="#">Contáctanos</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor principal -->
+    <div class="app-container">
+        <!-- Encabezado del chat -->
+        <div class="chat-header">
+            <h1><i class="fas fa-robot"></i> AIRA Bot</h1>
+            <div class="user-info">
+                <span id="currentTime" class="time-display"></span>
+                <button id="logoutBtn" class="icon-button" title="Cerrar sesión">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Mensajes -->
+        <div class="messages-container" id="messagesContainer">
+            <!-- Los mensajes se agregarán aquí dinámicamente -->
+        </div>
+        
+        <!-- Botones de acción rápida (se muestran dinámicamente) -->
+        <div id="quickReplies" class="quick-replies">
+            <!-- Los botones de acción rápida se agregarán aquí dinámicamente -->
+        </div>
+        
+        <!-- Área de entrada -->
+        <form id="chatForm" class="input-area">
+            <input type="text" id="messageInput" placeholder="Escribe un mensaje..." autocomplete="off" aria-label="Mensaje">
+            <button type="submit" aria-label="Enviar mensaje">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </form>
+
+    <script>
+        // Datos simulados para la demo
+        const MOCKED_PATIENTS = [
+            { id: 1, name: 'María Fernández', dni: '45678901', age: 45, gender: 'F', lastVisit: '2023-10-15' },
+            { id: 2, name: 'Carlos López', dni: '35467890', age: 62, gender: 'M', lastVisit: '2023-10-10' },
+            { id: 3, name: 'Ana Martínez', dni: '40123456', age: 34, gender: 'F', lastVisit: '2023-10-05' },
+            { id: 4, name: 'Juan Pérez', dni: '28987654', age: 56, gender: 'M', lastVisit: '2023-09-28' },
+            { id: 5, name: 'Laura Gómez', dni: '37123456', age: 29, gender: 'F', lastVisit: '2023-09-20' }
+        ];
+
+        // Estado de la aplicación
+        const appState = {
+            currentUser: null,
+            currentPatient: null,
+            isProcessing: false,
+            conversationHistory: []
+        };
+
+        // Inicialización de la aplicación
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuthState();
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 60000); // Actualizar cada minuto
+        });
+
+        // Verificar estado de autenticación
+        function checkAuthState() {
+            const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+            const loginModal = document.getElementById('loginModal');
+            const appContainer = document.querySelector('.app-container');
+
+            if (isAuthenticated) {
+                const username = localStorage.getItem('username') || 'Usuario';
+                appState.currentUser = { username };
+                loginModal.style.display = 'none';
+                appContainer.style.display = 'block';
+                showWelcomeMessage(username);
+            } else {
+                loginModal.style.display = 'flex';
+                appContainer.style.display = 'none';
+            }
+        }
+
+        // Manejar inicio de sesión
+        function handleLogin() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const errorElement = document.getElementById('loginError');
+
+            // Validación simple
+            if (!username || !password) {
+                showError('Por favor complete todos los campos');
+                return;
+            }
+
+            // Simular validación de credenciales
+            setTimeout(() => {
+                // Guardar estado de autenticación
+                localStorage.setItem('isAuthenticated', 'true');
+                localStorage.setItem('username', username);
+                
+                // Actualizar estado y UI
+                appState.currentUser = { username };
+                document.getElementById('loginModal').style.display = 'none';
+                document.querySelector('.app-container').style.display = 'block';
+                
+                // Mostrar mensaje de bienvenida
+                showWelcomeMessage(username);
+            }, 800);
+        }
+
+        // Mostrar mensaje de bienvenida
+        function showWelcomeMessage(username) {
+            addMessage('Sistema', `¡Hola, ${username}! Soy AIRA, tu asistente médico virtual. ¿En qué puedo ayudarte hoy?`, 'system');
+            
+            // Mostrar opciones iniciales después de un breve retraso
+            setTimeout(() => {
+                showQuickReplies([
+                    { text: 'Ver lista de pacientes', action: 'showPatients' },
+                    { text: 'Nueva consulta', action: 'newConsultation' },
+                    { text: 'Mis tareas pendientes', action: 'showTasks' }
+                ]);
+            }, 1000);
+        }
+
+        // Mostrar mensaje de error
+        function showError(message) {
+            const errorElement = document.getElementById('loginError');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            
+            // Ocultar después de 5 segundos
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+
+        // Actualizar hora actual
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('currentTime').textContent = timeString;
+        }
+
+        // Agregar mensaje al chat
+        function addMessage(sender, text, type = 'user') {
+            const messagesContainer = document.getElementById('messagesContainer');
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${type}`;
+            
+            const messageContent = `
+                <div class="message-sender">${sender}</div>
+                <div class="message-text">${text}</div>
+                <div class="message-time">${new Date().toLocaleTimeString('es-AR', {hour: '2-digit', minute:'2-digit'})}</div>
+            `;
+            
+            messageElement.innerHTML = messageContent;
+            messagesContainer.appendChild(messageElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // Guardar en historial
+            appState.conversationHistory.push({ sender, text, type, timestamp: new Date() });
+        }
+
+        // Método para mostrar respuestas rápidas
+        function showQuickReplies(replies) {
+            const container = document.getElementById('quickReplies');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            if (replies && Array.isArray(replies)) {
+                replies.forEach(reply => {
+                    if (reply && reply.text && reply.action) {
+                        const button = document.createElement('button');
+                        button.className = `quick-reply ${reply.type || 'default'}`;
+                        button.textContent = reply.text;
+                        button.onclick = () => handleQuickReply(reply.action);
+                        container.appendChild(button);
+                    }
+                });
+            }
+            
+            container.style.display = 'flex';
+        }
+
+        // Manejar respuesta rápida
+        function handleQuickReply(action) {
+            const quickReplies = document.getElementById('quickReplies');
+            quickReplies.style.display = 'none';
+            
+            switch(action) {
+                case 'showPatients':
+                    showPatientList();
+                    break;
+                case 'newConsultation':
+                    startNewConsultation();
+                    break;
+                case 'showTasks':
+                    showTasks();
+                    break;
+                default:
+                    addMessage('Tú', document.querySelector(`[data-action="${action}"]`).textContent, 'user');
+                    simulateBotResponse(action);
+            }
+        }
+
+        // Mostrar lista de pacientes
+        function showPatientList() {
+            addMessage('Tú', 'Mostrar lista de pacientes', 'user');
+            
+            setTimeout(() => {
+                addMessage('AIRABot', 'Aquí tienes la lista de tus pacientes:', 'system');
+                
+                const patientList = document.createElement('div');
+                patientList.className = 'patient-list';
+                
+                MOCKED_PATIENTS.forEach(patient => {
+                    const patientElement = document.createElement('div');
+                    patientElement.className = 'patient-item';
+                    patientElement.innerHTML = `
+                        <div class="patient-name">${patient.name}</div>
+                        <div class="patient-details">
+                            <span>DNI: ${patient.dni}</span>
+                            <span>${patient.age} años</span>
+                            <span>Última visita: ${patient.lastVisit}</span>
+                        </div>
+                        <button class="btn-view" onclick="viewPatient(${patient.id})">Ver</button>
+                    `;
+                    patientList.appendChild(patientElement);
+                });
+                
+                const messagesContainer = document.getElementById('messagesContainer');
+                messagesContainer.appendChild(patientList);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 800);
+        }
+
+        // Ver detalles de un paciente
+        function viewPatient(patientId) {
+            const patient = MOCKED_PATIENTS.find(p => p.id === patientId);
+            if (!patient) return;
+            
+            addMessage('Tú', `Ver detalles de ${patient.name}`, 'user');
+            
+            setTimeout(() => {
+                const patientInfo = document.createElement('div');
+                patientInfo.className = 'patient-details-card';
+                patientInfo.innerHTML = `
+                    <h3>${patient.name}</h3>
+                    <div class="detail-row">
+                        <span class="label">DNI:</span>
+                        <span>${patient.dni}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Edad:</span>
+                        <span>${patient.age} años</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Género:</span>
+                        <span>${patient.gender === 'M' ? 'Masculino' : 'Femenino'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Última visita:</span>
+                        <span>${patient.lastVisit}</span>
+                    </div>
+                    <div class="patient-actions">
+                        <button class="btn-primary" onclick="startConsultation(${patient.id})">Iniciar consulta</button>
+                        <button class="btn-secondary" onclick="showPatientHistory(${patient.id})">Ver historial</button>
+                    </div>
+                `;
+                
+                const messagesContainer = document.getElementById('messagesContainer');
+                messagesContainer.appendChild(patientInfo);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 800);
+        }
+
+        // Iniciar nueva consulta
+        function startNewConsultation() {
+            addMessage('Tú', 'Nueva consulta', 'user');
+            
+            setTimeout(() => {
+                addMessage('AIRABot', 'Por favor, ingresa el DNI o nombre del paciente:', 'system');
+                
+                // Mostrar teclado numérico para DNI
+                const inputContainer = document.createElement('div');
+                inputContainer.className = 'dni-input-container';
+                inputContainer.innerHTML = `
+                    <input type="text" id="patientSearch" placeholder="DNI o nombre" class="dni-input">
+                    <button class="btn-primary" onclick="searchPatient()">Buscar</button>
+                `;
+                
+                const messagesContainer = document.getElementById('messagesContainer');
+                messagesContainer.appendChild(inputContainer);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                
+                // Enfocar el input
+                document.getElementById('patientSearch').focus();
+            }, 800);
+        }
+
+        // Buscar paciente
+        function searchPatient() {
+            const searchTerm = document.getElementById('patientSearch').value.trim();
+            if (!searchTerm) return;
+            
+            addMessage('Tú', searchTerm, 'user');
+            
+            // Eliminar el input de búsqueda
+            const inputContainer = document.querySelector('.dni-input-container');
+            if (inputContainer) inputContainer.remove();
+            
+            // Simular búsqueda
+            setTimeout(() => {
+                const foundPatient = MOCKED_PATIENTS.find(p => 
+                    p.dni.includes(searchTerm) || 
+                    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+                
+                if (foundPatient) {
+                    viewPatient(foundPatient.id);
+                } else {
+                    addMessage('AIRABot', 'No se encontró ningún paciente con esos datos. ¿Deseas intentar con otro criterio de búsqueda?', 'system');
+                    startNewConsultation();
+                }
+            }, 1000);
+        }
+
+        // Iniciar consulta con paciente
+        function startConsultation(patientId) {
+            const patient = MOCKED_PATIENTS.find(p => p.id === patientId);
+            if (!patient) return;
+            
+            appState.currentPatient = patient;
+            
+            // Limpiar mensajes anteriores
+            const messagesContainer = document.getElementById('messagesContainer');
+            messagesContainer.innerHTML = '';
+            
+            // Mostrar encabezado de consulta
+            const header = document.createElement('div');
+            header.className = 'consultation-header';
+            header.innerHTML = `
+                <h3>Consulta con ${patient.name}</h3>
+                <div class="patient-info">
+                    <span>DNI: ${patient.dni}</span>
+                    <span>${patient.age} años</span>
+                </div>
+            `;
+            messagesContainer.appendChild(header);
+            
+            // Mostrar mensaje de inicio
+            addMessage('AIRABot', `Hola, soy AIRA. Estoy listo para ayudarte con la consulta de ${patient.name}. ¿En qué puedo asistirte hoy?`, 'system');
+            
+            // Mostrar opciones de consulta
+            setTimeout(() => {
+                showQuickReplies([
+                    { text: 'Registrar síntomas', action: 'registerSymptoms' },
+                    { text: 'Revisar medicación', action: 'checkMedication' },
+                    { text: 'Solicitar estudios', action: 'requestTests' },
+                    { text: 'Finalizar consulta', action: 'endConsultation' }
+                ]);
+            }, 1000);
+        }
+
+        // Simular respuesta del bot
+        function simulateBotResponse(action) {
+            const responses = {
+                'registerSymptoms': 'Por favor, describe los síntomas que presenta el paciente.',
+                'checkMedication': 'Aquí está la medicación actual del paciente...',
+                'requestTests': '¿Qué tipo de estudios necesitas solicitar?',
+                'endConsultation': '¿Estás seguro de que deseas finalizar la consulta?',
+                'default': 'Gracias por tu mensaje. ¿En qué más puedo ayudarte?'
+            };
+            
+            const response = responses[action] || responses['default'];
+            
+            setTimeout(() => {
+                addMessage('AIRABot', response, 'system');
+            }, 1000);
+        }
+
+        // Manejar envío de mensaje
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Agregar mensaje del usuario
+            addMessage('Tú', message, 'user');
+            input.value = '';
+            
+            // Simular respuesta del bot
+            simulateBotResponse('default');
+        }
+
+        // Manejar tecla Enter en el input
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // Mostrar tareas pendientes
+        function showTasks() {
+            addMessage('Tú', 'Mostrar tareas pendientes', 'user');
+            
+            setTimeout(() => {
+                addMessage('AIRABot', 'Aquí tienes tus tareas pendientes:', 'system');
+                
+                const tasks = [
+                    { id: 1, description: 'Revisar resultados de laboratorio', due: 'Hoy', priority: 'Alta' },
+                    { id: 2, description: 'Llamar a paciente para seguimiento', due: 'Mañana', priority: 'Media' },
+                    { id: 3, description: 'Actualizar historias clínicas', due: 'Próxima semana', priority: 'Baja' }
+                ];
+                
+                const taskList = document.createElement('div');
+                taskList.className = 'task-list';
+                
+                tasks.forEach(task => {
+                    const taskElement = document.createElement('div');
+                    taskElement.className = 'task-item';
+                    taskElement.innerHTML = `
+                        <div class="task-description">${task.description}</div>
+                        <div class="task-details">
+                            <span class="task-due">${task.due}</span>
+                            <span class="task-priority ${task.priority.toLowerCase()}">${task.priority}</span>
+                        </div>
+                    `;
+                    taskList.appendChild(taskElement);
+                });
+                
+                const messagesContainer = document.getElementById('messagesContainer');
+                messagesContainer.appendChild(taskList);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 800);
+        }
+
+        // Mostrar historial del paciente
+        function showPatientHistory(patientId) {
+            const patient = MOCKED_PATIENTS.find(p => p.id === patientId);
+            if (!patient) return;
+            
+            addMessage('Tú', `Ver historial de ${patient.name}`, 'user');
+            
+            setTimeout(() => {
+                addMessage('AIRABot', `Historial médico de ${patient.name}:`, 'system');
+                
+                const history = [
+                    { date: '2023-10-15', type: 'Consulta', description: 'Control de rutina. Presión arterial normal.' },
+                    { date: '2023-09-10', type: 'Estudio', description: 'Análisis de sangre - Resultados dentro de parámetros normales' },
+                    { date: '2023-08-05', type: 'Consulta', description: 'Seguimiento tratamiento. Mejoría notoria.' }
+                ];
+                
+                const historyList = document.createElement('div');
+                historyList.className = 'history-list';
+                
+                history.forEach(record => {
+                    const recordElement = document.createElement('div');
+                    recordElement.className = 'history-item';
+                    recordElement.innerHTML = `
+                        <div class="history-date">${record.date}</div>
+                        <div class="history-type">${record.type}</div>
+                        <div class="history-description">${record.description}</div>
+                    `;
+                    historyList.appendChild(recordElement);
+                });
+                
+                const messagesContainer = document.getElementById('messagesContainer');
+                messagesContainer.appendChild(historyList);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 800);
+        }
+        
+        // Función para actualizar las migas de pan
+        function updateBreadcrumbs(state, currentPatient) {
+            const breadcrumbMap = {
+                'idle': 'Inicio',
+                'managing_patients': 'Inicio > Gestión de Pacientes',
+                'registering_patient': 'Inicio > Gestión de Pacientes > Nuevo Paciente',
+                'patient_selected_menu': `Inicio > Gestión de Pacientes > ${currentPatient?.nombre || 'Paciente Seleccionado'}`,
+                'selecting_patient': 'Inicio > Nueva Sesión > Seleccionar Paciente',
+                'in_session': `Inicio > Nueva Sesión > ${currentPatient?.nombre || 'Paciente'}`,
+                'loading_observations': `Inicio > Nueva Sesión > ${currentPatient?.nombre} > Observaciones`,
+                'confirming_session': `Inicio > Nueva Sesión > ${currentPatient?.nombre} > Confirmar`,
+                'viewing_history': 'Inicio > Historial de Sesiones',
+                'session_detail': 'Inicio > Historial > Detalle de Sesión'
+            };
+            
+            const breadcrumbsElement = document.getElementById('breadcrumbs');
+            if (breadcrumbsElement) {
+                breadcrumbsElement.textContent = breadcrumbMap[state] || 'Inicio';
+            }
+        }
+        
+        // Función para actualizar el indicador de estado
+        function updateStateIndicator(state) {
+            const indicatorMap = {
+                'idle': 'Menú principal - Seleccioná una opción',
+                'managing_patients': 'Gestión de pacientes - Elegí una acción',
+                'registering_patient': 'Registro de paciente - Enviá los datos',
+                'patient_selected_menu': 'Paciente Seleccionado - Elegí una acción',
+                'selecting_patient': 'Selección de paciente - Elegí un paciente',
+                'in_session': 'Sesión activa - Describí la consulta',
+                'loading_observations': 'Cargando observaciones - Describí lo observado',
+                'confirming_session': 'Confirmación - Revisá los datos',
+                'viewing_history': 'Historial - Navegá y filtrá sesiones',
+                'session_detail': 'Detalle de sesión - Revisá información completa'
+            };
+            
+            const indicatorElement = document.getElementById('stateIndicator');
+            if (indicatorElement) {
+                indicatorElement.textContent = indicatorMap[state] || 'Estado desconocido';
+            }
+        }
+                
+        // Función para manejar el estado de la aplicación
+        function setAppState(newState, data = {}) {
+            const appState = window.appState || {};
+            appState.state = newState;
+            appState.pendingAction = null; // Limpiar acción pendiente
+            
+            if (data.patient) appState.currentPatient = data.patient;
+            if (data.sessionData) {
+                appState.sessionData = appState.sessionData || {};
+                appState.sessionData = { ...appState.sessionData, ...data.sessionData };
+            }
+            
+            updateBreadcrumbs(newState, appState.currentPatient);
+            updateStateIndicator(newState);
+            
+            console.log(`Estado cambiado a: ${newState}`);
+            window.appState = appState;
+            return true;
+        }
+        
+        // Inicializar la aplicación
+        const app = {
+            isProcessing: false,
+            stats: {
+                messagesProcessed: 0
+            },
+            state: 'idle',
+            currentPatient: null,
+            sessionData: {},
+            pendingAction: null,
+            
+            async processMessage(message) {
+                if (this.isProcessing) return;
+                
+                this.isProcessing = true;
+                this.stats.messagesProcessed++;
+                
+                try {
+                    this.showTyping();
+                    await this.delay(800 + Math.random() * 700);
+                    
+                    const response = this.handleMessage(message.trim());
+                    
+                    this.hideTyping();
+                    this.addMessage('bot', response.text);
+                    
+                    if (response.quickReplies) {
+                        this.showQuickReplies(response.quickReplies);
+                    } else {
+                        this.hideQuickReplies();
+                    }
+                    
+                    this.log(`Mensaje procesado en estado: ${this.state}`);
+                    
+                } catch (error) {
+                    this.hideTyping();
+                    this.stats.errors++;
+                    this.log(`Error procesando mensaje: ${error.message}`, 'error');
+                    this.addMessage('bot', 'Disculpá, hubo un error. Intentá nuevamente.');
+                    this.showQuickReplies([{text: '🏠 Menú principal', type: 'danger', action: 'go_home'}]);
+                } finally {
+                    this.isProcessing = false;
+                }
+            }
+            handleMessage(message) {
+                // Limpiar mensaje (remover emoji 🎤 y espacios extras)
+                const cleanMessage = message.replace(/^🎤\s*/i, '').trim();
+                console.log('DEBUG: Mensaje limpio:', cleanMessage);
+                
+                this.log(`Procesando en estado "${this.state}": "${cleanMessage}"`);
+                
+                // Detectar sesión directa desde cualquier estado
+                const directLog = this.extractDirectSessionLog(cleanMessage);
+                if (directLog) {
+                    this.log(`Direct session log detected in state ${this.state}`);
+                    const patientsFound = this.searchByName(directLog.patientNameQuery);
+                    
+                    if (patientsFound.length === 1) {
+                        // Un solo paciente encontrado - mostrar confirmación
+                        const patient = patientsFound[0];
+                        this.sessionData.patient = patient;
+                        this.sessionData.currentSessionNotes = directLog.notes;
+                        this.sessionData.currentSessionSummary = this.generateSummary(directLog.notes);
+                        this.sessionData.currentSessionMood = this.analyzeMood(directLog.notes);
+                        
+                        // Guardar estado anterior para poder volver si se cancela
+                        this.stateData.previousState = this.state;
+                        this.setState('confirming_session');
+                        
+                        
+                            text: `📝 **Nueva sesión directa para ${patient.nombre**\n\n**Notas:** ${directLog.notes\n**Resumen:** ${this.sessionData.currentSessionSummary\n**Ánimo:** ${this.sessionData.currentSessionMood/5 ${this.getMoodEmoji(this.sessionData.currentSessionMood)\n\n¿Querés guardar esta sesión?`,
+                            quickReplies: [
+                                {text: '💾 Guardar', type: 'success', action: 'save_session_final',
+                                {text: '✏️ Modificar Notas', type: 'primary', action: 'edit_session_notes',
+                                {text: '❌ Descartar', type: 'danger', action: 'discard_session_final'
+                            ]
+                        ;
+                     else if (patientsFound.length > 1) {
+                        this.stateData.pendingDirectSessionNotes = directLog.notes;
+                        this.stateData.pendingDirectSessionPatientNameQuery = directLog.patientNameQuery;
+                        this.stateData.previousState = this.state; // Guardar estado anterior
+                        this.setState('selecting_patient_for_direct_log');
+                        
+                        let responseText = `Se encontraron varios pacientes con nombres similares a "${directLog.patientNameQuery}". Por favor, seleccioná el correcto para registrar la sesión:\n\n**Notas a registrar:** "${directLog.notes}"\n`;
+                        patientsFound.forEach((p, index) => {
+                            responseText += `\n${index + 1}. ${p.nombre} (DNI: ${p.dni})`;
+                        });
+                        
+                        return {
+                            text: responseText,
+                            quickReplies: patientsFound.map((p, index) => ({
+                                text: `${index + 1}. ${p.nombre}`,
+                                type: 'primary', 
+                                action: `select_direct_log_patient_${p.id}`
+                            })).concat([{text: '❌ Cancelar', type: 'danger', action: 'cancel'}])
+                        };
+                    // Manejar comandos globales primero
+                    if (lower === 'ayuda' || lower === 'help' || lower === '?') {
+                        return this.processQuickReply('help');
+                    }
+                    
+                    if (lower === 'menu' || lower === 'inicio' || lower === 'volver') {
+                        return this.processQuickReply('go_home');
+                    }
+                    
+                    // Manejar estado actual
+                    let response;
+                    switch(this.state) {
+                        case 'idle':
+                            response = this.handleIdle(cleanMessage);
+                            break;
+                        case 'managing_patients':
+                            response = this.handleManagingPatients(cleanMessage);
+                            break;
+                        case 'registering_patient':
+                            response = this.handleRegisteringPatient(cleanMessage);
+                            break;
+                        case 'selecting_patient':
+                            response = this.handleSelectingPatient(cleanMessage);
+                            break;
+                        case 'patient_selected_menu':
+                            response = this.handlePatientSelectedMenu(cleanMessage);
+                            break;
+                        case 'in_session':
+                            response = this.handleInSession(cleanMessage);
+                            break;
+                        case 'loading_observations':
+                            response = this.handleLoadingObservations(cleanMessage);
+                            break;
+                        case 'confirming_session':
+                            response = this.handleConfirmingSession(cleanMessage);
+                            break;
+                        case 'viewing_history':
+                            response = this.handleViewingHistory(cleanMessage);
+                            break;
+                        case 'session_detail':
+                            response = this.handleSessionDetail(cleanMessage);
+                            break;
+                        default:
+                            response = {
+                                text: 'Disculpá, algo salió mal. Volvé al menú principal.',
+                                quickReplies: [
+                                    { text: '🏠 Menú principal', type: 'danger', action: 'go_home' }
+                                ]
+                            };
+                    }
+                    
+                    return response || {
+                        text: 'No entendí tu mensaje. ¿Podrías intentarlo de nuevo?',
+                        quickReplies: [
+                            { text: '❓ Ayuda', type: 'secondary', action: 'help' },
+                            { text: '🏠 Menú principal', type: 'danger', action: 'go_home' }
+                        ]
+                    };
+                } catch (error) {
+                    console.error('Error en handleMessage:', error);
+                    return {
+                        text: 'Ocurrió un error al procesar tu mensaje. Por favor, inténtalo de nuevo.',
+                        quickReplies: [
+                            { text: '❓ Ayuda', type: 'secondary', action: 'help' },
+                            { text: '🏠 Menú principal', type: 'danger', action: 'go_home' }
+                        ]
+                    };
+                }
+            }
+            
+            handleIdle(message) {
+                const lower = message.toLowerCase();
+                const directLog = this.extractDirectSessionLog(message);
+                
+                // Manejar comandos globales primero
+                if (lower === 'ayuda' || lower === 'help' || lower === '?') {
+                    return this.processQuickReply('help');
+                }
+                
+                if (lower === 'menu' || lower === 'inicio' || lower === 'volver') {
+                    return this.processQuickReply('go_home');
+                }
+                
+                // Manejar registro directo de sesión si se detecta
+                if (directLog) {
+                    const patientsFound = this.searchByName(directLog.patientNameQuery);
+                    
+                    if (patientsFound.length === 1) {
+                        const patient = patientsFound[0];
+                        this.sessionData.patient = patient;
+                        this.sessionData.currentSessionNotes = directLog.notes;
+                        this.sessionData.currentSessionSummary = this.generateSummary(directLog.notes);
+                        this.sessionData.currentSessionMood = this.analyzeMood(directLog.notes);
+                        this.setState('confirming_session');
+                        
+                        return {
+                            text: `📝 **Nueva sesión directa para ${patientsFound[0].nombre}**\n\n**Notas:** ${directLog.notes}\n**Resumen:** ${this.sessionData.currentSessionSummary}\n**Ánimo:** ${this.sessionData.currentSessionMood}/5 ${this.getMoodEmoji(this.sessionData.currentSessionMood)}\n\n¿Querés guardar esta sesión?`,
+                            quickReplies: [
+                                {text: '💾 Guardar', type: 'success', action: 'save_session_final'},
+                                {text: '✏️ Modificar Notas', type: 'primary', action: 'edit_session_notes'},
+                                {text: '❌ Descartar', type: 'danger', action: 'discard_session_final'}
+                            ]
+                        };
+                    } else if (patientsFound.length > 1) {
+                        this.stateData.pendingDirectSessionNotes = directLog.notes;
+                        this.stateData.pendingDirectSessionPatientNameQuery = directLog.patientNameQuery;
+                        this.setState('selecting_patient_for_direct_log');
+                        let responseText = `Se encontraron varios pacientes con nombres similares a "${directLog.patientNameQuery}". Por favor, seleccioná el paciente correcto para la sesión directa:\n\n**Notas a registrar:** "${directLog.notes}"\n`;
+                        patientsFound.forEach((p, index) => {
+                            responseText += `\n${index + 1}. ${p.nombre} (DNI: ${p.dni})`;
+                        });
+                        
+                        return {
+                            text: responseText,
+                            quickReplies: patientsFound.map((p, index) => ({
+                                text: `${index + 1}. ${p.nombre}`,
+                                type: 'primary', 
+                                action: `select_direct_log_patient_${p.id}`
+                            })).concat([{text: '❌ Cancelar', type: 'danger', action: 'cancel_to_idle'}])
+                        };
+                    } else {
+                        return {
+                            text: `No se encontró ningún paciente llamado "${directLog.patientNameQuery}". Podés registrarlo primero o verificar el nombre.`,
+                            quickReplies: [
+                                {text: '📝 Registrar paciente', type: 'primary', action: 'register_new_patient'},
+                                {text: '🔍 Buscar de nuevo', type: 'secondary', action: 'search_again'},
+                                {text: '❌ Cancelar', type: 'danger', action: 'cancel_to_idle'}
+                            ]
+                        };
+                    }
+                }
+                
+                if (lower.includes('pacient') || lower.includes('gestión') || lower.includes('gestion')) {
+                    this.setState('managing_patients');
+                    
+                        text: '👥 **Gestión de Pacientes**\n\n¿Qué querés hacer?',
+                        quickReplies: [
+                            {text: '➕ Registrar nuevo paciente', type: 'primary', action: 'register_patient',
+                            {text: '📋 Ver lista de pacientes', type: 'secondary', action: 'list_patients',
+                            {text: '🏠 Volver al menú', type: 'danger', action: 'go_home'
+                        ]
+                    ;
+                
+                
+                if (lower.includes('sesión') || lower.includes('sesion') || lower.includes('nueva')) {
+                    this.setState('selecting_patient');
+                    return this.showPatientSelection();
+                
+                
+                if (lower.includes('historial') || lower.includes('reporte') || lower.includes('buscar')) {
+                    this.setState('viewing_history');
+                    return this.showHistoryMenu();
+                
+                
+                if (lower.includes('ayuda')) {
+                    
+                        text: '🆘 **Ayuda AIRA Bot**\n\n**Comandos principales:**\n• "Gestionar pacientes"\n• "Nueva sesión"\n• "Historial"\n\n**Tips:**\n• Podés usar el micrófono\n• Análisis con Google Gemini 1.5\n• Datos encriptados automáticamente',
+                        quickReplies: [
+                            {text: '👥 Gestionar pacientes', type: 'primary', action: 'manage_patients'},
+                            {text: '📝 Nueva sesión', type: 'primary', action: 'new_session'
+                        ]
+                    ;
+                
+                
+                
+                    text: '¡Hola! 👋 Soy AIRA Bot, tu asistente para carga de datos clínicos con Google Gemini 1.5.\n\n**¿Qué querés hacer hoy?**',
+                    quickReplies: [
+                        {text: '👥 Gestionar pacientes', type: 'primary', action: 'manage_patients',
+                        {text: '📝 Nueva sesión', type: 'primary', action: 'new_session',
+                        {text: '📊 Historial', type: 'secondary', action: 'view_history',
+                        {text: '🆘 Ayuda', type: 'secondary', action: 'help'
+                    ]
+                ;
+            
+
+            getPatientManagementQuickReplies() {
+                return [
+                    {text: '➕ Registrar nuevo', type: 'primary', action: 'register_patient'},
+                    {text: '📋 Ver lista', type: 'secondary', action: 'list_patients'},
+                    {text: '🏠 Menú principal', type: 'danger', action: 'go_home'}
+                ];
+            
+
+            handleManagingPatients(message) {
+                // --- START: New Direct Session Log Logic ---
+                const directLog = this.extractDirectSessionLog(message);
+
+                if (directLog) {
+                    this.log(`Direct session log detected in handleManagingPatients for query: "${directLog.patientNameQuery"`);
+                    const patientsFound = this.searchByName(directLog.patientNameQuery);
+
+                    if (patientsFound.length === 1) {
+                        // Un solo paciente encontrado - mostrar confirmación
+                        const patient = patientsFound[0];
+                        this.sessionData.patient = patient;
+                        this.sessionData.currentSessionNotes = directLog.notes;
+                        this.sessionData.currentSessionSummary = this.generateSummary(directLog.notes);
+                        this.sessionData.currentSessionMood = this.analyzeMood(directLog.notes);
+                        
+                        this.setState('confirming_session');
+                         
+                            text: `📝 **Nueva sesión directa para ${patient.nombre** (desde Gestión de Pacientes)\n\n**Notas:** ${directLog.notes\n**Resumen:** ${this.sessionData.currentSessionSummary\n**Ánimo:** ${this.sessionData.currentSessionMood/5 ${this.getMoodEmoji(this.sessionData.currentSessionMood)\n\n¿Querés guardar esta sesión?`,
+                            quickReplies: [
+                                {text: '💾 Guardar', type: 'success', action: 'save_session_final',
+                                {text: '✏️ Modificar Notas', type: 'primary', action: 'edit_session_notes',
+                                {text: '❌ Descartar', type: 'danger', action: 'discard_session_final'
+                            ]
+                        ;
+                     else if (patientsFound.length > 1) {
+                        this.stateData.pendingDirectSessionNotes = directLog.notes;
+                        this.stateData.pendingDirectSessionPatientNameQuery = directLog.patientNameQuery;
+                        
+                        const replies = patientsFound.map(p => ({
+                            text: `${p.nombre (DNI: ${p.dni)`, 
+                            type: 'primary', 
+                            action: `select_direct_log_patient_${p.id`
+                        }));
+                        replies.push({text: '❌ Cancelar', type: 'danger', action: 'cancel');
+
+                         
+                            text: `👥 **Múltiples pacientes encontrados para "${directLog.patientNameQuery"**\n\nPor favor, seleccioná el paciente correcto para la sesión directa:`, 
+                            quickReplies: replies 
+                        ;
+                     else { // No patient found
+                        this.stateData.pendingDirectSessionNotes = directLog.notes; 
+                        this.stateData.pendingDirectSessionPatientNameQuery = directLog.patientNameQuery;
+
+                         
+                            text: `🤷 **Paciente "${directLog.patientNameQuery" no encontrado.**\n\nPodés registrarlo ahora, o verificar el nombre e intentarlo de nuevo. Si lo registrás ahora, tendrás que volver a ingresar las notas de la sesión luego.`, 
+                            quickReplies: [
+                                {text: '➕ Registrar Paciente', type: 'primary', action: 'register_patient',
+                                {text: '❌ Cancelar', type: 'danger', action: 'cancel'
+                            ]
+                        ;
+                    
+                
+                // --- END: New Direct Session Log Logic ---
+
+                // Original handleManagingPatients logic if no direct log is detected:
+                const lower = message.toLowerCase();
+                
+                // Detectar si es un número de paciente
+                const num = parseInt(message);
+                if (num && num >= 1 && num <= this.patients.length) {
+                    const selectedPatient = this.patients[num - 1];
+                    this.currentPatient = selectedPatient;
+                    this.log(`Current patient set by number input in managing_patients: ${selectedPatient.nombre (ID: ${selectedPatient.id)`);
+                    this.setState('patient_selected_menu');
+                    return this.handlePatientSelectedMenu(`Selected patient ${selectedPatient.id by number`);
+                
+                
+                // Reconocer comando de nueva sesión
+                if (lower.includes('sesión') || lower.includes('sesion') || lower.includes('nueva')) {
+                    this.setState('selecting_patient');
+                    return this.showPatientSelection();
+                
+                
+                if (lower.includes('registrar') || lower.includes('nuevo')) {
+                    this.setState('registering_patient');
+                    
+                        text: '➕ **Registrar Nuevo Paciente**\n\nEnviá los datos:\n**Nombre, DNI, Obra Social, Teléfono**\n\n*Ejemplo: Juan Pérez, 32456789, OSDE, 1134567890*\n\n💡 También podés enviar un audio con los datos',
+                        quickReplies: [
+                            {text: '📝 Enviar ejemplo', type: 'primary', action: 'send_example'},
+                            {text: '🎤 Usar micrófono', type: 'success', action: 'use_microphone'},
+                            {text: '❌ Cancelar', type: 'danger', action: 'cancel'}
+                        ]
+                    ;
+                
+                
+                if (lower.includes('lista') || lower.includes('ver')) {
+                    
+                        text: `📋 **Lista de Pacientes (${this.patients.length})**\n\n${this.patients.map((p, i) => `${i + 1}. **${p.nombre}** - ${p.obra_social}\n   DNI: ${p.dni}`).join('\n\n')}\n\n💡 Escribí el número para ver opciones del paciente`,
+                        quickReplies: [
+                            {text: '➕ Registrar nuevo', type: 'primary', action: 'register_patient'},
+                            {text: '🏠 Menú principal', type: 'danger', action: 'go_home'}
+                        ]
+                    ;
+                
+                
+                // If no specific manage_patients command and no direct log, go to idle with a generic message or main menu
+                this.addMessage('Comando no reconocido en Gestión de Pacientes. Volviendo al menú principal.', 'bot');
+                return this.handleIdle('menú');
+            
+            
+            handleRegisteringPatient(message) {
+                // Primero intentamos manejar actualizaciones de campos individuales
+                const lowerMessage = message.toLowerCase().trim();
+                
+                // Manejar actualización de campos individuales (ej: "telefono 11223344" o "obra social omint")
+                const fieldMatch = lowerMessage.match(/^(nombre|dni|telefono|tel[eé]fono|obra\s*social|os)[\s:]+(.+)/i);
+                if (fieldMatch && fieldMatch[2]) {
+                    const field = fieldMatch[1].toLowerCase();
+                    let value = fieldMatch[2].trim();
+                    
+                    // Si es obra social, tomamos todo lo que viene después de 'obra social' o 'os'
+                    if ((field === 'os' || field === 'obra social') && value) {
+                        value = message.substring(message.toLowerCase().indexOf(field) + field.length).trim();
+                    
+                    
+                    const fieldMap = {
+                        'nombre': 'nombre',
+                        'dni': 'dni',
+                        'telefono': 'telefono',
+                        'teléfono': 'telefono',
+                        'obra social': 'obra_social',
+                        'os': 'obra_social'
+                    };
+                    
+                    const fieldName = fieldMap[field];
+                    if (fieldName) {
+                        // Si estamos editando, actualizamos el paciente existente
+                        if (this.stateData?.editingPatient) {
+                            // Creamos un objeto con los datos actuales
+                            const currentData = { ...this.stateData.editingPatient };
+                            
+                            // Actualizamos solo el campo específico
+                            currentData[fieldName] = value;
+                            
+                            // Actualizamos tanto en editingPatient como en pendingPatient
+                            this.stateData.editingPatient[fieldName] = value;
+                            if (this.sessionData.pendingPatient) {
+                                this.sessionData.pendingPatient[fieldName] = value;
+                            }
+                            
+                            
+                            // Validamos los datos actualizados
+                            const updatedData = this.extractPatientData(JSON.stringify(currentData), currentData);
+                            
+                            try {
+                                // Mostramos los datos actualizados para confirmación
+                                
+                                    text: `✅ **Campo actualizado**\n\n` +
+                                          `👤 **${updatedData.nombre || '(sin nombre)'}**\n` +
+                                          `🆔 DNI: ${updatedData.dni || '(sin DNI)'}\n` +
+                                          `🏥 Obra Social: ${updatedData.obra_social || 'No especificada'}\n` +
+                                          `📱 Teléfono: ${updatedData.telefono || 'No especificado'}\n\n` +
+                                          `¿Los datos son correctos?`,
+                                    quickReplies: [
+                                        {text: '✅ Sí, actualizar', type: 'success', action: 'confirm_patient_edit'},
+                                        {text: '✏️ Seguir editando', type: 'primary', action: 'edit_patient'},
+                                        {text: '❌ Cancelar', type: 'danger', action: 'cancel_edit_patient'}
+                                    ]
+                                ;
+                             catch (error) {
+                                console.error('Error al mostrar datos actualizados:', error);
+                                throw new Error('Error al procesar la actualización. Por favor, intentá de nuevo.');
+                            
+                        
+                    
+                
+                
+                // Limpiar el mensaje de espacios extras
+                const cleanMessage = message.trim().replace(/\s+/g, ' ');
+                
+                // Si es un ejemplo o viene del audio con formato correcto
+                if (lowerMessage.includes('ejemplo') || 
+                    (message.includes(',') && message.match(/\d{7,8}/))) {
+                    
+                    // Extraer datos directamente del mensaje
+                    const parts = cleanMessage.split(/\s*,\s*/);
+                    const patientData = {
+                        nombre: parts[0] || '',
+                        dni: (parts[1] || '').replace(/\D/g, '').slice(0, 8),
+                        obra_social: parts[2] || '',
+                        telefono: (parts[3] || '').replace(/\D/g, '').slice(0, 15)
+                    };
+{{ ... }}
+            
+            
+            selectPatientFromMessage(patient) {
+                this.addMessage(`👤 ${patient.nombre}`, 'user');
+                
+                setTimeout(async () => {
+                    this.setState('in_session', { patient });
+                    this.isProcessing = true;
+                    this.showTyping();
+                    
+                    await this.delay(600);
+                    
+{{ ... }}
+                        {text: '❌ Cancelar', type: 'danger', action: 'cancel'}
+                    ]
+                ;
+            
+            
+            processQuickReply(action, text) {
+                this.log(`Acción rápida: ${action}`);
+                
+                // Si estamos viendo observaciones completas, manejar diferente
+                if (action.startsWith('view_full_')) {
+                    const sessionId = parseInt(action.split('_')[2]);
+                    const session = this.sessions.find(s => s.id === sessionId);
+{{ ... }}
+                    
+                    if (session) {
+                        
+                            text: `📝 **Observaciones Completas - Sesión #${session.id}**\n\n👤 **${session.patient.nombre}**\n\n**Observaciones detalladas:**\n\n${session.observations}`,
+                            quickReplies: [
+                                {text: '🔙 Volver al resumen', type: 'secondary', action: `back_to_summary_${session.id}`},
+                                {text: '📊 Ver más sesiones', type: 'secondary', action: 'back_to_history'},
+                                {text: '🏠 Menú principal', type: 'danger', action: 'go_home'
+                            ]
+                        ;
+                    
+                
+                
+                if (action.startsWith('back_to_summary_')) {
+                    const sessionId = parseInt(action.split('_')[3]);
+                    const session = this.sessions.find(s => s.id === sessionId);
+                    
+                    if (session) {
+                        // Volver a mostrar el resumen
+                        this.setState('session_detail');
+                        this.showSessionDetail(session);
+                        return null;
+                    
+                
+                
+                switch (action) {
+                    case 'cancel':
+                        this.setState('idle');
+                        this.sessionData.pendingPatient = null;
+                        // Clear any pending direct session log data as well
+                        if (this.stateData) {
+                            this.stateData.pendingDirectSessionNotes = null;
+                            this.stateData.pendingDirectSessionPatientNameQuery = null;
+                        
+                        return this.handleIdle('cancelar');
+                        break;
+
+                    case String(action.match(/^select_direct_log_patient_(\d+)$/)?.[0]): {
+                        const patientId = parseInt(action.match(/^select_direct_log_patient_(\d+)$/)[1]);
+                        const patient = this.patients.find(p => p.id === patientId);
+                        const notes = this.stateData.pendingDirectSessionNotes;
+
+                        if (patient && notes) {
+                            this.sessionData.patient = patient;
+                            this.sessionData.currentSessionNotes = notes;
+                            this.sessionData.currentSessionSummary = this.generateSummary(notes);
+                            this.sessionData.currentSessionMood = this.analyzeMood(notes);
+                            
+                            if (this.stateData) {
+                                this.stateData.pendingDirectSessionNotes = null; // Clear temp data
+                                this.stateData.pendingDirectSessionPatientNameQuery = null;
+                            
+
+                            this.setState('confirming_session');
+                            
+                                text: `📝 **Nueva sesión directa para ${patient.nombre**\n\n**Notas:** ${notes\n**Resumen:** ${this.sessionData.currentSessionSummary\n**Ánimo:** ${this.sessionData.currentSessionMood/5 ${this.getMoodEmoji(this.sessionData.currentSessionMood)\n\n¿Querés guardar esta sesión?`,
+                                quickReplies: [
+                                    {text: '💾 Guardar', type: 'success', action: 'save_session_final',
+                                    {text: '✏️ Modificar Notas', type: 'primary', action: 'edit_session_notes',
+                                    {text: '❌ Descartar', type: 'danger', action: 'discard_session_final'
+                                ]
+                            ;
+                         else {
+                            this.addMessage('Error al seleccionar paciente para sesión directa o notas no encontradas. Volviendo al menú.', 'bot');
+                            // Go to idle, ensuring pending direct log state is cleared
+                            this.setState('idle');
+                            if (this.stateData) {
+                                this.stateData.pendingDirectSessionNotes = null;
+                                this.stateData.pendingDirectSessionPatientNameQuery = null;
+                            
+                            return this.handleIdle('cancelar');
+                        
+                        break;
+                    
+
+                    case 'go_home':
+                        this.setState('idle');
+                        this.currentPatient = null;
+                        this.sessionData = {;
+                        this.pendingAction = null;
+                        return this.handleIdle('menú');
+                    
+                    case 'manage_patients':
+                        return this.handleMessage('gestionar pacientes');
+                    
+                    case 'new_session':
+                        return this.handleMessage('nueva sesión');
+                    
+                    case 'view_history':
+                        this.setState('viewing_history');
+                        return this.showHistoryMenu();
+                    
+                    case 'show_all_sessions':
+                        this.currentFilteredSessions = this.sessions;
+                        this.historyPage = 0;
+                        return this.displayCurrentResults();
+                    
+                    case 'search_by_patient':
+                        
+                            text: '🔍 **Buscar por Paciente**\n\nEscribí:\n• Nombre del paciente\n• DNI (8 dígitos)\n\n*Ejemplo: Ana López o 12345678*',
+                            quickReplies: []
+                        ;
+                    
+                    case 'filter_by_date':
+                        
+                            text: '📅 **Filtrar por Fecha**\n\n¿Qué período querés ver?',
+                            quickReplies: [
+                                {text: '📅 Última semana', type: 'primary', action: 'filter_week'},
+                                {text: '📅 Último mes', type: 'primary', action: 'filter_month',
+                                {text: '📅 Últimos 3 meses', type: 'secondary', action: 'filter_quarter',
+                                {text: '❌ Cancelar', type: 'danger', action: 'cancel_search'
+                            ]
+                        ;
+                    
+                    case 'filter_by_mood':
+                        
+                            text: '😊 **Filtrar por Estado Anímico**\n\n¿Qué tipo de sesiones querés ver?',
+                            quickReplies: [
+                                {text: '😢 Críticas (1-2)', type: 'danger', action: 'filter_critical',
+                                {text: '😐 Estables (3)', type: 'secondary', action: 'filter_stable',
+                                {text: '😊 Positivas (4-5)', type: 'success', action: 'filter_positive',
+                                {text: '❌ Cancelar', type: 'danger', action: 'cancel_search'
+                            ]
+                            
+                                text: `✏️ **Completar datos para DNI: ${this.sessionData.pendingPatient.dni**\n\n${missingFieldsPor favor, enviá los datos completos o los que quieras corregir:\nNombre, DNI, Obra Social, Teléfono`,
+                                quickReplies: [
+                                    {text: '❌ Cancelar', type: 'danger', action: 'cancel'
+                                ]
+                            ;
+                         else {
+                            // No hay paciente pendiente o DNI, volver a gestión.
+                            this.setState('managing_patients');
+                            
+                                text: 'No hay datos de paciente pendientes para editar. Volviendo a gestión de pacientes.',
+                                quickReplies: this.getPatientManagementQuickReplies()
+                            ;
+                        
+
+                    case 'confirm_patient_edit': {
+                        if (this.sessionData.pendingPatient && this.stateData.editingPatient) {
+                            const patientToEdit = this.patients.find(p => p.id === this.stateData.editingPatient.id);
+                            if (patientToEdit) {
+                                const updatedData = this.sessionData.pendingPatient;
+                                patientToEdit.nombre = updatedData.nombre;
+                                patientToEdit.dni = updatedData.dni;
+                                patientToEdit.obra_social = updatedData.obra_social;
+                                patientToEdit.telefono = updatedData.telefono;
+                                // Potentially update other fields if they become editable in the future
+
+                                this.currentPatient = patientToEdit; // Update currentPatient to the modified one
+                                this.log(`Patient data updated for ID ${patientToEdit.id: ${patientToEdit.nombre`);
+                                
+                                this.sessionData.pendingPatient = null;
+                                this.stateData.editingPatient = null;
+                                this.setState('patient_selected_menu');
+                                return this.handlePatientSelectedMenu(`Los datos de ${patientToEdit.nombre se actualizaron correctamente.`);
+                             else {
+                                this.log(`Error: Patient to edit not found. ID: ${this.stateData.editingPatient.id`, 'error');
+                                this.sessionData.pendingPatient = null;
+                                this.stateData.editingPatient = null;
+                                this.setState('idle');
+                                return this.handleIdle('Error al actualizar el paciente. No se encontró en la lista.');
+                            
+                         else {
+                            this.log('Error: Missing pendingPatient or editingPatient data for confirm_patient_edit', 'error');
+                            this.setState('idle');
+                            return this.handleIdle('Error interno al confirmar la edición.');
+                        
+                        // No break needed due to return
+                    
+
+                    case 'cancel_edit_patient': {
+                        const patientName = this.currentPatient ? this.currentPatient.nombre : 'el paciente';
+                        this.sessionData.pendingPatient = null;
+                        if (this.stateData) this.stateData.editingPatient = null;
+                        this.setState('patient_selected_menu');
+                        this.log('Patient edit cancelled.');
+                        return this.handlePatientSelectedMenu(`Edición de datos de ${patientName cancelada.`);
+                        // No break needed due to return
+                    
+
+                    case 'confirm_patient':
+                        if (this.sessionData.pendingPatient) {
+                            const newPatient = {
+                                id: this.patients.length + 1,
+                                ...this.sessionData.pendingPatient
+                            };
+                            
+                            this.patients.push(newPatient);
+                            this.stats.patientsRegistered++;
+                            this.sessionData.pendingPatient = null;
+                            this.setState('idle');
+                            
+                            
+                                text: `✅ **Paciente registrado exitosamente**\n\n👤 **${newPatient.nombre**\n🆔 DNI: ${newPatient.dni\n🏥 Obra Social: ${newPatient.obra_social\n📱 Teléfono: ${newPatient.telefono\n\n🔐 Datos encriptados y almacenados`,
+                                quickReplies: [
+                                    {text: '📝 Iniciar sesión', type: 'primary', action: 'new_session',
+                                    {text: '➕ Otro paciente', type: 'secondary', action: 'register_patient',
+                                    {text: '🏠 Menú principal', type: 'success', action: 'go_home'
+                                ]
+                            ;
+                        
+                        return this.processQuickReply('go_home', 'Inicio');
+                    
+                    case String(action.match(/^view_patient_history_(\d+)$/)?.[0]): {
+                        const patientIdFromAction = parseInt(action.match(/^view_patient_history_(\d+)$/)[1]);
+                        if (this.currentPatient && this.currentPatient.id === patientIdFromAction) {
+                            this.currentFilteredSessions = this.sessions.filter(s => s.patient_id === this.currentPatient.id);
+                            this.historyPage = 0;
+                            this.setState('viewing_history');
+                            this.log(`Viewing history for patient: ${this.currentPatient.nombre (ID: ${this.currentPatient.id). Found ${this.currentFilteredSessions.length sessions.`);
+                            // Add a specific title or breadcrumb for this view if possible later
+                            const response = this.displayCurrentResults();
+                            if (this.currentFilteredSessions.length === 0) {
+                                response.text = `No hay sesiones registradas para **${this.currentPatient.nombre**.`;
+                                response.quickReplies = [
+                                    {text: '📝 Iniciar Nueva Sesión', type: 'primary', action: `start_session_with_${this.currentPatient.id`,
+                                    {text: '◀️ Volver al Menú del Paciente', type: 'neutral', action: `select_patient_${this.currentPatient.id`
+                                ];
+                            
+                            return response;
+                         else {
+                            this.log(`Error viewing patient history: currentPatient mismatch or not set. Action: ${action`, 'error');
+                            this.setState('idle');
+                            return this.handleIdle('Error al ver el historial. Por favor, seleccioná el paciente nuevamente.');
+                        
+                        // No break needed due to return
+                    
+
+                    case String(action.match(/^edit_patient_data_(\d+)$/)?.[0]): {
+                        const patientIdFromAction = parseInt(action.match(/^edit_patient_data_(\d+)$/)[1]);
+                        if (this.currentPatient && this.currentPatient.id === patientIdFromAction) {
+                            this.setState('registering_patient', { editingPatient: this.currentPatient }); // Pass currentPatient to stateData
+                            // Pre-fill pendingPatient with existing data for the editing process
+                            this.sessionData.pendingPatient = { 
+                                ...this.currentPatient, 
+                                isEditing: true, // Flag to indicate editing mode
+                                missing: [] // Reset missing fields for editing context
+                            };
+                            this.log(`Editing patient: ${this.currentPatient.nombre. Pending data pre-filled.`);
+                            
+                                text: `✏️ **Editando datos de ${this.currentPatient.nombre** (DNI: ${this.currentPatient.dni)\n\nEnviá los datos que querés cambiar o corregir (Nombre, DNI, Obra Social, Teléfono).\nSi solo querés cambiar un dato, por ejemplo el teléfono, enviá solo "Teléfono 1122334455".`,
+                                quickReplies: [
+                                    {text: '❌ Cancelar Edición', type: 'danger', action: 'cancel_edit_patient'
+                                ]
+                            ;
+                         else {
+                            this.log(`Error editing patient: currentPatient mismatch or not set. Action: ${action`, 'error');
+                            this.setState('idle');
+                            return this.handleIdle('Error al intentar editar. Por favor, seleccioná el paciente nuevamente.');
+                        
+                        // No break needed due to return
+                    
+
+                    case String(action.match(/^start_session_with_(\d+)$/)?.[0]): {
+                        const patientIdFromAction = parseInt(action.match(/^start_session_with_(\d+)$/)[1]);
+                        if (this.currentPatient && this.currentPatient.id === patientIdFromAction) {
+                            this.setState('in_session', { patient: this.currentPatient });
+                            this.log(`Starting session with current patient: ${this.currentPatient.nombre`);
+                            
+                                text: `✅ **Sesión iniciada con:**\n👤 **${this.currentPatient.nombre**\n🏥 ${this.currentPatient.obra_social\n\n**Describí la consulta o enviá un audio:**`,
+                                quickReplies: [
+                                    {text: '🎤 Grabar audio', type: 'success', action: 'record_audio',
+                                    {text: '📝 Escribir observaciones', type: 'primary', action: 'type_observations',
+                                    {text: '❌ Cancelar sesión', type: 'danger', action: 'cancel'
+                                ]
+                            ;
+                         else {
+                            this.log(`Error starting session: currentPatient mismatch or not set. Action: ${action`, 'error');
+                            this.setState('idle');
+                            return this.handleIdle('Error al iniciar la sesión. Por favor, seleccioná el paciente nuevamente.');
+                        
+                        // No break needed due to return
+                    
+
+                    case 'save_direct_session':
+                        this.saveSession(this.tempData.patient.id, this.tempData.notes);
+                        this.sendMessage('✅ Sesión guardada');
+                        this.returnToMainMenu();
+                        break;
+
+                    case 'edit_direct_session':
+                        this.sendMessage('✏️ Editar notas de la sesión:', 
+                            [{title: 'Enviar corrección', payload: 'submit_edited_session']
+                        );
+                        this.state = 'editing_direct_session';
+                        break;
+
+                    case 'submit_edited_session':
+                        this.tempData.notes = text;
+                        this.sendMessage('✅ Notas actualizadas. ¿Guardar cambios?',
+                            [
+                                {title: '💾 Guardar', payload: 'save_direct_session',
+                                {title: '❌ Cancelar', payload: 'cancel_direct_session'
+                            ]
+                        );
+                        break;
+
+                    case 'cancel_direct_session':
+                        this.sendMessage('❌ Sesión descartada');
+                        this.returnToMainMenu();
+                        break;
+
+                    default:
+                        if (action.startsWith('select_')) {
+                            const num = action.split('_')[1];
+                            return this.handleMessage(num);
+                        
+                        
+                        this.log(`Acción no reconocida: ${action}`, 'warn');
+                        return this.handleMessage(text);
+                
+            
+            
+            extractDirectSessionLog(message) {
+                console.log("DEBUG: Procesando mensaje para sesión directa: " + message);
+                
+                // 1. Formato: "Nombre, DNI - notas" (con espacios opcionales)
+                const guionPattern = /^([^,]+),\s*(\d+)\s*-\s*(.+)$/;
+                const guionMatch = message.match(guionPattern);
+                if (guionMatch) {
+                    const nombre = guionMatch[1].trim();
+                    const dni = guionMatch[2];
+                    const notas = guionMatch[3].trim();
+                    
+                    console.log('DEBUG: Formato con guion detectado:', nombre, dni, notas);
+                    
+                    return {
+                        patientNameQuery: nombre,
+                        notes: notas
+                    };
+                }
+
+                // 2. Formato: "Nombre, DNI, OS, Tel - notas"
+                const fullPattern = /^([^,]+),\s*(\d+),\s*([^,]+)(?:,\s*(\d+))?\s*-\s*(.+)$/;
+                const fullMatch = message.match(fullPattern);
+                if (fullMatch) {
+                    const nombre = fullMatch[1].trim();
+                    const dni = fullMatch[2];
+                    const os = fullMatch[3].trim();
+                    const tel = fullMatch[4];
+                    const notas = fullMatch[5].trim();
+                    
+                    console.log('DEBUG: Formato completo detectado:', nombre, dni, os, tel, notas);
+                    
+                    return {
+                        patientNameQuery: nombre,
+                        notes: notas
+                    };
+                }
+
+                // 3. Formato simple: "Nombre, DNI"
+                const simplePattern = /^([^,]+),\s*(\d+)(?:\s|$)/;
+                const simpleMatch = message.match(simplePattern);
+                if (simpleMatch) {
+                    const nombre = simpleMatch[1].trim();
+                    const dni = simpleMatch[2];
+                    
+                    console.log('DEBUG: Formato simple detectado:', nombre, dni);
+                    
+                    return {
+                        patientNameQuery: nombre,
+                        notes: message
+                    };
+                }
+
+                console.log('DEBUG: Ningún patrón coincidió');
+                return null;
+            }
+            
+            // Simula el uso del micrófono para registrar un mensaje
+            simulateMicrophone() {
+                try {
+                    // Mensaje simple y directo para registro de paciente
+                    const message = 'María González, 45678901, OSDE, 1145678901';
+                    const duration = 2; // Duración fija corta
+                    
+                    // Mostrar el mensaje de audio
+                    this.addAudioMessage(message, duration);
+                    
+                    // Procesar directamente sin usar processMessage para evitar loops
+                    setTimeout(() => {
+                        try {
+                            // Usar handleMessage directamente para el estado actual
+                            if (this.state === 'registering_patient') {
+                                const response = this.handleRegisteringPatient(message);
+                                if (response) {
+                                    this.addMessage(response.text, 'bot');
+                                    if (response.quickReplies) {
+                                        this.showQuickReplies(response.quickReplies);
+                                     else {
+                                        this.hideQuickReplies();
+                                    }
+                                }
+                             else {
+                                // Para otros estados, usar el procesamiento normal
+                                this.processMessage(message);
+                            }
+                         catch (error) {
+                            console.error('Error procesando audio:', error);
+                            this.addMessage('Error al procesar el audio. Por favor, intentá de nuevo.', 'bot');
+                        }
+                    , 1000);
+                 catch (error) {
+                    console.error('Error en simulateMicrophone:', error);
+                    this.addMessage('Hubo un error con el micrófono. Por favor, intentá de nuevo.', 'bot');
+                
+            
+            
+            addMessage(text, sender) {
+                const container = document.getElementById('messagesContainer');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${sender}`;
+                
+                const formattedText = text
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/\n/g, '<br>');
+                
+                messageDiv.innerHTML = formattedText;
+                
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'message-time';
+                timeDiv.textContent = new Date().toLocaleTimeString('es-AR', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                messageDiv.appendChild(timeDiv);
+                
+                container.appendChild(messageDiv);
+                this.scrollToBottom();
+            
+            
+            addAudioMessage(transcription, duration) {
+                const container = document.getElementById('messagesContainer');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message user audio';
+                
+                messageDiv.innerHTML = `
+                    <span class="audio-indicator">🎤</span>
+                    <span>Audio: ${transcription.substring(0, 50)...</span>
+                    <span class="audio-duration">0:${duration.toString().padStart(2, '0')</span>
+                `;
+                
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'message-time';
+                timeDiv.textContent = new Date().toLocaleTimeString('es-AR', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                messageDiv.appendChild(timeDiv);
+                
+                container.appendChild(messageDiv);
+                this.scrollToBottom();
+            
+            
+            showQuickReplies(replies) {
+                const container = document.getElementById('quickReplies');
+                container.innerHTML = '';
+                
+                if (!replies || replies.length === 0) {
+                    container.style.display = 'none';
+                    return;
+                
+                
+                replies.forEach(reply => {
+                    const btn = document.createElement('div');
+                    btn.className = `quick-reply ${reply.type || 'primary'`;
+                    btn.textContent = reply.text;
+                    btn.onclick = () => {
+                        this.handleQuickReply(reply.action, reply.text);
+                    };
+                    container.appendChild(btn);
+                });
+                
+                container.style.display = 'block';
+            
+            
+            hideQuickReplies() {
+                document.getElementById('quickReplies').style.display = 'none';
+            
+            
+            async handleQuickReply(action, text) {
+                this.addMessage(text, 'user');
+                
+                const response = this.processQuickReply(action, text);
+                
+                if (response) {
+                    this.isProcessing = true;
+                    this.showTyping();
+                    
+                    await this.delay(600);
+                    
+                    this.hideTyping();
+                    this.addMessage(response.text, 'bot');
+                    
+                    if (response.quickReplies) {
+                        this.showQuickReplies(response.quickReplies);
+                     else {
+                        this.hideQuickReplies();
+                    
+                    
+                    this.isProcessing = false;
+                
+            
+            
+            showTyping() {
+                const container = document.getElementById('messagesContainer');
+                const typingDiv = document.createElement('div');
+                typingDiv.id = 'typingIndicator';
+                typingDiv.className = 'typing-indicator';
+                typingDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+                container.appendChild(typingDiv);
+                this.scrollToBottom();
+            
+            
+            hideTyping() {
+                const typing = document.getElementById('typingIndicator');
+                if (typing) typing.remove();
+            
+            
+            scrollToBottom() {
+                const container = document.getElementById('messagesContainer');
+                container.scrollTop = container.scrollHeight;
+            
+            
+            updateTime() {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('es-AR', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                document.getElementById('currentTime').textContent = timeString;
+            
+            
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            
+            
+            log(message, level = 'info') {
+                if (this.debugMode) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    console.log(`[${timestamp] [${level.toUpperCase()] ${message`);
+                
+            
+            
+            reset() {
+                this.state = 'idle';
+                this.sessionData = {};
+                this.currentPatient = null;
+                this.isProcessing = false;
+                this.isRecording = false;
+                this.currentFilteredSessions = null;
+                this.historyPage = 0;
+                this.pendingAction = null;
+                
+                document.getElementById('messagesContainer').innerHTML = '';
+                this.hideQuickReplies();
+                
+                this.updateBreadcrumbs();
+                this.updateStateIndicator();
+                
+                this.log('Bot reiniciado');
+            
+            
+            getStats() {
+                
+                    ...this.stats,
+                    currentState: this.state,
+                    currentPatient: this.currentPatient?.nombre || 'Ninguno',
+                    totalPatients: this.patients.length,
+                    totalSessions: this.sessions.length
+                };
+            
+        
+        
+        let bot = null;
+        
+        function initializeBot() {
+            bot = new AIRABot();
+            
+            setTimeout(() => {
+                bot.addMessage('¡Hola Dr. González! 👋 Bienvenido a AIRA Bot.\n\nSoy tu asistente para carga de datos clínicos con Google Gemini 1.5. ¿En qué te puedo ayudar hoy?', 'bot');
+                bot.showQuickReplies([
+                    {text: '👥 Gestionar pacientes', type: 'primary', action: 'manage_patients',
+                    {text: '📝 Nueva sesión', type: 'primary', action: 'new_session',
+                    {text: '📊 Historial', type: 'secondary', action: 'view_history',
+                    {text: '🆘 Ayuda', type: 'secondary', action: 'help'
+                ]);
+            , 500);
+        
+        
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message || bot.isProcessing) return;
+            
+            bot.addMessage(message, 'user');
+            input.value = '';
+            
+            bot.processMessage(message);
+        
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            
+        
+        
+        function toggleMicrophone() {
+            if (bot.isRecording) return;
+            
+            const micBtn = document.getElementById('micBtn');
+            micBtn.classList.add('recording');
+            bot.isRecording = true;
+            
+            setTimeout(() => {
+                micBtn.classList.remove('recording');
+                bot.isRecording = false;
+                bot.simulateMicrophone();
+            , 1500);
+        
+        
+        function resetBot() {
+            bot.reset();
+            setTimeout(() => {
+                initializeBot();
+            , 500);
+        
+        
+        function showStats() {
+            const stats = bot.getStats();
+            bot.addMessage(`📊 **Estadísticas del Sistema**\n\n• Mensajes procesados: ${stats.messagesProcessed\n• Pacientes registrados: ${stats.totalPatients\n• Sesiones creadas: ${stats.totalSessions\n• Errores: ${stats.errors\n\n**Estado actual:** ${stats.currentState\n**Paciente activo:** ${stats.currentPatient`, 'bot');
+        
+        
+        function toggleDebug() {
+            bot.debugMode = !bot.debugMode;
+            bot.log(`Modo debug ${bot.debugMode ? 'activado' : 'desactivado'`);
+            bot.addMessage(`🐛 Modo debug ${bot.debugMode ? 'activado' : 'desactivado'`, 'bot');
+        
+        
+        window.addEventListener('load', () => {
+            console.log('🌱 AIRA Bot v2.0 - Sistema Médico con Google Gemini 1.5');
+            initializeBot();
+        });
+        
+        window.addEventListener('error', (event) => {
+            console.error('Error global:', event.error);
+            if (bot) {
+                bot.stats.errors++;
+                bot.log(`Error global: ${event.error.message`, 'error');
+            
+        });
+    </script>
+</body>
+</html>

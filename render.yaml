@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: aira-bot
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: NODE_ENV
+        value: production
+      - key: FIREBASE_PROJECT_ID
+        value: aira-prod
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: service-account-key.json
+    healthCheckPath: /health
+    regions:
+      - ohio
+
+# Configuración de seguridad básica
+    autoDeploy: true
+    plan: starter

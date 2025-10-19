@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  # 🧠 n8n Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: aira-n8n-gemini
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      # n8n Configuration
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-aira_admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-aira_secure_2025}
+      - N8N_WEBHOOK_URL=http://localhost:5678/
+      - N8N_METRICS=true
+      - N8N_LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Database Configuration
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/data/n8n.db
+      - DB_SQLITE_VACUUM_ON_STARTUP=true
+
+      # Security
+      - N8N_JWT_AUTH_HEADER=authorization
+      - N8N_JWT_AUTH_HEADER_VALUE_PREFIX=Bearer
+      - N8N_BINARY_DATA_TTL=24
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+
+      # Workflow Configuration
+      - N8N_DEFAULT_LOCALE=es
+      - N8N_DEFAULT_USER_EMAIL=admin@aira-medical.com
+      - N8N_DEFAULT_USER_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-aira_secure_2025}
+
+      # External API Keys (from environment)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_SPEECH_API_KEY=${GOOGLE_SPEECH_API_KEY}
+      - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
+      - AIRA_API_SECRET=${AIRA_API_SECRET}
+
+    volumes:
+      - n8n_data:/data
+      - n8n_workflows:/home/node/.n8n/workflows
+      - ./gemini-n8n-workflow.js:/home/node/.n8n/workflows/gemini-workflow.js:ro
+      - ./.env.gemini:/home/node/.env.gemini:ro
+
+    depends_on:
+      - redis
+
+    networks:
+      - aira-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 📦 Redis Cache for n8n
+  redis:
+    image: redis:7-alpine
+    container_name: aira-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-aira_redis_2025}
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD:-aira_redis_2025}
+    networks:
+      - aira-network
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 🗂️ Nginx Reverse Proxy (Opcional)
+  nginx:
+    image: nginx:alpine
+    container_name: aira-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - n8n
+    networks:
+      - aira-network
+    profiles:
+      - production
+
+  # 📊 Grafana Monitoring (Opcional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aira-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-aira_secure_2025}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - aira-network
+    profiles:
+      - monitoring
+
+# 📁 Volumes persistentes
+volumes:
+  n8n_data:
+    driver: local
+  n8n_workflows:
+    driver: local
+  redis_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+# 🌐 Network
+networks:
+  aira-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

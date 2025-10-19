@@ -1,0 +1,30 @@
+name: ZAP Baseline (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target URL (staging)'
+        required: true
+        default: 'http://localhost:3001'
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ inputs.target }}
+          cmd_options: '-a'
+      - name: Gate on High/Critical
+        if: always()
+        run: |
+          if grep -E '\\b(High|Critical)\\b' -i -r .zap*/zap_report.html; then
+            echo 'ZAP High/Critical findings detected'; exit 1; fi
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: ./.zap*/zap_report.html

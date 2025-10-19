@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # 🧠 n8n Workflow Automation con AIRA
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: aira-n8n-gemini
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # n8n Configuration
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=aira_admin
+      - N8N_BASIC_AUTH_PASSWORD=aira_secure_2025
+      - N8N_WEBHOOK_URL=http://localhost:5678/
+      - N8N_METRICS=true
+      - N8N_LOG_LEVEL=info
+
+      # Database Configuration
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/data/n8n.db
+      - DB_SQLITE_VACUUM_ON_STARTUP=true
+
+      # Security
+      - N8N_JWT_AUTH_HEADER=authorization
+      - N8N_JWT_AUTH_HEADER_VALUE_PREFIX=Bearer
+      - N8N_BINARY_DATA_TTL=24
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+
+      # Workflow Configuration
+      - N8N_DEFAULT_LOCALE=es
+      - N8N_DEFAULT_USER_EMAIL=admin@aira-medical.com
+      - N8N_DEFAULT_USER_PASSWORD=aira_secure_2025
+
+      # External API Keys (from environment)
+      - GEMINI_API_KEY=AIzaSyBi-JgR5zF2J1xpC9_PuNGT0dgg7_2E1rI
+      - GOOGLE_SPEECH_API_KEY=AIzaSyBi-JgR5zF2J1xpC9_PuNGT0dgg7_2E1rI
+      - AIRA_API_SECRET=aira_optimization_secret_2025
+
+    volumes:
+      - n8n_data:/data
+      - n8n_workflows:/home/node/.n8n/workflows
+      - ./workflow_data:/workflow_data:ro
+      - ./.n8n-mcp.env:/home/node/.n8n.env:ro
+
+    networks:
+      - aira-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 📦 Redis Cache para n8n
+  redis:
+    image: redis:7-alpine
+    container_name: aira-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=aira_redis_2025
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass aira_redis_2025
+    networks:
+      - aira-network
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# 📁 Volumes persistentes
+volumes:
+  n8n_data:
+    driver: local
+  n8n_workflows:
+    driver: local
+  redis_data:
+    driver: local
+
+# 🌐 Network
+networks:
+  aira-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

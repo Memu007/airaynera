@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <base href="/">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AIRA - Sistema Médico Profesional para Psicólogos y Psiquiatras">
+    <meta name="keywords" content="psicología, psiquiatría, terapia, salud mental, sistema médico">
+    <meta name="author" content="AIRA Medical System">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="AIRA - Sistema Médico Profesional">
+    <meta property="og:description" content="Sistema integral para la gestión de sesiones terapéuticas">
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22 fill=%232c7a7b%22>A</text></svg>">
+
+    <!-- Title -->
+    <title>AIRA - Sistema Médico Profesional</title>
+
+    <!-- Preconnect to improve performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Google Fonts - Professional healthcare typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Modern CSS Reset -->
+    <style>
+        /* Modern CSS Reset */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Remove default margin */
+        body, h1, h2, h3, h4, p, figure, blockquote, dl, dd {
+            margin: 0;
+        }
+
+        /* Remove list styles on ul, ol elements with a list role, which suggests default styling will be removed */
+        ul[role='list'], ol[role='list'] {
+            list-style: none;
+        }
+
+        /* Set core root defaults */
+        html:focus-within {
+            scroll-behavior: smooth;
+        }
+
+        /* Set core body defaults */
+        body {
+            min-height: 100vh;
+            text-rendering: optimizeSpeed;
+            line-height: 1.6;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 16px;
+            color: #2d3748;
+            background-color: #f7fafc;
+        }
+
+        /* A elements that don't have a class get default styles */
+        a:not([class]) {
+            text-decoration-skip-ink: auto;
+        }
+
+        /* Make images easier to work with */
+        img, picture {
+            max-width: 100%;
+            display: block;
+        }
+
+        /* Inherit fonts for inputs and buttons */
+        input, button, textarea, select {
+            font: inherit;
+        }
+
+        /* Remove all animations, transitions and smooth scroll for people that prefer not to see them */
+        @media (prefers-reduced-motion: reduce) {
+            html:focus-within {
+                scroll-behavior: auto;
+            }
+
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        /* Screen reader only content */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* Focus styles for keyboard navigation */
+        :focus-visible {
+            outline: 2px solid #2c7a7b;
+            outline-offset: 2px;
+        }
+
+        /* Skip links */
+        .skip-links {
+            position: absolute;
+            top: -40px;
+            left: 6px;
+            z-index: 1000;
+        }
+
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 6px;
+            background: #2c7a7b;
+            color: white;
+            padding: 8px;
+            text-decoration: none;
+            border-radius: 4px;
+            z-index: 1000;
+        }
+
+        .skip-link:focus {
+            top: 6px;
+        }
+
+        /* Loading states */
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+            position: relative;
+        }
+
+        .loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #2c7a7b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* High contrast mode support */
+        @media (prefers-contrast: high) {
+            :root {
+                --text-color: #000000;
+                --background-color: #ffffff;
+                --border-color: #000000;
+                --link-color: #0000ff;
+            }
+        }
+
+        /* Basic layout structure */
+        .aira-medical-app {
+            display: grid;
+            grid-template-areas:
+                "header header"
+                "nav nav"
+                "main sidebar"
+                "footer footer";
+            grid-template-columns: 1fr 300px;
+            grid-template-rows: auto auto 1fr auto;
+            min-height: 100vh;
+        }
+
+        @media (max-width: 1024px) {
+            .aira-medical-app {
+                grid-template-areas:
+                    "header"
+                    "nav"
+                    "main"
+                    "footer";
+                grid-template-columns: 1fr;
+            }
+
+            .medical-sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body class="aira-medical-app">
+    <!-- Skip Links for Accessibility -->
+    <div class="skip-links" role="navigation" aria-label="Enlaces rápidos">
+        <a href="#main-content" class="skip-link">Saltar al contenido principal</a>
+        <a href="#medical-navigation" class="skip-link">Saltar a navegación</a>
+        <a href="#medical-search" class="skip-link">Saltar a búsqueda</a>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #f7fafc;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    ">
+        <div style="
+            width: 60px;
+            height: 60px;
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #2c7a7b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        "></div>
+        <h2 style="color: #2c7a7b; font-weight: 600;">Cargando AIRA Medical System</h2>
+        <p style="color: #718096; margin-top: 8px;">Iniciando sistema médico profesional...</p>
+    </div>
+
+    <!-- Main Application Container -->
+    <div id="app" role="application" aria-label="Sistema Médico AIRA">
+        <!-- Header will be rendered by UIManager -->
+        <header id="medical-header" class="medical-header" role="banner">
+            <!-- Dynamic content -->
+        </header>
+
+        <!-- Navigation will be rendered by UIManager -->
+        <nav id="medical-navigation" class="medical-navigation" role="navigation" aria-label="Navegación principal">
+            <!-- Dynamic content -->
+        </nav>
+
+        <!-- Main Content Area -->
+        <main id="medical-main" class="medical-main" role="main" aria-label="Contenido principal">
+            <!-- Dashboard View -->
+            <div id="medical-dashboard" class="medical-view">
+                <!-- Dynamic dashboard content -->
+            </div>
+
+            <!-- Patients View -->
+            <div id="medical-patients" class="medical-view" style="display: none;">
+                <!-- Dynamic patients content -->
+            </div>
+
+            <!-- Sessions View -->
+            <div id="medical-sessions" class="medical-view" style="display: none;">
+                <!-- Dynamic sessions content -->
+            </div>
+
+            <!-- Reports View -->
+            <div id="medical-reports" class="medical-view" style="display: none;">
+                <!-- Dynamic reports content -->
+            </div>
+        </main>
+
+        <!-- Sidebar will be rendered by UIManager -->
+        <aside id="medical-sidebar" class="medical-sidebar" role="complementary" aria-label="Información contextual">
+            <!-- Dynamic sidebar content -->
+        </aside>
+
+        <!-- Footer -->
+        <footer id="medical-footer" class="medical-footer" role="contentinfo" style="
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            padding: 16px 0;
+            text-align: center;
+            color: #718096;
+            font-size: 14px;
+            grid-area: footer;
+        ">
+            <p>&copy; 2024 AIRA Medical System - Plataforma profesional para salud mental</p>
+            <p style="margin-top: 4px; font-size: 12px;">
+                Versión 2.0.0 |
+                <a href="#" data-action="contextual-help" style="color: #2c7a7b;">Ayuda</a> |
+                <a href="#" data-action="privacy-policy" style="color: #2c7a7b;">Privacidad</a>
+            </p>
+        </footer>
+
+        <!-- Modals Container -->
+        <div id="medical-modals" class="medical-modals" role="dialog" aria-live="polite">
+            <!-- Dynamic modals will be rendered here -->
+        </div>
+
+        <!-- Notifications Container -->
+        <div id="medical-notifications" class="medical-notifications" role="status" aria-live="polite" aria-atomic="true" style="
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 400px;
+        ">
+            <!-- Dynamic notifications will be rendered here -->
+        </div>
+
+        <!-- Error Boundary Fallback -->
+        <div id="error-boundary" style="display: none; text-align: center; margin-top: 100px; padding: 40px;">
+            <h1 style="color: #f56565; margin-bottom: 16px;">Error en la Aplicación</h1>
+            <p style="color: #718096; margin-bottom: 24px;">Ha ocurrido un error inesperado. Por favor, recargue la página.</p>
+            <button data-action="reload-page" style="
+                background: #2c7a7b;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-weight: 500;
+            ">Recargar Página</button>
+        </div>
+    </div>
+
+    <!-- Error Handling Script -->
+    <script>
+        // Global error handler
+        window.addEventListener('error', function(event) {
+            console.error('Error global capturado:', event.error);
+
+            // Hide loading screen if it's still visible
+            const loadingScreen = document.getElementById('loading-screen');
+            if (loadingScreen) {
+                loadingScreen.style.display = 'none';
+            }
+
+            // Show error boundary
+            const errorBoundary = document.getElementById('error-boundary');
+            if (errorBoundary) {
+                errorBoundary.style.display = 'block';
+            }
+
+            // Hide main app content
+            const app = document.getElementById('app');
+            if (app) {
+                app.style.display = 'none';
+            }
+        });
+
+        // Handle unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Promesa rechazada no manejada:', event.reason);
+            event.preventDefault();
+        });
+    </script>
+
+    <!-- Load Core Application JavaScript -->
+    <script src="/src/js/app.js"></script>
+    <script src="/src/js/event-handlers.js"></script>
+
+    <!-- Initialize Application -->
+    <script>
+        // Verificar que el DOM esté completamente cargado
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 DOM cargado - Inicializando AIRA Medical System');
+
+            // Ocultar pantalla de carga después de un tiempo mínimo para mejor UX
+            setTimeout(function() {
+                const loadingScreen = document.getElementById('loading-screen');
+                if (loadingScreen) {
+                    loadingScreen.style.opacity = '0';
+                    loadingScreen.style.transition = 'opacity 0.5s ease';
+
+                    setTimeout(function() {
+                        loadingScreen.style.display = 'none';
+                    }, 500);
+                }
+            }, 1500); // Tiempo mínimo de carga para mejor percepción
+
+            // Verificar si la aplicación se inicializó correctamente
+            setTimeout(function() {
+                if (!window.AIRAApp || !window.AIRAApp.isInitialized) {
+                    console.error('❌ Error: La aplicación no se inicializó correctamente');
+
+                    const loadingScreen = document.getElementById('loading-screen');
+                    if (loadingScreen) {
+                        loadingScreen.style.display = 'none';
+                    }
+
+                    const errorBoundary = document.getElementById('error-boundary');
+                    if (errorBoundary) {
+                        errorBoundary.style.display = 'block';
+                    }
+
+                    const app = document.getElementById('app');
+                    if (app) {
+                        app.style.display = 'none';
+                    }
+                } else {
+                    console.log('✅ AIRA Medical System inicializado correctamente');
+
+                    // Ocultar error boundary si estaba visible
+                    const errorBoundary = document.getElementById('error-boundary');
+                    if (errorBoundary) {
+                        errorBoundary.style.display = 'none';
+                    }
+
+                    // Mostrar aplicación
+                    const app = document.getElementById('app');
+                    if (app) {
+                        app.style.display = 'grid';
+                    }
+                }
+            }, 5000); // Dar tiempo para inicialización completa
+        });
+
+        // Service Worker para PWA capabilities (opcional)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                        console.log('✅ Service Worker registrado:', registration.scope);
+                    })
+                    .catch(function(error) {
+                        console.log('⚠️ Service Worker no registrado:', error);
+                    });
+            });
+        }
+
+        // Performance monitoring
+        window.addEventListener('load', function() {
+            if ('performance' in window) {
+                const loadTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
+                console.log(`⏱️ Tiempo de carga: ${loadTime}ms`);
+
+                // Log performance metrics
+                if (loadTime > 3000) {
+                    console.warn('⚠️ Tiempo de carga lento detectado');
+                }
+            }
+        });
+
+        // Accessibility announcements
+        function announceToScreenReader(message, priority = 'polite') {
+            const announcement = document.createElement('div');
+            announcement.setAttribute('role', 'status');
+            announcement.setAttribute('aria-live', priority);
+            announcement.className = 'sr-only';
+            announcement.textContent = message;
+
+            document.body.appendChild(announcement);
+
+            setTimeout(function() {
+                document.body.removeChild(announcement);
+            }, 1000);
+        }
+
+        // Make available globally
+        window.announceToScreenReader = announceToScreenReader;
+    </script>
+</body>
+</html>

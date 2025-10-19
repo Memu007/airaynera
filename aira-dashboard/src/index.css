@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  /* AIRA Custom Components */
+  .btn-primary {
+    @apply bg-gradient-to-r from-aira-primary to-aira-secondary text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5;
+  }
+  
+  .btn-secondary {
+    @apply bg-white text-aira-primary border border-aira-primary px-4 py-2 rounded-lg font-medium hover:bg-aira-primary hover:text-white transition-all duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-200;
+  }
+  
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aira-primary focus:border-transparent transition-all duration-200;
+  }
+  
+  .sidebar-link {
+    @apply flex items-center px-4 py-3 text-gray-600 hover:text-aira-primary hover:bg-aira-primary/10 rounded-lg transition-all duration-200;
+  }
+  
+  .sidebar-link.active {
+    @apply text-aira-primary bg-aira-primary/10 font-medium;
+  }
+}
