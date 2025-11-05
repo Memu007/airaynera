@@ -7,6 +7,8 @@ const helmet = require('helmet');
 const authRoutes = require('./routes/auth');
 const healthRoutes = require('./routes/health');
 const patientsRoutes = require('./routes/patients');
+const collaborationRoutes = require('./routes/collaboration');
+const psychologyRoutes = require('./routes/psychology');
 // const sessionsRoutes = require('./routes/sessions');
 
 // Import middleware functions properly
@@ -87,6 +89,8 @@ app.use('/api', healthRoutes);
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/patients', patientsRoutes);
+app.use('/api/collaboration', collaborationRoutes);
+app.use('/api/psychology', psychologyRoutes);
 // app.use('/api/sessions', sessionsRoutes);
 
 // Serve main page

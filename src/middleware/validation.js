@@ -63,11 +63,128 @@ const schemas = {
             type: Joi.string().valid('individual', 'group', 'family'),
             status: Joi.string().valid('scheduled', 'confirmed', 'completed', 'cancelled')
         })
+    },
+
+    // Collaboration - Referrals
+    createReferral: {
+        [Segments.BODY]: Joi.object().keys({
+            toUserId: Joi.string().required(),
+            patientId: Joi.string().required(),
+            fromSpecialty: Joi.string().valid('psychology', 'psychiatry', 'general_practice', 'neurology', 'other').required(),
+            toSpecialty: Joi.string().valid('psychology', 'psychiatry', 'general_practice', 'neurology', 'other').required(),
+            reasonForReferral: Joi.string().min(10).max(500).required(),
+            urgency: Joi.string().valid('routine', 'urgent', 'emergency').default('routine'),
+            clinicalNotes: Joi.string().max(2000).optional(),
+            recommendations: Joi.string().max(1000).optional()
+        })
+    },
+
+    updateReferralStatus: {
+        [Segments.BODY]: Joi.object().keys({
+            status: Joi.string().valid('accepted', 'rejected', 'pending_review', 'completed').required(),
+            responseNotes: Joi.string().max(1000).optional()
+        })
+    },
+
+    // Collaboration - Care Teams
+    createCareTeam: {
+        [Segments.BODY]: Joi.object().keys({
+            patientId: Joi.string().required(),
+            teamName: Joi.string().max(100).optional(),
+            members: Joi.array().items(
+                Joi.object().keys({
+                    userId: Joi.string().required(),
+                    role: Joi.string().valid('primary', 'psychologist', 'psychiatrist', 'therapist', 'counselor', 'member').default('member'),
+                    specialty: Joi.string().valid('psychology', 'psychiatry', 'general_practice', 'neurology', 'other').optional()
+                })
+            ).optional(),
+            emergencyContact: Joi.object().keys({
+                name: Joi.string().required(),
+                relationship: Joi.string().required(),
+                phone: Joi.string().required(),
+                priority: Joi.string().valid('primary', 'secondary').default('primary')
+            }).optional()
+        })
+    },
+
+    // Collaboration - Patient Consent
+    createConsent: {
+        [Segments.BODY]: Joi.object().keys({
+            patientId: Joi.string().required(),
+            consentType: Joi.string().valid('share_info', 'treatment', 'emergency', 'research').required(),
+            scope: Joi.string().valid('specific', 'all', 'emergency_only', 'limited').required(),
+            expiresAt: Joi.date().iso().optional(),
+            notes: Joi.string().max(500).optional()
+        })
+    },
+
+    // Collaboration - Emergency Alerts
+    createEmergencyAlert: {
+        [Segments.BODY]: Joi.object().keys({
+            patientId: Joi.string().required(),
+            alertType: Joi.string().valid('suicide_risk', 'medical_emergency', 'crisis', 'medication_adverse', 'behavioral_crisis').required(),
+            severity: Joi.string().valid('low', 'medium', 'high', 'critical').required(),
+            description: Joi.string().min(10).max(1000).required(),
+            immediateAction: Joi.string().max(500).optional()
+        })
+    },
+
+    // Collaboration - Team Messages
+    createTeamMessage: {
+        [Segments.BODY]: Joi.object().keys({
+            careTeamId: Joi.string().required(),
+            patientId: Joi.string().required(),
+            message: Joi.string().min(1).max(2000).required(),
+            messageType: Joi.string().valid('general', 'urgent', 'clinical_update', 'coordination', 'emergency').default('general'),
+            priority: Joi.string().valid('normal', 'high', 'urgent').default('normal')
+        })
+    },
+
+    // Session Storage - Store Session
+    storeSession: {
+        [Segments.BODY]: Joi.object().keys({
+            sessionId: Joi.string().optional(),
+            patientId: Joi.string().required(),
+            sessionDate: Joi.date().iso().required(),
+            sessionType: Joi.string().valid('audio', 'text').required(),
+            sessionDuration: Joi.number().integer().min(1).max(300).required(),
+            notes: Joi.string().max(2000).optional(),
+            audioFile: Joi.binary().optional()
+        })
     }
+};
+
+// Function to validate session storage
+const validateSessionStorage = (sessionData) => {
+    const schema = Joi.object({
+        sessionId: Joi.string().optional(),
+        professionalId: Joi.string().required(),
+        professionalType: Joi.string().valid('psychologist', 'psychiatrist').required(),
+        patientId: Joi.string().required(),
+        sessionDate: Joi.date().iso().required(),
+        sessionType: Joi.string().valid('audio', 'text').required(),
+        sessionDuration: Joi.number().integer().min(1).max(300).required(),
+        notes: Joi.string().max(2000).allow('').optional(),
+        audioFile: Joi.binary().optional()
+    });
+
+    const { error, value } = schema.validate(sessionData);
+    
+    return {
+        isValid: !error,
+        errors: error ? error.details.map(d => d.message) : [],
+        value: value
+    };
 };
 
 // Exportar los middlewares de validación
 module.exports = {
     validateObjectId,
-    validate: (schema) => celebrate(schema, { abortEarly: false })
+    validate: (schema) => celebrate(schema, { abortEarly: false }),
+    validateReferral: (req, res, next) => celebrate(schemas.createReferral, { abortEarly: false })(req, res, next),
+    validateCareTeam: (req, res, next) => celebrate(schemas.createCareTeam, { abortEarly: false })(req, res, next),
+    validateEmergencyAlert: (req, res, next) => celebrate(schemas.createEmergencyAlert, { abortEarly: false })(req, res, next),
+    validateConsent: (req, res, next) => celebrate(schemas.createConsent, { abortEarly: false })(req, res, next),
+    validateTeamMessage: (req, res, next) => celebrate(schemas.createTeamMessage, { abortEarly: false })(req, res, next),
+    validateSessionStorage
 }; 

@@ -5,7 +5,7 @@ drwxr-xr-x@   6 Emi  staff       192 Aug 13 18:44 ..
 -rw-r--r--    1 Emi  staff       111 Jul 27 19:36 .babelrc
 drwx------    3 Emi  staff        96 Aug 11 08:00 .backup-verify-1PLy0X
 drwx------    4 Emi  staff       128 Aug 11 16:53 .backup-verify-ybUPtL
-drwx------    4 Emi  staff       128 Oct 18 23:02 .claude
+drwx------    4 Emi  staff      128 Oct 18 23:02 .claude
 drwxr-xr-x    3 Emi  staff        96 Aug 12 20:03 .cursor
 -rw-r--r--    1 Emi  staff      1246 Jul 18 19:49 .dockerignore
 -rw-------    1 Emi  staff      1324 Oct 18 22:58 .env

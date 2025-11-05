@@ -210,7 +210,13 @@ const mockSessions = [
     }
 ];
 
+// Initialize Session Storage Module
+const sessionStorageRoutes = require('./src/routes/sessionStorage');
+
 // API Routes
+
+// Session storage endpoints
+app.use('/api/sessions', sessionStorageRoutes);
 
 // Auth endpoints
 app.post('/api/auth/verify', (req, res) => {

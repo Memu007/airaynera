@@ -131,17 +131,17 @@ async function testPHIEncryption() {
     if (patients.length > 0) {
       const p = patients[0];
       console.log(`   Name: ${p.name}`);
-      console.log(`   DNI: ${p.dni}`);
-      console.log(`   Email: ${p.email}`);
-      console.log(`   Phone: ${p.phone}`);
+      console.log(`   DNI: ${p.dni && typeof p.dni === 'object' ? '[ENCRYPTED]' : p.dni}`);
+      console.log(`   Email: ${p.email && typeof p.email === 'object' ? '[ENCRYPTED]' : p.email}`);
+      console.log(`   Phone: ${p.phone && typeof p.phone === 'object' ? '[ENCRYPTED]' : p.phone}`);
     }
 
     console.log(`✅ Retrieved ${sessions.length} sessions`);
     if (sessions.length > 0) {
       const s = sessions[0];
       console.log(`   Patient ID: ${s.pacienteId}`);
-      console.log(`   Clinical notes: ${s.notas.substring(0, 100)}...`);
-      console.log(`   Treatment plan: ${s.treatment_plan.substring(0, 100)}...`);
+      console.log(`   Clinical notes: ${s.notas && typeof s.notas === 'string' ? s.notas.substring(0, 100) + '...' : '[ENCRYPTED]'}`);
+      console.log(`   Treatment plan: ${s.treatment_plan && typeof s.treatment_plan === 'string' ? s.treatment_plan.substring(0, 100) + '...' : '[ENCRYPTED]'}`);
     }
 
   } catch (error) {
