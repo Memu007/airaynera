@@ -11,6 +11,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
 // Security validation results
 let validationResults = {

@@ -5,7 +5,7 @@
  */
 
 const SessionStorageService = require('../services/sessionStorageService');
-const { requireAuth } = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 const { validateSessionStorage } = require('../middleware/validation');
 
 class SessionStorageController {
@@ -299,12 +299,12 @@ class SessionStorageController {
    */
   registerRoutes(router) {
     // Session storage routes (all require authentication)
-    router.post('/store', requireAuth, this.storeSession.bind(this));
-    router.get('/:sessionId', requireAuth, this.retrieveSession.bind(this));
-    router.get('/', requireAuth, this.listSessions.bind(this));
-    router.delete('/:sessionId', requireAuth, this.deleteSession.bind(this));
-    router.get('/stats', requireAuth, this.getStorageStats.bind(this));
-    router.post('/upload-audio', requireAuth, this.uploadAudioSession.bind(this));
+    router.post('/store', verifyToken(), this.storeSession.bind(this));
+    router.get('/:sessionId', verifyToken(), this.retrieveSession.bind(this));
+    router.get('/', verifyToken(), this.listSessions.bind(this));
+    router.delete('/:sessionId', verifyToken(), this.deleteSession.bind(this));
+    router.get('/stats', verifyToken(), this.getStorageStats.bind(this));
+    router.post('/upload-audio', verifyToken(), this.uploadAudioSession.bind(this));
   }
 }
 

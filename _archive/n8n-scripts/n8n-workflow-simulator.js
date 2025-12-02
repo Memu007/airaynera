@@ -10,7 +10,7 @@ const url = require('url');
 class N8NWorkflowSimulator {
     constructor() {
         this.port = 5678;
-        this.airaBaseUrl = 'http://localhost:8082';
+        this.airaBaseUrl = 'http://localhost:8080'; // Updated to 8080
         this.geminiApiKey = 'AIzaSyBi-JgR5zF2J1xpC9_PuNGT0dgg7_2E1rI';
         this.server = null;
         this.workflowStats = {
@@ -49,7 +49,7 @@ class N8NWorkflowSimulator {
 
     async checkAIRAHealth() {
         return new Promise((resolve, reject) => {
-            http.get('http://localhost:8082/api/health', (res) => {
+            http.get('http://localhost:8080/api/health', (res) => { // Updated to 8080
                 if (res.statusCode === 200) {
                     console.log('✅ AIRA API: Connected and healthy');
                     resolve();
@@ -124,46 +124,53 @@ class N8NWorkflowSimulator {
             // 1. Simular análisis con Gemini 2.0
             const geminiAnalysis = await this.simulateGeminiAnalysis(whatsappData.body);
 
-            // 2. Verificar reconocimiento de paciente
-            if (geminiAnalysis.patientName && geminiAnalysis.patientName !== null) {
-                this.workflowStats.patientRecognitions++;
+            // 2. Reconocer Paciente (Step 1 of N8N flow)
+            console.log('🔍 Requesting patient recognition...');
+            const recognitionResponse = await this.callAIRAAPI('/api/whatsapp/recognize-patient', {
+                phoneNumber: whatsappData.from,
+                transcription: whatsappData.body,
+                aiAnalysis: geminiAnalysis
+            });
+
+            if (!recognitionResponse.success || !recognitionResponse.data.patient) {
+                console.log('⚠️ Patient not found, cannot create session automatically.');
+                 // Enviar respuesta de error/acción manual
+                const errorResponse = {
+                    success: false,
+                    message: 'Paciente no reconocido. Se requiere intervención manual.',
+                    requiresManualInput: true
+                };
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(errorResponse, null, 2));
+                return;
             }
 
-            // 3. Enviar a AIRA API
-            const sessionData = {
-                professionalId: 1, // ID del profesional por defecto
-                patientId: geminiAnalysis.patientName ? `patient_${Date.now()}` : null,
+            const patient = recognitionResponse.data.patient;
+            this.workflowStats.patientRecognitions++;
+            console.log(`✅ Patient identified: ${patient.name} (ID: ${patient.id})`);
+
+            // 3. Crear Sesión (Step 2 of N8N flow)
+            const sessionPayload = {
+                patientData: { id: patient.id, name: patient.name },
+                sessionData: { type: geminiAnalysis.sessionType || 'individual' },
                 transcription: whatsappData.body,
-                metadata: {
-                    confidence: geminiAnalysis.confidence,
-                    wordCount: whatsappData.body.split(/\s+/).length,
-                    estimatedDuration: Math.ceil(whatsappData.body.split(/\s+/).length * 2.5),
-                    detectedPatientName: geminiAnalysis.patientName,
-                    source: 'whatsapp',
-                    timestamp: new Date().toISOString(),
-                    sessionType: geminiAnalysis.sessionType,
-                    inputFormat: geminiAnalysis.inputFormat,
-                    contentSummary: geminiAnalysis.contentSummary
-                }
+                audioInfo: { duration: 60 } // Mock duration
             };
 
-            const airaResponse = await this.sendToAIRAAPI(sessionData);
+            const sessionResponse = await this.callAIRAAPI('/api/whatsapp/create-session', sessionPayload);
 
-            if (airaResponse.success) {
+            if (sessionResponse.success) {
                 this.workflowStats.successful++;
                 this.workflowStats.sessionsCreated++;
 
                 // 4. Enviar respuesta de éxito
                 const response = {
                     success: true,
-                    sessionId: airaResponse.sessionId || `session_${Date.now()}`,
-                    message: 'Sesión optimizada exitosamente',
-                    patientInfo: geminiAnalysis.patientName ? {
-                        name: geminiAnalysis.patientName,
+                    sessionId: sessionResponse.data.sessionId,
+                    message: 'Sesión creada exitosamente',
+                    patientInfo: {
+                        name: patient.name,
                         recognized: true
-                    } : {
-                        name: 'No reconocido',
-                        recognized: false
                     },
                     sessionType: geminiAnalysis.sessionType,
                     optimizationStatus: 'completed',
@@ -173,10 +180,10 @@ class N8NWorkflowSimulator {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(response, null, 2));
 
-                console.log(`✅ Workflow completed for ${geminiAnalysis.patientName || 'Unknown patient'}`);
+                console.log(`✅ Workflow completed for ${patient.name}`);
 
             } else {
-                throw new Error(airaResponse.error || 'Session creation failed');
+                throw new Error(sessionResponse.error || 'Session creation failed');
             }
 
         } catch (error) {
@@ -187,12 +194,11 @@ class N8NWorkflowSimulator {
             const errorResponse = {
                 success: false,
                 error: error.message,
-                message: 'No se pudo procesar la solicitud. Por favor, intente nuevamente.',
-                requiresManualInput: true,
+                message: 'Error procesando la solicitud.',
                 timestamp: new Date().toISOString()
             };
 
-            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(errorResponse, null, 2));
         }
     }
@@ -209,9 +215,6 @@ class N8NWorkflowSimulator {
         const sessionType = message.includes('pareja') ? 'pareja' :
                            message.includes('familiar') ? 'familiar' : 'individual';
 
-        // Detectar formato (siempre texto en esta simulación)
-        const inputFormat = 'texto';
-
         // Generar resumen del contenido
         const contentSummary = message.substring(0, 50) + '...';
 
@@ -221,26 +224,25 @@ class N8NWorkflowSimulator {
         return {
             patientName,
             sessionType,
-            inputFormat,
             contentSummary,
             confidence,
-            processingTime: 100 + Math.random() * 200
+            patientIdentified: !!patientName
         };
     }
 
-    async sendToAIRAAPI(sessionData) {
+    async callAIRAAPI(endpoint, data) {
         return new Promise((resolve, reject) => {
-            const postData = JSON.stringify(sessionData);
+            const postData = JSON.stringify(data);
 
             const options = {
                 hostname: 'localhost',
-                port: 8082,
-                path: '/api/session/create',
+                port: 8080, // Updated to correct port
+                path: endpoint,
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(postData),
-                    'Authorization': 'Bearer aira_optimization_secret_2025'
+                    // 'Authorization': 'Bearer ...' // Add if needed
                 }
             };
 
@@ -254,8 +256,8 @@ class N8NWorkflowSimulator {
                 res.on('end', () => {
                     try {
                         const response = JSON.parse(body);
-                        if (res.statusCode === 200 || res.statusCode === 201) {
-                            resolve({ success: true, data: response, sessionId: response.sessionId });
+                        if (res.statusCode >= 200 && res.statusCode < 300) {
+                            resolve({ success: true, data: response });
                         } else {
                             resolve({ success: false, error: response.error || 'API Error', statusCode: res.statusCode });
                         }
@@ -279,11 +281,24 @@ class N8NWorkflowSimulator {
         });
     }
 
+    readRequestBody(req) {
+        return new Promise((resolve, reject) => {
+            const chunks = [];
+            req.on('data', chunk => chunks.push(chunk));
+            req.on('end', () => {
+                const body = Buffer.concat(chunks).toString('utf8');
+                resolve(body);
+            });
+            req.on('error', reject);
+        });
+    }
+
     sendHomePage(res) {
         const html = `
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>AIRA n8n Workflow Simulator</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
@@ -381,7 +396,7 @@ class N8NWorkflowSimulator {
 
                 const result = await response.json();
 
-                if (response.ok) {
+                if (response.ok && result.success) {
                     resultDiv.innerHTML = \`
                         <div class="success">
                             <h4>✅ Success!</h4>
@@ -394,14 +409,15 @@ class N8NWorkflowSimulator {
                 } else {
                     resultDiv.innerHTML = \`
                         <div class="error">
-                            <h4>❌ Error</h4>
-                            <p>\${result.error}</p>
+                            <h4>❌ Error / Action Required</h4>
+                            <p>\${result.message || result.error}</p>
+                            \${result.requiresManualInput ? '<p><em>El paciente no fue encontrado. Crealo en el dashboard primero.</em></p>' : ''}
                         </div>
                     \`;
                 }
 
                 // Actualizar estadísticas
-                location.reload();
+                // location.reload(); // Commented out to prevent refreshing before seeing result
 
             } catch (error) {
                 resultDiv.innerHTML = \`
@@ -416,22 +432,8 @@ class N8NWorkflowSimulator {
 </body>
 </html>`;
 
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
-    }
-
-    sendStats(res) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(this.workflowStats, null, 2));
-    }
-
-    readRequestBody(req) {
-        return new Promise((resolve, reject) => {
-            let body = '';
-            req.on('data', chunk => body += chunk);
-            req.on('end', () => resolve(body));
-            req.on('error', reject);
-        });
     }
 
     showUsageInfo() {

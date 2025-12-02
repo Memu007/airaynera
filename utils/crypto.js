@@ -2,15 +2,23 @@ const crypto = require('crypto');
 
 function getKey() {
   const raw = process.env.DATA_KEY || process.env.ENCRYPTION_KEY || '';
-  if (!raw) return null;
+  if (!raw) {
+      console.error("❌ [CRYPTO] No encryption key found in env!");
+      return null;
+  }
   // Accept base64 or hex
   try {
     const buf = raw.includes('=') || raw.includes('/') || raw.includes('+')
       ? Buffer.from(raw, 'base64')
       : Buffer.from(raw, 'hex');
-    if (buf.length !== 32) return null; // AES-256
+    
+    if (buf.length !== 32) {
+        console.error(`❌ [CRYPTO] Invalid key length: ${buf.length} bytes (expected 32)`);
+        return null; // AES-256
+    }
     return buf;
-  } catch (_) {
+  } catch (e) {
+    console.error("❌ [CRYPTO] Error parsing key:", e);
     return null;
   }
 }

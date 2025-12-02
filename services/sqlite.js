@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcrypt');
 const { encryptString, decryptString, getKey } = require('../utils/crypto');
+
+const BCRYPT_ROUNDS = 10;
 
 let db; // lazy
 
@@ -28,8 +31,18 @@ function getDb() {
   db.pragma('journal_mode = WAL');
   // Init schema
   db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dni TEXT UNIQUE NOT NULL,
+      pin_hash TEXT NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT,
+      specialty TEXT,
+      created_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS patients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId TEXT NOT NULL,
       name TEXT NOT NULL,
       dni TEXT,
       phone TEXT,
@@ -41,6 +54,7 @@ function getDb() {
     );
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId TEXT NOT NULL,
       pacienteId INTEGER NOT NULL,
       notas TEXT,
       tipo TEXT,
@@ -52,8 +66,9 @@ function getDb() {
       fecha TEXT,
       FOREIGN KEY(pacienteId) REFERENCES patients(id) ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_patients_name ON patients(name);
-    CREATE INDEX IF NOT EXISTS idx_patients_dni ON patients(dni);
+    CREATE INDEX IF NOT EXISTS idx_users_dni ON users(dni);
+    CREATE INDEX IF NOT EXISTS idx_patients_userId ON patients(userId);
+    CREATE INDEX IF NOT EXISTS idx_sessions_userId ON sessions(userId);
     CREATE INDEX IF NOT EXISTS idx_sessions_paciente ON sessions(pacienteId);
     CREATE INDEX IF NOT EXISTS idx_sessions_fecha ON sessions(fecha);
   `);
@@ -77,15 +92,15 @@ function maybeDecrypt(jsonStr) {
   } catch (_) { return ''; }
 }
 
-function listPatients() {
+function listPatients(userId) {
   const conn = getDb();
-  const rows = conn.prepare('SELECT * FROM patients').all();
+  const rows = conn.prepare('SELECT * FROM patients WHERE userId = ?').all(userId);
   return rows.map(r => ({
     id: String(r.id),
-    name: r.name,
+    name: maybeDecrypt(r.name),
     dni: maybeDecrypt(r.dni),
     phone: maybeDecrypt(r.phone),
-    email: r.email || '',
+    email: maybeDecrypt(r.email),
     insurance: r.insurance || '',
     habilitado: r.habilitado === 1,
     created_via: r.created_via || 'web',
@@ -93,69 +108,178 @@ function listPatients() {
   }));
 }
 
-function addPatient(p) {
+function addPatient(userId, p) {
   const conn = getDb();
   const now = new Date().toISOString().split('T')[0];
-  const stmt = conn.prepare('INSERT INTO patients (name, dni, phone, email, insurance, habilitado, created_via, fechaRegistro) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-  const info = stmt.run(String(p.name || ''), wrapEncrypt(p.dni), wrapEncrypt(p.phone), String(p.email || ''), String(p.insurance || ''), (typeof p.habilitado === 'boolean' ? (p.habilitado ? 1 : 0) : 1), String(p.created_via || 'web'), now);
-  return { id: String(info.lastInsertRowid), name: String(p.name || ''), dni: p.dni || '', phone: p.phone || '', email: String(p.email || ''), insurance: String(p.insurance || ''), habilitado: typeof p.habilitado === 'boolean' ? p.habilitado : true, created_via: p.created_via || 'web', fechaRegistro: now };
+  const stmt = conn.prepare('INSERT INTO patients (userId, name, dni, phone, email, insurance, habilitado, created_via, fechaRegistro) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  
+  // Encrypt sensitive fields
+  const encName = wrapEncrypt(p.name);
+  const encDni = wrapEncrypt(p.dni);
+  const encPhone = wrapEncrypt(p.phone);
+  const encEmail = wrapEncrypt(p.email);
+
+  const info = stmt.run(userId, encName, encDni, encPhone, encEmail, String(p.insurance || ''), (typeof p.habilitado === 'boolean' ? (p.habilitado ? 1 : 0) : 1), String(p.created_via || 'web'), now);
+  
+  return { 
+    id: String(info.lastInsertRowid), 
+    name: String(p.name || ''), 
+    dni: p.dni || '', 
+    phone: p.phone || '', 
+    email: String(p.email || ''), 
+    insurance: String(p.insurance || ''), 
+    habilitado: typeof p.habilitado === 'boolean' ? p.habilitado : true, 
+    created_via: p.created_via || 'web', 
+    fechaRegistro: now 
+  };
 }
 
-function updatePatient(id, changes) {
+function updatePatient(userId, id, changes) {
   const conn = getDb();
-  const current = conn.prepare('SELECT * FROM patients WHERE id = ?').get(id);
+  const current = conn.prepare('SELECT * FROM patients WHERE id = ? AND userId = ?').get(id, userId);
   if (!current) return null;
+  
   const next = { ...current };
-  if (changes.name != null) next.name = String(changes.name);
-  if (changes.email != null) next.email = String(changes.email);
-  if (changes.insurance != null) next.insurance = String(changes.insurance);
-  if (changes.habilitado != null) next.habilitado = changes.habilitado ? 1 : 0;
+  // Encrypt updates if present
+  if (changes.name != null) next.name = wrapEncrypt(changes.name);
+  if (changes.email != null) next.email = wrapEncrypt(changes.email);
   if (changes.dni != null) next.dni = wrapEncrypt(changes.dni);
   if (changes.phone != null) next.phone = wrapEncrypt(changes.phone);
-  const upd = conn.prepare('UPDATE patients SET name=?, dni=?, phone=?, email=?, insurance=?, habilitado=? WHERE id=?');
-  upd.run(next.name, next.dni, next.phone, next.email, next.insurance, next.habilitado, id);
-  return { id: String(id), name: next.name, dni: maybeDecrypt(next.dni), phone: maybeDecrypt(next.phone), email: next.email || '', insurance: next.insurance || '', habilitado: next.habilitado === 1 };
+  
+  if (changes.insurance != null) next.insurance = String(changes.insurance);
+  if (changes.habilitado != null) next.habilitado = changes.habilitado ? 1 : 0;
+
+  const upd = conn.prepare('UPDATE patients SET name=?, dni=?, phone=?, email=?, insurance=?, habilitado=? WHERE id=? AND userId=?');
+  upd.run(next.name, next.dni, next.phone, next.email, next.insurance, next.habilitado, id, userId);
+  
+  return { 
+    id: String(id), 
+    name: maybeDecrypt(next.name), 
+    dni: maybeDecrypt(next.dni), 
+    phone: maybeDecrypt(next.phone), 
+    email: maybeDecrypt(next.email), 
+    insurance: next.insurance || '', 
+    habilitado: next.habilitado === 1 
+  };
 }
 
-function deletePatient(id) {
+function deletePatient(userId, id) {
   const conn = getDb();
-  const old = conn.prepare('SELECT * FROM patients WHERE id = ?').get(id);
+  const old = conn.prepare('SELECT * FROM patients WHERE id = ? AND userId = ?').get(id, userId);
   if (!old) return null;
-  conn.prepare('DELETE FROM patients WHERE id = ?').run(id);
-  conn.prepare('DELETE FROM sessions WHERE pacienteId = ?').run(id);
+  conn.prepare('DELETE FROM patients WHERE id = ? AND userId = ?').run(id, userId);
+  conn.prepare('DELETE FROM sessions WHERE pacienteId = ? AND userId = ?').run(id, userId);
   return old;
 }
 
-function listSessions() {
+function listSessions(userId) {
   const conn = getDb();
-  return conn.prepare('SELECT * FROM sessions').all();
+  return conn.prepare('SELECT * FROM sessions WHERE userId = ?').all(userId);
 }
 
-function addSession(s) {
+function addSession(userId, s) {
   const conn = getDb();
   const now = new Date().toISOString().split('T')[0];
-  const stmt = conn.prepare('INSERT INTO sessions (pacienteId, notas, tipo, duracion, medication_notes, mood_assessment, requires_followup, created_via, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  const info = stmt.run(String(s.pacienteId), String(s.notas || ''), String(s.tipo || 'individual'), Number(s.duracion || 60), String(s.medication_notes || ''), Number(s.mood_assessment || 4), s.requires_followup ? 1 : 0, String(s.created_via || 'web'), now);
-  return { id: String(info.lastInsertRowid), pacienteId: String(s.pacienteId), notas: String(s.notas || ''), tipo: String(s.tipo || 'individual'), duracion: Number(s.duracion || 60), medication_notes: String(s.medication_notes || ''), mood_assessment: Number(s.mood_assessment || 4), requires_followup: !!s.requires_followup, created_via: String(s.created_via || 'web'), fecha: now };
+  
+  // Verify patient belongs to user
+  const patient = conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(s.pacienteId, userId);
+  if (!patient) throw new Error('Patient not found or access denied');
+
+  const stmt = conn.prepare('INSERT INTO sessions (userId, pacienteId, notas, tipo, duracion, medication_notes, mood_assessment, requires_followup, created_via, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const info = stmt.run(userId, String(s.pacienteId), String(s.notas || ''), String(s.tipo || 'individual'), Number(s.duracion || 60), String(s.medication_notes || ''), Number(s.mood_assessment || 4), s.requires_followup ? 1 : 0, String(s.created_via || 'web'), now);
+  
+  return { 
+    id: String(info.lastInsertRowid), 
+    pacienteId: String(s.pacienteId), 
+    notas: String(s.notas || ''), 
+    tipo: String(s.tipo || 'individual'), 
+    duracion: Number(s.duracion || 60), 
+    medication_notes: String(s.medication_notes || ''), 
+    mood_assessment: Number(s.mood_assessment || 4), 
+    requires_followup: !!s.requires_followup, 
+    created_via: String(s.created_via || 'web'), 
+    fecha: now 
+  };
 }
 
-function updateSession(id, changes) {
+function updateSession(userId, id, changes) {
   const conn = getDb();
-  const current = conn.prepare('SELECT * FROM sessions WHERE id = ?').get(id);
+  const current = conn.prepare('SELECT * FROM sessions WHERE id = ? AND userId = ?').get(id, userId);
   if (!current) return null;
+  
   const next = { ...current, ...changes };
-  conn.prepare('UPDATE sessions SET pacienteId=?, notas=?, tipo=?, duracion=?, medication_notes=?, mood_assessment=?, requires_followup=? WHERE id=?')
-      .run(String(next.pacienteId), String(next.notas || ''), String(next.tipo || 'individual'), Number(next.duracion || 60), String(next.medication_notes || ''), Number(next.mood_assessment || 4), next.requires_followup ? 1 : 0, id);
+  conn.prepare('UPDATE sessions SET pacienteId=?, notas=?, tipo=?, duracion=?, medication_notes=?, mood_assessment=?, requires_followup=? WHERE id=? AND userId=?')
+      .run(String(next.pacienteId), String(next.notas || ''), String(next.tipo || 'individual'), Number(next.duracion || 60), String(next.medication_notes || ''), Number(next.mood_assessment || 4), next.requires_followup ? 1 : 0, id, userId);
   return { ...next, id: String(id), requires_followup: !!next.requires_followup };
 }
 
-function deleteSession(id) {
+function deleteSession(userId, id) {
   const conn = getDb();
-  const info = conn.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+  const info = conn.prepare('DELETE FROM sessions WHERE id = ? AND userId = ?').run(id, userId);
   return info.changes > 0;
 }
 
+// ===== USER FUNCTIONS =====
+
+async function createUser(userData) {
+  const conn = getDb();
+  const { dni, pin, name, email, specialty } = userData;
+  
+  if (!dni || !pin || !name) {
+    throw new Error('DNI, PIN y nombre son requeridos');
+  }
+
+  // Check if user already exists
+  const existing = conn.prepare('SELECT id FROM users WHERE dni = ?').get(dni);
+  if (existing) {
+    throw new Error('USER_EXISTS');
+  }
+
+  // Hash the PIN
+  const pinHash = await bcrypt.hash(pin, BCRYPT_ROUNDS);
+  const now = new Date().toISOString();
+
+  const stmt = conn.prepare(
+    'INSERT INTO users (dni, pin_hash, name, email, specialty, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  const info = stmt.run(dni, pinHash, name, email || '', specialty || '', now);
+
+  return {
+    id: info.lastInsertRowid,
+    dni,
+    name,
+    email: email || '',
+    specialty: specialty || '',
+    role: 'doctor'
+  };
+}
+
+async function verifyUser(dni, pin) {
+  const conn = getDb();
+  
+  const user = conn.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+  if (!user) {
+    return null;
+  }
+
+  // Verify PIN
+  const isValid = await bcrypt.compare(pin, user.pin_hash);
+  if (!isValid) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    dni: user.dni,
+    name: user.name,
+    email: user.email,
+    specialty: user.specialty,
+    role: 'doctor'
+  };
+}
+
 module.exports = {
+  getDb,
   listPatients,
   addPatient,
   updatePatient,
@@ -164,6 +288,8 @@ module.exports = {
   addSession,
   updateSession,
   deleteSession,
+  createUser,
+  verifyUser,
 };
 
 
