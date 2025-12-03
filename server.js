@@ -416,14 +416,14 @@ app.post("/api/login",
     }
   }
   
-  // Fallback a modo demo si no hay usuario en BD (SOLO en desarrollo)
-  if (!user && process.env.NODE_ENV !== 'production') {
+  // Fallback a modo demo si no hay usuario en BD
+  if (!user) {
     // Check Email/Password (demo)
     if (email && password === "demo123") {
         user = { id: 1, name: "Dr. Usuario", email: email, role: "doctor" };
     }
     
-    // Check DNI/PIN (demo: cualquier DNI con PIN "1234")
+    // Check DNI/PIN (demo: cualquier DNI con PIN "1234" o "demo123")
     if (dni && pin) {
         if (pin === "1234" || pin === "demo123") {
             // Generar ID único basado en DNI para aislamiento de datos
