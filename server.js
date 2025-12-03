@@ -30,49 +30,33 @@ const handleValidationErrors = (req, res, next) => {
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Configuración de seguridad médica - ajustada para desarrollo
+// Configuración de seguridad médica
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        // Permitir CSS de CDN y fuentes en desarrollo
-        styleSrc:
-          process.env.NODE_ENV === "production"
-            ? ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"]
-            : [
-                "'self'",
-                "'unsafe-inline'",
-                "https://fonts.googleapis.com",
-                "https://cdnjs.cloudflare.com",
-              ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://fonts.googleapis.com",
+          "https://cdnjs.cloudflare.com",
+        ],
         fontSrc: [
           "'self'",
           "https://fonts.gstatic.com",
           "https://cdnjs.cloudflare.com",
         ],
         imgSrc: ["'self'", "data:", "https:"],
-        // Permitir scripts de CDN en desarrollo
-        scriptSrc:
-          process.env.NODE_ENV === "production"
-            ? ["'self'"]
-            : [
-                "'self'",
-                "'unsafe-inline'",
-                "https://cdnjs.cloudflare.com",
-                "https://cdn.jsdelivr.net",
-                "https://code.jquery.com",
-              ],
-        // Permitir event handlers inline solo en desarrollo
-        scriptSrcAttr:
-          process.env.NODE_ENV === "production"
-            ? ["'none'"]
-            : ["'unsafe-inline'"],
-        // Permitir source maps en desarrollo para depuración
-        connectSrc:
-          process.env.NODE_ENV === "production"
-            ? ["'self'"]
-            : ["'self'", "https://cdnjs.cloudflare.com"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdnjs.cloudflare.com",
+          "https://cdn.jsdelivr.net",
+          "https://code.jquery.com",
+        ],
+        scriptSrcAttr: ["'unsafe-inline'"],
+        connectSrc: ["'self'", "https://cdnjs.cloudflare.com"],
         mediaSrc: ["'self'"],
         objectSrc: ["'none'"],
         childSrc: ["'none'"],
@@ -754,6 +738,26 @@ if (require.main === module) {
         console.log(`\n🚀 AIRA Frontend Server running on port ${PORT}`);
         console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`🔒 Security: Enabled`);
+    });
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+        console.log('SIGTERM received, shutting down gracefully');
+        server.close(() => {
+            console.log('Process terminated');
+            process.exit(0);
+        });
+    });
+
+    process.on('SIGINT', () => {
+        console.log('SIGINT received, shutting down gracefully');
+        server.close(() => {
+            console.log('Process terminated');
+            process.exit(0);
+        });
+    });
+}
+
     });
 
     // Graceful shutdown
