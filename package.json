@@ -12,6 +12,7 @@
     "test:whatsapp-conversation": "node scripts/whatsapp-conversation-tests.js",
     "test:audio-pipeline": "node scripts/audio-pipeline-tests.js",
     "test:audio-upload-worker": "node scripts/audio-upload-worker-tests.js",
+    "benchmark:audio-worker": "node scripts/audio-worker-benchmark.js",
     "test:functional": "node scripts/run-functional-tests.js",
     "test:runtime-supervisor": "node scripts/runtime-supervisor-smoke.js",
     "test:ui-contract": "node scripts/ui-contract-tests.js",
