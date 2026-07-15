@@ -31,6 +31,9 @@ Hacer funcionar el recorrido registro → paciente → sesión → recarga antes
 - Recorrido visible local aprobado: registro, activación simulada, paciente, sesión y recarga.
 - Después de recargar: 1 paciente, 1 sesión, nombre y nota visibles.
 - Consola del navegador: sin errores ni advertencias.
+- Commit funcional publicado: `f193163` (`make web core persistent`).
+- PR técnico [#2](https://github.com/Memu007/Aira.final/pull/2) actualizado.
+- GitHub Actions: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados sobre el commit funcional.
 
 ### Siguiente trabajo
 

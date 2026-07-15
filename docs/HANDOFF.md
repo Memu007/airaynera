@@ -89,6 +89,9 @@ Estado remoto del PR técnico #2:
 - La corrección fue aplicada: se eliminaron diez dependencias sin uso, se regeneró el lockfile sin `--force` y se quitó el argumento duplicado.
 - Verificación posterior local: 174 paquetes auditados, 0 vulnerabilidades, 30/30 pruebas y build aprobado.
 - Verificación posterior remota: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados sobre `e2e6b93`.
+- Implementación del vertical web: `f193163` (`make web core persistent`).
+- Verificación remota del vertical web: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
+- El PR técnico #2 sigue en borrador y su descripción ya refleja contratos, migración `002`, 45 pruebas y la validación visible.
 
 ## Decisiones técnicas vigentes
 
