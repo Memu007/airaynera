@@ -15,6 +15,7 @@ Integrar Gemini como primer proveedor real sin bloquear la web, sin romper fixtu
 - `geminiAudioTranscriber` usa Files API e Interactions API v1 con Gemini 3.1 Flash-Lite, `store:false`, JSON estructurado y prompt literal.
 - El adaptador espera el estado remoto `ACTIVE`, elimina el File en `finally`, acota timeouts y separa retries seguros de POST sin idempotencia.
 - Heartbeat, backoff, upload e inferencia escuchan el abort del lease; `stop()` cancela el proveedor activo.
+- El supervisor, el worker standalone y el smoke cargan `.env`, por lo que la clave no depende de exportar variables manualmente.
 - Un fencing token obsoleto impide que un resultado asíncrono tardío persista raw, clean o el estado del job.
 - Se agregó un smoke artificial de 40 WAV TTS con manifiesto, hashes, referencias y spans; los binarios y secretos quedan fuera de Git.
 - La corrida real exige árbol Git limpio, manifiesto de bytes fijo y reporte. El reporte conserva commit, hash de corpus/prompt, referencia e hipótesis artificiales, request ID, usage y latencias.

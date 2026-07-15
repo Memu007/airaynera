@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+require('dotenv').config({ quiet: true });
+
 const crypto = require('node:crypto');
 const sql = require('../services/sqlite');
 const audioDraftPipeline = require('../services/audioDraftPipeline');

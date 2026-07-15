@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+require('dotenv').config({ quiet: true });
+
 const { spawn } = require('node:child_process');
 
 const root = require('node:path').resolve(__dirname, '..');

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+require('dotenv').config({ quiet: true });
+
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const os = require('node:os');

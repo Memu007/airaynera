@@ -101,6 +101,7 @@ Registro web
 - `workers/audio-worker.js` reclama jobs con lease y fencing token, recupera trabajo abandonado, ejecuta el pipeline asíncrono, aborta el proveedor al perder el lease o apagar y limpia el archivo después de persistir la transcripción o alcanzar un estado terminal.
 - El barrido de expiración sólo cancela el job y elimina el medio si logró marcar atómicamente el borrador vencido; si otra instancia ya persistió la transcripción, el trabajo continúa.
 - `npm start` supervisa servidor y worker; `npm run dev` usa el mismo supervisor con autoreload. En Render, base y archivos temporales comparten el disco persistente montado en `/app/data`.
+- El supervisor carga `.env` antes de crear ambos procesos; el worker standalone y el smoke también lo cargan.
 - Estados: `received → transcribing → structuring → ready/failed`; confirmar y cancelar siguen usando el servicio canónico.
 - Un retry de estructuración conserva la transcripción y no vuelve a transcribir.
 - `received`, jobs fallidos y leases vencidos son recuperables después de reiniciar; un worker con token obsoleto no puede sobrescribir al reemplazo.
