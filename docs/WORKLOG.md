@@ -19,19 +19,24 @@ Comenzar el primer bloque del roadmap con una prueba funcional confiable y ejecu
 - Se archivaron cinco workflows que referenciaban servidores, scripts o procesos de despliegue inexistentes.
 - Se corrigió la creación de sesiones para devolver `404` cuando el paciente no existe o no pertenece a la cuenta.
 - Se actualizó la prueba correspondiente, que antes esperaba incorrectamente un error `500`.
+- Se agregó un ejecutor de migraciones versionadas en `db/migrate.js`.
+- Se movió el esquema inicial a `db/migrations/001_initial_schema.sql`.
+- Se habilitaron claves foráneas al abrir SQLite.
+- Se agregó una prueba que verifica aplicación única, esquema esperado y preservación de datos existentes.
+- Se publicó la rama y se abrió el PR técnico en borrador [#2](https://github.com/Memu007/Aira.final/pull/2).
 
 ### Verificaciones
 
 - `npm test`: 30/30 pruebas funcionales aprobadas.
 - `npm run build`: aprobado.
+- `npm run test:migrations`: aprobado sobre base nueva y base existente.
 - `git diff --check`: sin errores.
 - Los datos de prueba se almacenaron fuera del repositorio y se eliminaron al terminar.
 
 ### Siguiente trabajo
 
-1. Introducir migraciones versionadas para SQLite.
-2. Definir contratos canónicos de paciente, sesión y borrador.
-3. Corregir el recorrido web de registro, carga y persistencia.
+1. Definir contratos canónicos de paciente, sesión y borrador.
+2. Corregir el recorrido web de registro, carga y persistencia.
 
 ## 2026-07-14 — Revisión de producto y planificación del MVP
 

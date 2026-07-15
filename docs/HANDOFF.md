@@ -12,7 +12,7 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - El árbol estaba limpio y sincronizado con `origin/main` antes de agregar esta documentación.
 - Etapa de producto: planificación del MVP terminada.
 - Etapa técnica: Etapa 0 en curso; línea base reproducible terminada.
-- Próximo objetivo: migraciones versionadas y contratos canónicos de paciente, sesión y borrador.
+- Próximo objetivo: contratos canónicos de paciente, sesión y borrador.
 
 ## Dirección del producto acordada
 
@@ -74,6 +74,8 @@ Registro web
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
 - `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
+- SQLite ahora aplica migraciones versionadas desde `db/migrations/`.
+- La migración inicial es idempotente y fue probada contra una base nueva y una base con datos existentes.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
 ## Decisiones técnicas vigentes
@@ -99,7 +101,7 @@ Rama prevista: `agent/01-web-core`.
 - [x] Registrar los resultados de la línea base: 30/30.
 - [x] Estandarizar Node.js 20.
 - [x] Consolidar una única CI funcional confiable.
-- [ ] Introducir migraciones versionadas.
+- [x] Introducir migraciones versionadas.
 - [ ] Definir contratos canónicos de paciente, sesión y borrador.
 - [ ] Crear dobles de prueba para WhatsApp y transcripción.
 
@@ -147,6 +149,8 @@ No bloquean el vertical de texto.
 - Rama publicada: `origin/agent/document-product-roadmap`.
 - PR documental en borrador: [#1 — Document product roadmap and living handoff](https://github.com/Memu007/Aira.final/pull/1).
 - La implementación continúa en `agent/01-web-core`, creada desde el commit documental `db9089c`.
+- Primer commit técnico: `26d48e2` (`establish reproducible functional baseline`).
+- PR técnico en borrador: [#2 — Establish reproducible web-core baseline](https://github.com/Memu007/Aira.final/pull/2).
 
 ## Cómo retomar
 
@@ -156,7 +160,7 @@ No bloquean el vertical de texto.
 4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
 5. Retomar `agent/01-web-core`.
 6. Ejecutar `npm test` para confirmar la línea base 30/30.
-7. Implementar migraciones versionadas y los contratos canónicos.
+7. Implementar los contratos canónicos de paciente, sesión y borrador.
 
 ## Regla para el próximo handoff
 
