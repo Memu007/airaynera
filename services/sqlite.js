@@ -271,9 +271,8 @@ function addSession(userId, s) {
   const timestamp = new Date().toISOString();
   const today = clinicalDateKey();
   
-  // Verify patient belongs to user
-  const patient = conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(s.pacienteId, userId);
-  if (!patient) {
+  // New sessions can only be created for active patients owned by the user.
+  if (!activePatientExists(userId, s.pacienteId)) {
     const error = new Error('Patient not found or access denied');
     error.code = 'PATIENT_NOT_FOUND';
     throw error;
@@ -379,6 +378,16 @@ function patientExists(userId, patientId) {
   );
 }
 
+function activePatientExists(userId, patientId) {
+  const conn = getDb();
+  return Boolean(
+    conn.prepare(`
+      SELECT id FROM patients
+      WHERE id = ? AND userId = ? AND habilitado = 1
+    `).get(patientId, userId)
+  );
+}
+
 function getSessionDraft(userId, id) {
   return mapSessionDraftRow(getSessionDraftRow(getDb(), userId, id));
 }
@@ -427,7 +436,7 @@ function addSessionDraft(userId, draft) {
   );
   if (existing) return { draft: existing, created: false };
 
-  if (!patientExists(userId, draft.patientId)) {
+  if (!activePatientExists(userId, draft.patientId)) {
     const error = new Error('Patient not found or access denied');
     error.code = 'PATIENT_NOT_FOUND';
     throw error;
@@ -708,22 +717,39 @@ function expireAudioUpload(userId, draftId) {
   const conn = getDb();
   const expire = conn.transaction(() => {
     const now = new Date().toISOString();
+    const draftExpiration = conn.prepare(`
+      UPDATE session_drafts SET
+        status='failed', failed_stage='transcribing',
+        error_code='AUDIO_UPLOAD_EXPIRED',
+        error_message='The temporary audio file expired before transcription completed',
+        processing_finished_at=?, updated_at=?
+      WHERE id=? AND user_id=?
+        AND media_reference LIKE 'upload://%'
+        AND media_deleted_at IS NULL
+        AND media_expires_at IS NOT NULL
+        AND media_expires_at <= ?
+        AND raw_transcript IS NULL
+        AND status IN ('received', 'transcribing', 'failed')
+    `).run(now, now, draftId, userId, now);
+
+    if (draftExpiration.changes !== 1) {
+      return {
+        expired: false,
+        draft: getSessionDraft(userId, draftId),
+      };
+    }
+
     conn.prepare(`
       UPDATE audio_processing_jobs SET
         status='cancelled', finished_at=?, updated_at=?,
         lease_owner=NULL, lease_token=NULL, lease_expires_at=NULL
       WHERE user_id=? AND draft_id=? AND status IN ('queued', 'running', 'failed')
     `).run(now, now, userId, draftId);
-    conn.prepare(`
-      UPDATE session_drafts SET
-        status='failed', failed_stage='transcribing',
-        error_code='AUDIO_UPLOAD_EXPIRED',
-        error_message='The temporary audio file expired before transcription completed',
-        processing_finished_at=?, updated_at=?
-      WHERE id=? AND user_id=? AND raw_transcript IS NULL
-        AND status IN ('received', 'transcribing', 'failed')
-    `).run(now, now, draftId, userId);
-    return getSessionDraft(userId, draftId);
+
+    return {
+      expired: true,
+      draft: getSessionDraft(userId, draftId),
+    };
   });
   return expire.immediate();
 }
@@ -878,7 +904,7 @@ function confirmSessionDraft(userId, id) {
       throw error;
     }
 
-    if (!patientExists(userId, draft.patientId)) {
+    if (!activePatientExists(userId, draft.patientId)) {
       const error = new Error('Patient not found or access denied');
       error.code = 'PATIENT_NOT_FOUND';
       throw error;
@@ -1302,6 +1328,7 @@ module.exports = {
   updateSession,
   deleteSession,
   patientExists,
+  activePatientExists,
   getSessionDraft,
   getSessionDraftBySourceMessage,
   listSessionDrafts,

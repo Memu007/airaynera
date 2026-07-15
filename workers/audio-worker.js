@@ -50,7 +50,8 @@ class AudioWorker {
     this.sweepCounter += 1;
     if (!force && this.sweepCounter % 120 !== 0) return 0;
     for (const expired of sql.listExpiredAudioUploads()) {
-      sql.expireAudioUpload(expired.userId, expired.draftId);
+      const expiration = sql.expireAudioUpload(expired.userId, expired.draftId);
+      if (!expiration.expired) continue;
       const removed = temporaryAudioStore.remove(expired.mediaReference);
       if (removed) sql.markSessionDraftMediaDeleted(expired.userId, expired.draftId);
     }

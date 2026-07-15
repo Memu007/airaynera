@@ -200,6 +200,24 @@ class FunctionalTests {
       this.test('Patient status is persisted canonically', updateRes.data?.status === 'inactive');
       this.test('Patient ids are strings', typeof updateRes.data?.id === 'string');
 
+      const inactiveSession = await this.request('POST', '/api/sessions', {
+        patientId,
+        cleanNote: 'An inactive patient cannot receive a new session.'
+      }, this.token);
+      this.test('Inactive patient rejects a new session', inactiveSession.status === 404);
+
+      const inactiveDraft = await this.request('POST', '/api/session-drafts', {
+        patientId,
+        inputType: 'text',
+        cleanNote: 'An inactive patient cannot receive a new draft.'
+      }, this.token);
+      this.test('Inactive patient rejects a new draft', inactiveDraft.status === 404);
+
+      const reactivateRes = await this.request('PATCH', `/api/patients/${patientId}`, {
+        status: 'active'
+      }, this.token);
+      this.test('Patient can be reactivated for later flows', reactivateRes.data?.status === 'active');
+
       // Validation
       const invalidRes = await this.request('POST', '/api/patients', {
         dni: '22222222'  // Missing name

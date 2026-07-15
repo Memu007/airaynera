@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { Readable } = require('node:stream');
 
 function makeWav(payloadText = 'synthetic audio bytes') {
@@ -49,6 +50,73 @@ async function main() {
   const { AudioWorker } = require('../workers/audio-worker');
 
   try {
+    process.env.AUDIO_UPLOAD_MAX_BYTES = '48';
+    await assert.rejects(
+      store.storeStream(Readable.from(makeWav('streamed upload over the configured limit')), {
+        declaredMimeType: 'audio/wav',
+      }),
+      (error) => error?.code === 'AUDIO_FILE_TOO_LARGE'
+    );
+    assert.deepEqual(fs.readdirSync(process.env.AUDIO_UPLOAD_DIR), []);
+    delete process.env.AUDIO_UPLOAD_MAX_BYTES;
+
+    const inactiveUserId = 'inactive-patient-user';
+    const inactivePatient = sql.addPatient(inactiveUserId, {
+      name: 'Paciente Inactivo',
+      dni: 'inactive-patient',
+      habilitado: false,
+    });
+    assert.throws(
+      () => drafts.createDraft(inactiveUserId, {
+        patientId: inactivePatient.id,
+        cleanNote: 'No debe crearse.',
+        inputType: 'text',
+      }),
+      (error) => error?.code === 'PATIENT_NOT_FOUND'
+    );
+    assert.throws(
+      () => drafts.createQueuedAudioDraft(inactiveUserId, {
+        patientId: inactivePatient.id,
+        mediaReference: 'upload://00000000-0000-4000-8000-000000000001',
+        mediaMimeType: 'audio/wav',
+        inputFingerprint: 'inactive-audio',
+      }, { sourceMessageId: 'inactive-audio-1' }),
+      (error) => error?.code === 'PATIENT_NOT_FOUND'
+    );
+    assert.throws(
+      () => sql.addSession(inactiveUserId, {
+        pacienteId: inactivePatient.id,
+        cleanNote: 'No debe crearse.',
+      }),
+      (error) => error?.code === 'PATIENT_NOT_FOUND'
+    );
+
+    const historicalPatient = sql.addPatient(inactiveUserId, {
+      name: 'Paciente Histórico',
+      dni: 'historical-patient',
+      habilitado: true,
+    });
+    const historicalSession = sql.addSession(inactiveUserId, {
+      pacienteId: historicalPatient.id,
+      cleanNote: 'Sesión histórica.',
+    });
+    const historicalDraft = drafts.createDraft(inactiveUserId, {
+      patientId: historicalPatient.id,
+      cleanNote: 'Borrador creado mientras estaba activo.',
+      inputType: 'text',
+    }).draft;
+    sql.updatePatient(inactiveUserId, historicalPatient.id, { habilitado: false });
+    assert.equal(
+      sql.listSessions(inactiveUserId).some((session) => session.id === historicalSession.id),
+      true
+    );
+    assert.equal(drafts.getDraft(inactiveUserId, historicalDraft.id).id, historicalDraft.id);
+    assert.throws(
+      () => drafts.confirmDraft(inactiveUserId, historicalDraft.id),
+      (error) => error?.code === 'PATIENT_NOT_FOUND'
+    );
+    assert.equal(sql.listSessions(inactiveUserId).length, 1);
+
     const userId = 'upload-worker-user';
     const patient = sql.addPatient(userId, {
       name: 'Paciente Upload',
@@ -194,6 +262,91 @@ async function main() {
     assert.equal(processedRetry.draft.status, 'ready');
     assert.equal(fs.existsSync(store.pathForReference(failedMedia.reference)), false);
 
+    const expiredMedia = await storeWav(store, makeWav('expire completely'));
+    const pendingExpiration = pipeline.ingestUpload(userId, {
+      patientId: patient.id,
+    }, expiredMedia, {
+      source: 'web',
+      sourceMessageId: 'upload-expire-1',
+    });
+    sql.getDb().prepare(`
+      UPDATE session_drafts SET media_expires_at=? WHERE id=? AND user_id=?
+    `).run('2020-01-01T00:00:00.000Z', pendingExpiration.draft.id, userId);
+    await worker.sweepOrphans(true);
+    const expiredDraft = drafts.getDraft(userId, pendingExpiration.draft.id);
+    assert.equal(expiredDraft.status, 'failed');
+    assert.equal(expiredDraft.failure.code, 'AUDIO_UPLOAD_EXPIRED');
+    assert.equal(
+      sql.getAudioProcessingJob(userId, pendingExpiration.draft.id).status,
+      'cancelled'
+    );
+    assert.equal(fs.existsSync(store.pathForReference(expiredMedia.reference)), false);
+    assert.ok(expiredDraft.mediaDeletedAt);
+
+    const raceMedia = await storeWav(store, makeWav('expiration race'));
+    const pendingRace = pipeline.ingestUpload(userId, {
+      patientId: patient.id,
+    }, raceMedia, {
+      source: 'web',
+      sourceMessageId: 'upload-expire-race-1',
+    });
+    sql.getDb().prepare(`
+      UPDATE session_drafts SET media_expires_at=? WHERE id=? AND user_id=?
+    `).run('2020-01-01T00:00:00.000Z', pendingRace.draft.id, userId);
+    const racingJob = sql.claimNextAudioProcessingJob('racing-worker', 10_000);
+    assert.equal(racingJob.draftId, pendingRace.draft.id);
+    assert.ok(sql.transitionSessionDraft(
+      userId,
+      pendingRace.draft.id,
+      ['received'],
+      { status: 'transcribing', processingStartedAt: new Date().toISOString() },
+      { leaseToken: racingJob.leaseToken }
+    ));
+    assert.equal(
+      sql.listExpiredAudioUploads().some((candidate) => candidate.draftId === pendingRace.draft.id),
+      true
+    );
+    assert.ok(sql.transitionSessionDraft(
+      userId,
+      pendingRace.draft.id,
+      ['transcribing'],
+      { status: 'structuring', rawTranscript: 'Transcripción terminada a tiempo.' },
+      { leaseToken: racingJob.leaseToken }
+    ));
+    const lostExpirationRace = sql.expireAudioUpload(userId, pendingRace.draft.id);
+    assert.equal(lostExpirationRace.expired, false);
+    assert.equal(lostExpirationRace.draft.status, 'structuring');
+    assert.equal(lostExpirationRace.draft.rawTranscript, 'Transcripción terminada a tiempo.');
+    assert.equal(sql.getAudioProcessingJob(userId, pendingRace.draft.id).status, 'running');
+    assert.equal(fs.existsSync(store.pathForReference(raceMedia.reference)), true);
+    assert.equal(lostExpirationRace.draft.mediaDeletedAt, null);
+    drafts.cancelDraft(userId, pendingRace.draft.id);
+    assert.equal(fs.existsSync(store.pathForReference(raceMedia.reference)), false);
+
+    const crossProcessMedia = await storeWav(store, makeWav('cross process recovery'));
+    const pendingCrossProcess = pipeline.ingestUpload(userId, {
+      patientId: patient.id,
+    }, crossProcessMedia, {
+      source: 'web',
+      sourceMessageId: 'upload-cross-process-recovery-1',
+    });
+    const abandonedCrossProcess = sql.claimNextAudioProcessingJob('dead-cross-process-worker', 1);
+    assert.equal(abandonedCrossProcess.draftId, pendingCrossProcess.draft.id);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const child = spawnSync(process.execPath, ['workers/audio-worker.js', '--once'], {
+      cwd: path.resolve(__dirname, '..'),
+      env: { ...process.env },
+      encoding: 'utf8',
+    });
+    assert.equal(child.status, 0, child.stderr || child.stdout);
+    assert.equal(drafts.getDraft(userId, pendingCrossProcess.draft.id).status, 'ready');
+    assert.equal(
+      sql.getAudioProcessingJob(userId, pendingCrossProcess.draft.id).status,
+      'completed'
+    );
+    assert.equal(sql.getAudioProcessingJob(userId, pendingCrossProcess.draft.id).attempts, 2);
+    assert.equal(fs.existsSync(store.pathForReference(crossProcessMedia.reference)), false);
+
     const orphan = await storeWav(store, makeWav('orphan'));
     const orphanPath = store.pathForReference(orphan.reference);
     const old = new Date(Date.now() - 1000);
@@ -215,7 +368,7 @@ async function main() {
     assert.equal(aac.mimeType, 'audio/aac');
     assert.equal(store.remove(aac.reference), true);
 
-    console.log('✅ Real audio uploads queue once, survive leases and clean temporary media');
+    console.log('✅ Real audio uploads enforce limits, recover leases and expire media safely');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
