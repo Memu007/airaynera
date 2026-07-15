@@ -1,8 +1,8 @@
 # Roadmap del MVP de AIRA
 
-Última actualización: 2026-07-14.
+Última actualización: 2026-07-15.
 
-Estado general: vertical web, texto por WhatsApp simulado y audio sintético por ambos canales aprobados localmente. Archivos reales, proveedor externo y Meta real están pendientes.
+Estado general: vertical web, texto por WhatsApp simulado y carga de archivo real desde la web aprobados localmente. El archivo se almacena temporalmente y se procesa en un worker SQLite; el proveedor externo, la descarga desde Meta y Meta real siguen pendientes.
 
 Alcance actual: priorizar funcionamiento. Seguridad avanzada, cumplimiento formal y estética se retomarán después de validar la idea.
 
@@ -54,7 +54,7 @@ Criterio de salida:
 
 > Una base vacía se crea, las migraciones se aplican y las pruebas mínimas de contrato pasan en local y CI.
 
-Estado: núcleo cumplido. Migraciones `001` a `005`, contratos, dobles de WhatsApp/transcripción/limpieza y persistencia conversacional aprobados.
+Estado: núcleo cumplido. Migraciones `001` a `006`, contratos, dobles de WhatsApp/transcripción/limpieza, persistencia conversacional, almacenamiento temporal y worker SQLite aprobados.
 
 ## Etapa 1 — Web funcional
 
@@ -203,7 +203,7 @@ structure(rawTranscript) → structuredNote
 
 Esto permite comparar o cambiar Groq, Gemini y OpenAI sin modificar el resto del producto.
 
-El doble actual procesa de forma síncrona, pero persiste estados, intentos y leases recuperables. Antes de llamar a un proveedor de red se incorporará un trabajo SQLite y un worker fuera de la transacción del webhook. No se agrega Redis inicialmente.
+Los fixtures sintéticos continúan disponibles para pruebas. Los archivos reales de la web crean un trabajo SQLite y se procesan en un worker separado con lease recuperable. La llamada futura al proveedor de red se conectará en ese worker, nunca dentro de la solicitud web o de la transacción del webhook. No se agrega Redis inicialmente.
 
 Estados internos orientativos:
 
@@ -223,7 +223,7 @@ Criterios de salida:
 
 Tag sugerido: `mvp-v0.4-audio-e2e`.
 
-Estado parcial: el recorrido sintético `audio → raw → clean → revisar → guardar/cancelar → ficha` funciona desde web y WhatsApp. Se probaron idempotencia, fallo por etapa, retry sin retranscribir, recuperación después de reiniciar y confirmación única. Faltan archivo real, almacenamiento temporal, benchmark de proveedores, worker asíncrono y descarga de Meta. La comparación vigente está en [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md).
+Estado parcial: el recorrido `archivo web → almacenamiento temporal → job → worker → raw simulado → clean → revisar → guardar/cancelar → ficha` funciona de punta a punta. También se conserva el recorrido sintético desde WhatsApp. Se probaron idempotencia, fallo por etapa, retry sin retranscribir, recuperación de leases y confirmación única. Faltan el benchmark, un proveedor real, la descarga de archivos desde Meta y el transporte Meta. La comparación vigente está en [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md).
 
 ## Etapa 5 — Nota clínica estructurada y edición
 

@@ -28,5 +28,11 @@ jobs:
       - name: Run functional tests
         run: npm test
 
-      - name: Verify build command
+      - name: Exercise production runtime supervisor
+        run: npm run test:runtime-supervisor
+
+      - name: Check JavaScript syntax
         run: npm run build
+
+      - name: Check UI contract
+        run: npm run lint

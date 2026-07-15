@@ -12,7 +12,7 @@ La web y WhatsApp deben terminar en el mismo flujo:
 4. El profesional revisa y confirma.
 5. Recién entonces aparece una sesión en la ficha del paciente.
 
-El recorrido de texto está implementado en web y WhatsApp simulado. El audio sintético ya usa el mismo borrador desde ambos canales; archivos reales, Meta y proveedores externos siguen pendientes.
+El recorrido de texto está implementado en web y WhatsApp simulado. La web ya acepta archivos de audio reales, los almacena temporalmente y los procesa mediante un worker SQLite usando proveedores falsos. WhatsApp conserva el audio sintético; Meta y los proveedores externos siguen pendientes.
 
 ## Reglas canónicas
 
@@ -123,7 +123,7 @@ En el vertical de texto, el borrador nace en `ready`. Solamente `ready` puede ed
 
 `POST /api/session-drafts` acepta solamente texto. Todo audio debe entrar por el pipeline específico para que no exista un borrador `received` sin medio ni forma de procesarse.
 
-## Pipeline de audio sintético implementado
+## Pipeline de audio implementado
 
 La entrada común normalizada es:
 
@@ -135,13 +135,23 @@ La entrada común normalizada es:
 }
 ```
 
-La web usa:
+Los fixtures sintéticos usan:
 
 ```text
 GET  /api/audio-drafts/fixtures
 POST /api/audio-drafts
 POST /api/audio-drafts/:id/retry
 ```
+
+La carga de un archivo real desde la web usa un cuerpo binario único:
+
+```text
+POST /api/audio-drafts/upload?patientId=7&clinicalDate=2026-07-14&sessionType=individual&durationMinutes=45&careModality=inPerson&audioDurationSeconds=184
+Content-Type: audio/wav
+Idempotency-Key: web-upload-...
+```
+
+El endpoint responde `202` con el borrador y el estado público del job. El cliente consulta `GET /api/audio-drafts/:id` hasta que el borrador queda revisable o falla. El límite predeterminado es 25 MB y la retención máxima del archivo es 24 horas; ambos son configurables.
 
 `POST /api/audio-drafts` requiere `Idempotency-Key`. La misma clave y entrada devuelve el mismo borrador; reutilizarla con otro paciente, fecha, fixture o metadato funcional devuelve `409 IDEMPOTENCY_CONFLICT`.
 
@@ -168,7 +178,7 @@ received → transcribing → structuring → ready → confirmed
 - `cleanNote` sí se edita antes o después de confirmar.
 - Confirmar y cancelar usan transiciones condicionadas para que un resultado no sobrescriba al otro.
 
-En este hito `AUDIO_TRANSCRIBER=fake` y `NOTE_CLEANER=fake`. Los fixtures son texto artificial determinista; todavía no existe subida, grabación, descarga o almacenamiento temporal de un archivo real.
+En este hito `AUDIO_TRANSCRIBER=fake` y `NOTE_CLEANER=fake`. Los fixtures y la salida de los proveedores falsos son artificiales y deterministas. Existe subida y almacenamiento temporal de archivos reales desde la web; todavía no existen grabación web, descarga desde Meta ni proveedor real.
 
 ## Vinculación web–WhatsApp implementada
 

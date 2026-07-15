@@ -61,6 +61,8 @@ cp .env.example .env
 npm run dev
 ```
 
+`npm run dev` levanta servidor y worker de audio mediante el mismo supervisor usado en producción, y reinicia ambos cuando cambia el código activo del backend. `npm start` hace lo mismo sin autoreload.
+
 Sin configurar `PORT`, el servidor usa el puerto `8080`. El archivo `.env.example` propone el puerto `3000` para desarrollo.
 
 Las variables, tokens y credenciales reales nunca deben subirse al repositorio.
