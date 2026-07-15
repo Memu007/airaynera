@@ -12,7 +12,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const compression = require("compression");
 const jwt = require("jsonwebtoken");
-const { body, param, validationResult } = require("express-validator");
+const { body, param, query, validationResult } = require("express-validator");
 
 // JWT Secret - debe estar en .env en producción
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
@@ -121,6 +121,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Runtime data (SQLite, temporary audio) must never be exposed by the broad static mount.
+app.use('/data', (req, res) => res.status(404).json({ error: 'Route not found' }));
+
 // Servir archivos estáticos
 app.use(express.static(path.join(__dirname)));
 
@@ -129,6 +132,7 @@ app.use(express.static(path.join(__dirname)));
 const sql = require("./services/sqlite");
 const sessionDraftService = require("./services/sessionDraftService");
 const audioDraftPipeline = require("./services/audioDraftPipeline");
+const temporaryAudioStore = require("./services/audio/temporaryAudioStore");
 const { listFixtures: listAudioFixtures } = require("./services/audio/fakeAudioProviders");
 const whatsappLinkService = require("./services/whatsappLinkService");
 const whatsappConversationService = require("./services/whatsappConversationService");
@@ -242,6 +246,13 @@ function sendDraftError(res, error) {
     DRAFT_NOT_PROCESSABLE: 409,
     PROCESSING_ALREADY_CLAIMED: 409,
     AUDIO_PROVIDER_NOT_CONFIGURED: 503,
+    EMPTY_AUDIO_FILE: 400,
+    AUDIO_FILE_TOO_LARGE: 413,
+    UNSUPPORTED_AUDIO_TYPE: 415,
+    AUDIO_TYPE_MISMATCH: 415,
+    INVALID_AUDIO_REFERENCE: 400,
+    AUDIO_FILE_MISSING: 410,
+    AUDIO_FILE_CHANGED: 409,
   };
   const status = statusByCode[error.code] || 500;
   if (status === 500) console.error('Session draft error:', error);
@@ -249,6 +260,20 @@ function sendDraftError(res, error) {
     error: error.code || 'DRAFT_ERROR',
     message: status === 500 ? 'Unable to process session draft' : error.message,
   });
+}
+
+function publicAudioProcessing(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    draftId: job.draftId,
+    status: job.status,
+    attempts: job.attempts,
+    failure: job.failure,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    finishedAt: job.finishedAt,
+  };
 }
 
 function sendWhatsappError(res, error) {
@@ -600,6 +625,75 @@ app.get('/api/audio-drafts/fixtures', authMiddleware, (req, res) => {
   res.json({ fixtures: listAudioFixtures() });
 });
 
+app.post('/api/audio-drafts/upload',
+  authMiddleware,
+  query('patientId').notEmpty().withMessage('patientId es requerido'),
+  query('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('sessionType').optional().isIn(['individual', 'group', 'family', 'couple', 'other']),
+  query('durationMinutes').optional().isInt({ min: 1, max: 480 }),
+  query('careModality').optional().isIn(['inPerson', 'video', 'phone', 'unspecified']),
+  query('audioDurationSeconds').optional().isFloat({ min: 0.1, max: 3600 }),
+  handleValidationErrors,
+  async (req, res) => {
+    let storedMedia = null;
+    try {
+      const idempotencyKey = String(req.get('Idempotency-Key') || '').trim();
+      if (!idempotencyKey || idempotencyKey.length > 200) {
+        return res.status(400).json({
+          error: 'INVALID_AUDIO_INPUT',
+          message: 'Idempotency-Key is required',
+        });
+      }
+      if (!sql.patientExists(req.user.id, req.query.patientId)) {
+        const error = new Error('Patient not found or access denied');
+        error.code = 'PATIENT_NOT_FOUND';
+        throw error;
+      }
+
+      storedMedia = await temporaryAudioStore.storeStream(req, {
+        declaredMimeType: req.get('Content-Type'),
+        contentLength: req.get('Content-Length'),
+      });
+      const result = audioDraftPipeline.ingestUpload(req.user.id, {
+        patientId: req.query.patientId,
+        clinicalDate: req.query.clinicalDate,
+        sessionType: req.query.sessionType,
+        durationMinutes: req.query.durationMinutes == null
+          ? null
+          : Number(req.query.durationMinutes),
+        careModality: req.query.careModality,
+        audioDurationSeconds: req.query.audioDurationSeconds == null
+          ? null
+          : Number(req.query.audioDurationSeconds),
+      }, storedMedia, {
+        source: 'web',
+        sourceMessageId: idempotencyKey,
+      });
+      storedMedia = null;
+      const terminal = ['ready', 'failed', 'confirmed', 'cancelled'].includes(result.draft.status);
+      return res.status(result.created || !terminal ? 202 : 200).json({
+        draft: result.draft,
+        processing: publicAudioProcessing(result.processing),
+        created: result.created,
+        deduplicated: result.deduplicated,
+        queued: result.queued,
+      });
+    } catch (error) {
+      if (storedMedia?.reference) temporaryAudioStore.remove(storedMedia.reference);
+      return sendDraftError(res, error);
+    }
+  }
+);
+
+app.get('/api/audio-drafts/:id', authMiddleware, (req, res) => {
+  try {
+    const result = audioDraftPipeline.getProcessing(req.user.id, req.params.id);
+    res.json({ draft: result.draft, processing: publicAudioProcessing(result.processing) });
+  } catch (error) {
+    sendDraftError(res, error);
+  }
+});
+
 app.post('/api/audio-drafts',
   authMiddleware,
   body('patientId').notEmpty().withMessage('patientId es requerido'),
@@ -628,7 +722,9 @@ app.post('/api/audio-drafts',
 
 app.post('/api/audio-drafts/:id/retry', authMiddleware, (req, res) => {
   try {
-    res.json(audioDraftPipeline.retry(req.user.id, req.params.id));
+    const result = audioDraftPipeline.retry(req.user.id, req.params.id);
+    if (result.processing) result.processing = publicAudioProcessing(result.processing);
+    res.status(result.queued ? 202 : 200).json(result);
   } catch (error) {
     sendDraftError(res, error);
   }

@@ -3924,24 +3924,25 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 </div>
                 <div class="custom-control custom-radio custom-control-inline">
                   <input type="radio" id="sessionInputAudio" name="sessionInputType" value="audio" class="custom-control-input" onchange="setSessionInputMode('audio')" />
-                  <label class="custom-control-label" for="sessionInputAudio">Audio de prueba</label>
+                  <label class="custom-control-label" for="sessionInputAudio">Audio</label>
                 </div>
               </div>
-              <div id="webAudioFixtureSection" class="border rounded p-3 mb-3 d-none">
-                <label for="webAudioFixture">Audio sintético</label>
-                <select id="webAudioFixture" class="form-control mb-2">
-                  <option value="clear-es-01">Nota breve y clara</option>
-                  <option value="pause-heavy-es-01">Nota con pausas y muletillas</option>
-                  <option value="cleaning-fails-once">Falla recuperable de preparación</option>
-                </select>
+              <div id="webAudioUploadSection" class="border rounded p-3 mb-3 d-none">
+                <label for="webAudioFile">Archivo de audio</label>
+                <input
+                  type="file"
+                  id="webAudioFile"
+                  class="form-control-file mb-2"
+                  accept="audio/*,.webm,.m4a"
+                />
                 <button type="button" id="prepareWebAudioBtn" class="btn btn-outline-primary" onclick="prepareWebAudioDraft()">
-                  Preparar nota desde audio
+                  Subir y preparar nota
                 </button>
                 <button type="button" id="retryWebAudioBtn" class="btn btn-outline-warning d-none" onclick="retryWebAudioDraft()">
                   Reintentar
                 </button>
                 <div id="webAudioStatus" class="small text-muted mt-2" role="status">
-                  Este corte usa audios sintéticos; todavía no envía archivos a un proveedor real.
+                  El archivo se almacena temporalmente. La transcripción todavía es simulada en este corte.
                 </div>
                 <div id="webAudioTranscriptSection" class="form-group mt-3 mb-0 d-none">
                   <label for="webAudioRawTranscript">Transcripción original</label>
@@ -4586,6 +4587,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       let currentWebAudioDraftPatientId = null;
       let currentWebAudioIdempotencyKey = null;
       let currentWebAudioRequestFingerprint = null;
+      let currentWebAudioPollTimer = null;
+      let currentWebAudioUploadController = null;
+      const pendingWebAudioUploadStorageKey = "aira.pendingWebAudioUpload";
 
       // Datos se cargan desde el backend via API
 
@@ -6218,11 +6222,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       }
       function showNewSessionModal(patientId) {
         $("#newSessionForm")[0].reset();
+        stopWebAudioPolling();
         currentWebAudioDraftId = null;
         currentWebAudioDraftPatientId = null;
         currentWebAudioIdempotencyKey = null;
         currentWebAudioRequestFingerprint = null;
-        $("#sessionPatient, #webAudioFixture").prop("disabled", false);
+        $("#prepareWebAudioBtn").prop("disabled", false).text("Subir y preparar nota");
+        $("#sessionPatient, #webAudioFile").prop("disabled", false);
+        $("#webAudioFile").val("");
         setSessionInputMode("text", { discard: false });
         const patientOptions = appData.patients
           .map((p) => `<option value="${p.id}">${p.name}</option>`)
@@ -6240,7 +6247,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       function setSessionInputMode(mode, options = {}) {
         const audio = mode === "audio";
         if (!audio && options.discard !== false) discardCurrentWebAudioDraft();
-        $("#webAudioFixtureSection").toggleClass("d-none", !audio);
+        $("#webAudioUploadSection").toggleClass("d-none", !audio);
         $("#sessionContent").attr(
           "placeholder",
           audio
@@ -6251,19 +6258,53 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           $("#webAudioTranscriptSection, #retryWebAudioBtn").addClass("d-none");
           $("#webAudioRawTranscript").val("");
           $("#webAudioStatus").text(
-            "Este corte usa audios sintéticos; todavía no envía archivos a un proveedor real."
+            "El archivo se almacena temporalmente. La transcripción todavía es simulada en este corte."
           );
+        }
+      }
+
+      function stopWebAudioPolling() {
+        if (currentWebAudioPollTimer) window.clearTimeout(currentWebAudioPollTimer);
+        currentWebAudioPollTimer = null;
+      }
+
+      function loadPendingWebAudioUpload() {
+        try {
+          return JSON.parse(localStorage.getItem(pendingWebAudioUploadStorageKey) || "null");
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function rememberPendingWebAudioUpload(idempotencyKey, requestFingerprint) {
+        localStorage.setItem(
+          pendingWebAudioUploadStorageKey,
+          JSON.stringify({ idempotencyKey, requestFingerprint })
+        );
+      }
+
+      function clearPendingWebAudioUpload(idempotencyKey) {
+        const pending = loadPendingWebAudioUpload();
+        if (!pending || !idempotencyKey || pending.idempotencyKey === idempotencyKey) {
+          localStorage.removeItem(pendingWebAudioUploadStorageKey);
         }
       }
 
       function discardCurrentWebAudioDraft() {
         const draftId = currentWebAudioDraftId;
+        const idempotencyKey = currentWebAudioIdempotencyKey;
         currentWebAudioDraftId = null;
         currentWebAudioDraftPatientId = null;
         currentWebAudioIdempotencyKey = null;
         currentWebAudioRequestFingerprint = null;
-        $("#sessionPatient, #webAudioFixture").prop("disabled", false);
+        stopWebAudioPolling();
+        if (currentWebAudioUploadController) currentWebAudioUploadController.abort();
+        currentWebAudioUploadController = null;
+        $("#sessionPatient, #webAudioFile").prop("disabled", false);
+        $("#webAudioFile").val("");
+        $("#prepareWebAudioBtn").prop("disabled", false).text("Subir y preparar nota");
         if (!draftId) return;
+        clearPendingWebAudioUpload(idempotencyKey);
         $.ajax({
           url: `/api/session-drafts/${draftId}/cancel`,
           method: "POST",
@@ -6275,25 +6316,117 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         currentWebAudioDraftId = draft.id;
         currentWebAudioDraftPatientId = draft.patientId;
         $("#sessionPatient").val(draft.patientId).prop("disabled", true);
-        $("#webAudioFixture").prop("disabled", true);
+        $("#webAudioFile").prop("disabled", true);
         $("#webAudioRawTranscript").val(draft.rawTranscript || "");
-        $("#webAudioTranscriptSection").removeClass("d-none");
+        $("#webAudioTranscriptSection").toggleClass("d-none", !draft.rawTranscript);
         if (draft.status === "ready") {
+          stopWebAudioPolling();
           $("#sessionContent").val(draft.cleanNote || "").focus();
           $("#webAudioStatus").text(
             "Nota preparada. Revisala y después guardá la sesión."
           );
           $("#retryWebAudioBtn").addClass("d-none");
-        } else {
+        } else if (draft.status === "failed") {
+          stopWebAudioPolling();
           $("#sessionContent").val("");
           $("#webAudioStatus").text(
             "La preparación falló, pero el borrador quedó guardado para reintentar."
           );
           $("#retryWebAudioBtn").removeClass("d-none");
+        } else if (draft.status === "cancelled") {
+          stopWebAudioPolling();
+          $("#webAudioStatus").text("El borrador de audio fue cancelado.");
+          $("#retryWebAudioBtn").addClass("d-none");
+        } else {
+          const progressText = {
+            received: "Archivo recibido. Esperando al worker...",
+            transcribing: "Procesando la transcripción simulada...",
+            structuring: "Preparando la nota revisable...",
+          };
+          $("#sessionContent").val("");
+          $("#webAudioStatus").text(progressText[draft.status] || "Procesando audio...");
+          $("#retryWebAudioBtn").addClass("d-none");
+          pollWebAudioDraft(draft.id);
         }
       }
 
-      function prepareWebAudioDraft() {
+      function pollWebAudioDraft(draftId) {
+        stopWebAudioPolling();
+        currentWebAudioPollTimer = window.setTimeout(function () {
+          $.ajax({
+            url: `/api/audio-drafts/${draftId}`,
+            method: "GET",
+            headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+            success: function (response) {
+              if (currentWebAudioDraftId !== draftId) return;
+              if (["queued", "running"].includes(response.processing?.status)) {
+                $("#webAudioStatus").text(
+                  response.processing.status === "queued"
+                    ? "Archivo en cola. Esperando al worker..."
+                    : "El worker está preparando nuevamente la nota..."
+                );
+                $("#retryWebAudioBtn").addClass("d-none");
+                pollWebAudioDraft(draftId);
+                return;
+              }
+              if (
+                response.processing?.status === "failed"
+                && !["ready", "confirmed", "cancelled"].includes(response.draft.status)
+              ) {
+                renderPreparedWebAudio(response.draft);
+                $("#webAudioStatus").text(
+                  response.processing.failure?.message || "El worker no pudo preparar el audio."
+                );
+                return;
+              }
+              renderPreparedWebAudio(response.draft);
+            },
+            error: function () {
+              if (currentWebAudioDraftId !== draftId) return;
+              $("#webAudioStatus").text("No pude actualizar el estado. Voy a reintentar...");
+              pollWebAudioDraft(draftId);
+            },
+          });
+        }, 500);
+      }
+
+      function inferAudioMimeType(file) {
+        if (file.type) return file.type;
+        const extension = String(file.name || "").split(".").pop().toLowerCase();
+        return {
+          wav: "audio/wav",
+          mp3: "audio/mpeg",
+          ogg: "audio/ogg",
+          opus: "audio/ogg",
+          webm: "audio/webm",
+          m4a: "audio/mp4",
+          mp4: "audio/mp4",
+          aac: "audio/aac",
+        }[extension] || "application/octet-stream";
+      }
+
+      function readAudioDurationSeconds(file) {
+        return new Promise(function (resolve) {
+          const audio = document.createElement("audio");
+          const objectUrl = URL.createObjectURL(file);
+          let settled = false;
+          const finish = function (value) {
+            if (settled) return;
+            settled = true;
+            URL.revokeObjectURL(objectUrl);
+            resolve(value);
+          };
+          audio.preload = "metadata";
+          audio.onloadedmetadata = function () {
+            finish(Number.isFinite(audio.duration) ? Math.max(1, Math.round(audio.duration)) : null);
+          };
+          audio.onerror = function () { finish(null); };
+          audio.src = objectUrl;
+          window.setTimeout(function () { finish(null); }, 2000);
+        });
+      }
+
+      async function prepareWebAudioDraft() {
         const patientId = $("#sessionPatient").val();
         if (!patientId) {
           notificaciones.error(
@@ -6302,47 +6435,74 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           );
           return;
         }
+        const file = $("#webAudioFile")[0]?.files?.[0];
+        if (!file) {
+          notificaciones.error(
+            "Falta el audio",
+            "Elegí un archivo de audio antes de continuar."
+          );
+          return;
+        }
         if (currentWebAudioDraftId) discardCurrentWebAudioDraft();
-        const fixtureId = $("#webAudioFixture").val();
-        const requestFingerprint = `${patientId}:${fixtureId}`;
+        const requestFingerprint = `${patientId}:${file.name}:${file.size}:${file.lastModified}:${file.type}`;
         if (!currentWebAudioIdempotencyKey || currentWebAudioRequestFingerprint !== requestFingerprint) {
-          currentWebAudioIdempotencyKey = nextWhatsappTestMessageId("web-audio");
+          const pending = loadPendingWebAudioUpload();
+          currentWebAudioIdempotencyKey = pending?.requestFingerprint === requestFingerprint
+            ? pending.idempotencyKey
+            : nextWhatsappTestMessageId("web-audio-upload");
           currentWebAudioRequestFingerprint = requestFingerprint;
+          rememberPendingWebAudioUpload(currentWebAudioIdempotencyKey, requestFingerprint);
         }
         const button = $("#prepareWebAudioBtn");
-        button.prop("disabled", true).text("Preparando...");
-        $("#sessionPatient, #webAudioFixture").prop("disabled", true);
+        button.prop("disabled", true).text("Subiendo...");
+        $("#sessionPatient, #webAudioFile").prop("disabled", true);
         $("#sessionContent, #webAudioRawTranscript").val("");
         $("#webAudioTranscriptSection, #retryWebAudioBtn").addClass("d-none");
-        $("#webAudioStatus").text("Transcribiendo y preparando la nota...");
-        $.ajax({
-          url: "/api/audio-drafts",
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-            "Idempotency-Key": currentWebAudioIdempotencyKey,
-          },
-          contentType: "application/json",
-          data: JSON.stringify({
+        $("#webAudioStatus").text("Subiendo el archivo al almacenamiento temporal...");
+
+        const uploadController = new AbortController();
+        currentWebAudioUploadController = uploadController;
+        try {
+          const durationSeconds = await readAudioDurationSeconds(file);
+          if (uploadController.signal.aborted || currentWebAudioUploadController !== uploadController) return;
+          const params = new URLSearchParams({
             patientId,
             clinicalDate: localDateKey(),
-            fixtureId,
-          }),
-          success: function (response) {
-            renderPreparedWebAudio(response.draft);
-          },
-          error: function (xhr) {
-            $("#webAudioStatus").text(
-              xhr.responseJSON?.message || "No se pudo preparar el audio."
-            );
-            if (!currentWebAudioDraftId) {
-              $("#sessionPatient, #webAudioFixture").prop("disabled", false);
-            }
-          },
-          complete: function () {
-            button.prop("disabled", false).text("Preparar nota desde audio");
-          },
-        });
+            sessionType: "individual",
+            careModality: "inPerson",
+          });
+          if (durationSeconds) params.set("audioDurationSeconds", String(durationSeconds));
+          const response = await fetch(`/api/audio-drafts/upload?${params.toString()}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+              "Idempotency-Key": currentWebAudioIdempotencyKey,
+              "Content-Type": inferAudioMimeType(file),
+            },
+            body: file,
+            signal: uploadController.signal,
+          });
+          const payload = await response.json().catch(function () { return {}; });
+          if (!response.ok) {
+            const error = new Error(payload.message || "No se pudo subir el audio.");
+            error.payload = payload;
+            throw error;
+          }
+          clearPendingWebAudioUpload(currentWebAudioIdempotencyKey);
+          renderPreparedWebAudio(payload.draft);
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            $("#webAudioStatus").text(error.message || "No se pudo preparar el audio.");
+          }
+          if (!currentWebAudioDraftId) {
+            $("#sessionPatient, #webAudioFile").prop("disabled", false);
+          }
+        } finally {
+          if (currentWebAudioUploadController === uploadController) {
+            currentWebAudioUploadController = null;
+            button.prop("disabled", false).text("Subir y preparar nota");
+          }
+        }
       }
 
       function retryWebAudioDraft() {
@@ -6354,7 +6514,13 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           method: "POST",
           headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
           success: function (response) {
-            renderPreparedWebAudio(response.draft);
+            if (response.queued) {
+              $("#webAudioStatus").text("Reintento en cola. Esperando al worker...");
+              $("#retryWebAudioBtn").addClass("d-none");
+              pollWebAudioDraft(currentWebAudioDraftId);
+            } else {
+              renderPreparedWebAudio(response.draft);
+            }
           },
           error: function (xhr) {
             $("#webAudioStatus").text(
@@ -6496,11 +6662,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             headers: { Authorization: `Bearer ${token}` },
             success: function () {
               btn.html(originalText).prop('disabled', false);
+              clearPendingWebAudioUpload(currentWebAudioIdempotencyKey);
               currentWebAudioDraftId = null;
               currentWebAudioDraftPatientId = null;
               currentWebAudioIdempotencyKey = null;
               currentWebAudioRequestFingerprint = null;
-              $("#sessionPatient, #webAudioFixture").prop("disabled", false);
+              stopWebAudioPolling();
+              $("#sessionPatient, #webAudioFile").prop("disabled", false);
+              $("#webAudioFile").val("");
               $("#newSessionModal").modal("hide");
               $("#newSessionForm")[0].reset();
               loadSessionsData();

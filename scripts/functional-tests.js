@@ -7,6 +7,26 @@ const http = require('http');
 
 const BASE_URL = process.env.TEST_URL || 'http://localhost:8080';
 
+function makeWav(payloadText = 'functional upload bytes') {
+  const payload = Buffer.from(payloadText);
+  const wav = Buffer.alloc(44 + payload.length);
+  wav.write('RIFF', 0, 'ascii');
+  wav.writeUInt32LE(36 + payload.length, 4);
+  wav.write('WAVE', 8, 'ascii');
+  wav.write('fmt ', 12, 'ascii');
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(16000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36, 'ascii');
+  wav.writeUInt32LE(payload.length, 40);
+  payload.copy(wav, 44);
+  return wav;
+}
+
 class FunctionalTests {
   constructor() {
     this.passed = 0;
@@ -49,9 +69,22 @@ class FunctionalTests {
         reject(new Error('Timeout'));
       });
 
-      if (body) req.write(JSON.stringify(body));
+      if (Buffer.isBuffer(body)) req.write(body);
+      else if (body) req.write(JSON.stringify(body));
       req.end();
     });
+  }
+
+  async waitForAudioDraft(draftId, token, timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    let response;
+    while (Date.now() < deadline) {
+      response = await this.request('GET', `/api/audio-drafts/${draftId}`, null, token);
+      const status = response.data?.draft?.status;
+      if (['ready', 'failed', 'cancelled'].includes(status)) return response;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    return response;
   }
 
   test(name, condition) {
@@ -75,6 +108,8 @@ class FunctionalTests {
       const res = await this.request('GET', '/health');
       this.test('GET /health returns 200', res.status === 200);
       this.test('Response has status field', res.data?.status === 'ok');
+      const privateData = await this.request('GET', '/data/aira.db');
+      this.test('Temporary and database files are not exposed publicly', privateData.status === 404);
     } catch (err) {
       this.test('Server responding', false);
       console.error('   Server not available. Start with: npm run dev');
@@ -179,6 +214,7 @@ class FunctionalTests {
     let draftSessionId;
     let whatsappSessionId;
     let webAudioSessionId;
+    let uploadedAudioSessionId;
     let whatsappAudioSessionId;
     {
       // Create
@@ -424,6 +460,101 @@ class FunctionalTests {
         retriedAudio.data?.draft?.processingAttempts === 2);
       await this.request('POST', `/api/session-drafts/${retriedAudio.data?.draft?.id}/cancel`, null, this.token);
 
+      const uploadPath = `/api/audio-drafts/upload?patientId=${encodeURIComponent(patientId)}&clinicalDate=2026-07-14&audioDurationSeconds=12`;
+      const uploadedBytes = makeWav();
+      const uploadedAudio = await this.request(
+        'POST',
+        uploadPath,
+        uploadedBytes,
+        this.token,
+        {
+          'Content-Type': 'audio/wav',
+          'Content-Length': String(uploadedBytes.length),
+          'Idempotency-Key': 'functional-real-audio-001',
+        }
+      );
+      const uploadedDraftId = uploadedAudio.data?.draft?.id;
+      this.test('Real web audio is stored and queued without waiting for processing',
+        uploadedAudio.status === 202 &&
+        uploadedAudio.data?.draft?.status === 'received' &&
+        uploadedAudio.data?.processing?.status === 'queued');
+
+      const uploadedReady = await this.waitForAudioDraft(uploadedDraftId, this.token);
+      this.test('The separate worker prepares the uploaded audio draft',
+        uploadedReady.status === 200 &&
+        uploadedReady.data?.draft?.status === 'ready' &&
+        uploadedReady.data?.processing?.status === 'completed');
+      this.test('Uploaded audio keeps a clearly simulated transcript',
+        uploadedReady.data?.draft?.rawTranscript?.startsWith('Transcripción simulada') &&
+        uploadedReady.data?.draft?.cleanNote === uploadedReady.data?.draft?.rawTranscript);
+
+      const repeatedUpload = await this.request(
+        'POST',
+        uploadPath,
+        uploadedBytes,
+        this.token,
+        {
+          'Content-Type': 'audio/wav',
+          'Idempotency-Key': 'functional-real-audio-001',
+        }
+      );
+      this.test('Repeated binary upload returns the same draft and job',
+        repeatedUpload.status === 200 &&
+        repeatedUpload.data?.deduplicated === true &&
+        repeatedUpload.data?.draft?.id === uploadedDraftId);
+
+      const conflictingUpload = await this.request(
+        'POST',
+        uploadPath,
+        makeWav('different functional bytes'),
+        this.token,
+        {
+          'Content-Type': 'audio/wav',
+          'Idempotency-Key': 'functional-real-audio-001',
+        }
+      );
+      this.test('Reusing a binary upload key with other bytes is rejected', conflictingUpload.status === 409);
+
+      const foreignUpload = await this.request(
+        'POST',
+        uploadPath,
+        uploadedBytes,
+        this.token2,
+        {
+          'Content-Type': 'audio/wav',
+          'Idempotency-Key': 'functional-real-audio-foreign',
+        }
+      );
+      this.test('Another account cannot upload audio for the selected patient', foreignUpload.status === 404);
+
+      const invalidUpload = await this.request(
+        'POST',
+        uploadPath,
+        Buffer.from('not an audio container'),
+        this.token,
+        {
+          'Content-Type': 'audio/wav',
+          'Idempotency-Key': 'functional-real-audio-invalid',
+        }
+      );
+      this.test('Invalid audio bytes are rejected before creating a draft', invalidUpload.status === 415);
+
+      const reviewedUpload = await this.request('PATCH', `/api/session-drafts/${uploadedDraftId}`, {
+        cleanNote: 'Nota de archivo real revisada.',
+        moodAssessment: 3,
+      }, this.token);
+      const confirmedUpload = await this.request(
+        'POST',
+        `/api/session-drafts/${reviewedUpload.data?.draft?.id}/confirm`,
+        null,
+        this.token
+      );
+      uploadedAudioSessionId = confirmedUpload.data?.session?.id;
+      this.test('Uploaded audio confirms through the canonical session service',
+        confirmedUpload.status === 201 &&
+        confirmedUpload.data?.session?.inputType === 'audio' &&
+        confirmedUpload.data?.session?.cleanNote === 'Nota de archivo real revisada.');
+
       const linkWithoutToken = await this.request('POST', '/api/whatsapp/link', {
         phoneNumber: '1122334455'
       });
@@ -445,6 +576,16 @@ class FunctionalTests {
         message: { type: 'text', text: 'Must not be accepted yet' }
       });
       this.test('An unlinked phone cannot create a draft', beforeLink.status === 409);
+
+      const contendedInbound = await Promise.all(
+        Array.from({ length: 20 }, (_, index) => this.request('POST', '/api/dev/whatsapp/inbound', {
+          messageId: `fake-contention-${index}`,
+          from: `+549110000${String(index).padStart(4, '0')}`,
+          message: { type: 'text', text: 'MENÚ' },
+        }))
+      );
+      this.test('Worker polling does not make concurrent inbound transactions fail',
+        contendedInbound.every((response) => response.status === 409));
 
       const linkEvent = await this.request('POST', '/api/dev/whatsapp/inbound', {
         messageId: 'fake-link-001',
@@ -825,6 +966,8 @@ class FunctionalTests {
       this.test('Delete WhatsApp-confirmed session returns 200', delWhatsappSession.status === 200);
       const delWebAudioSession = await this.request('DELETE', `/api/sessions/${webAudioSessionId}`, null, this.token);
       this.test('Delete web-audio session returns 200', delWebAudioSession.status === 200);
+      const delUploadedAudioSession = await this.request('DELETE', `/api/sessions/${uploadedAudioSessionId}`, null, this.token);
+      this.test('Delete uploaded-audio session returns 200', delUploadedAudioSession.status === 200);
       const delWhatsappAudioSession = await this.request('DELETE', `/api/sessions/${whatsappAudioSessionId}`, null, this.token);
       this.test('Delete WhatsApp-audio session returns 200', delWhatsappAudioSession.status === 200);
 
@@ -858,5 +1001,3 @@ tests.run().catch(err => {
   console.error('Error:', err);
   process.exit(1);
 });
-
-

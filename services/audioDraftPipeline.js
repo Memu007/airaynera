@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const sql = require('./sqlite');
 const sessionDraftService = require('./sessionDraftService');
 const { getAudioProviders, getFixture } = require('./audio/fakeAudioProviders');
+const temporaryAudioStore = require('./audio/temporaryAudioStore');
 const { clinicalDateKey } = require('../utils/clinicalDate');
 
 function domainError(code, message) {
@@ -28,28 +29,34 @@ function hasExpiredProcessingLease(draft, now = Date.now()) {
   return !Number.isFinite(startedAt) || now - startedAt >= processingLeaseMs();
 }
 
-function recoverInterruptedDraft(userId, draft) {
+function transitionDraft(userId, draftId, expectedStatuses, changes, options = {}) {
+  return sql.transitionSessionDraft(userId, draftId, expectedStatuses, changes, {
+    leaseToken: options.jobLeaseToken,
+  });
+}
+
+function recoverInterruptedDraft(userId, draft, options) {
   const stage = draft.status === 'structuring' ? 'structuring' : 'transcribing';
-  return sql.transitionSessionDraft(userId, draft.id, [draft.status], {
+  return transitionDraft(userId, draft.id, [draft.status], {
     status: 'failed',
     failedStage: stage,
     errorCode: 'PROCESSING_INTERRUPTED',
     errorMessage: 'Audio processing was interrupted and can be resumed',
     processingFinishedAt: new Date().toISOString(),
-  });
+  }, options);
 }
 
-function markFailed(userId, draftId, expectedStatus, stage, error) {
-  return sql.transitionSessionDraft(userId, draftId, [expectedStatus], {
+function markFailed(userId, draftId, expectedStatus, stage, error, options) {
+  return transitionDraft(userId, draftId, [expectedStatus], {
     status: 'failed',
     failedStage: stage,
     errorCode: error.code || 'AUDIO_PROCESSING_FAILED',
     errorMessage: error.message || 'Audio processing failed',
     processingFinishedAt: new Date().toISOString(),
-  });
+  }, options);
 }
 
-function processDraft(userId, draftId) {
+function processDraft(userId, draftId, options = {}) {
   let draft = sessionDraftService.getDraft(userId, draftId);
   if (['ready', 'confirmed', 'cancelled'].includes(draft.status)) {
     return { draft, processed: false };
@@ -58,10 +65,10 @@ function processDraft(userId, draftId) {
     throw domainError('DRAFT_NOT_PROCESSABLE', 'Only audio drafts use the audio pipeline');
   }
   if (['transcribing', 'structuring'].includes(draft.status)) {
-    if (!hasExpiredProcessingLease(draft)) {
+    if (!options.jobLeaseToken && !hasExpiredProcessingLease(draft)) {
       throw domainError('PROCESSING_ALREADY_CLAIMED', 'Audio processing is already in progress');
     }
-    draft = recoverInterruptedDraft(userId, draft);
+    draft = recoverInterruptedDraft(userId, draft, options);
     if (!draft) throw domainError('PROCESSING_ALREADY_CLAIMED', 'Another process recovered this draft');
   }
   if (!['received', 'failed'].includes(draft.status)) {
@@ -73,34 +80,42 @@ function processDraft(userId, draftId) {
     && draft.failedStage === 'structuring'
     && Boolean(draft.rawTranscript);
   const firstStatus = resumeStructuring ? 'structuring' : 'transcribing';
-  draft = sql.transitionSessionDraft(userId, draftId, [draft.status], {
+  draft = transitionDraft(userId, draftId, [draft.status], {
     status: firstStatus,
     incrementProcessingAttempts: true,
     clearFailure: true,
     processingStartedAt: new Date().toISOString(),
     processingFinishedAt: null,
-  });
+  }, options);
   if (!draft) throw domainError('PROCESSING_ALREADY_CLAIMED', 'Another process claimed this draft');
 
   if (!resumeStructuring) {
     try {
+      const storedMedia = temporaryAudioStore.isUploadReference(draft.mediaReference)
+        ? temporaryAudioStore.verifyStoredMedia(draft.mediaReference, {
+            sizeBytes: draft.mediaSizeBytes,
+            sha256: draft.mediaSha256,
+          })
+        : null;
       const transcription = providers.transcriber.transcribe({
         mediaReference: draft.mediaReference,
+        mediaPath: storedMedia?.path || null,
         mimeType: draft.mediaMimeType,
         languageHint: 'es-AR',
         attempt: draft.processingAttempts,
+        durationHintSeconds: draft.audioDurationSeconds,
       });
       if (!String(transcription.text || '').trim()) {
         throw domainError('EMPTY_TRANSCRIPT', 'No speech was found in the simulated audio');
       }
-      draft = sql.transitionSessionDraft(userId, draftId, ['transcribing'], {
+      draft = transitionDraft(userId, draftId, ['transcribing'], {
         status: 'structuring',
         rawTranscript: String(transcription.text).trim(),
         audioDurationSeconds: transcription.durationSeconds,
-      });
+      }, options);
       if (!draft) throw domainError('DRAFT_NOT_PROCESSABLE', 'The draft changed while transcribing');
     } catch (error) {
-      draft = markFailed(userId, draftId, 'transcribing', 'transcribing', error);
+      draft = markFailed(userId, draftId, 'transcribing', 'transcribing', error, options);
       return { draft, processed: true, failed: true };
     }
   }
@@ -115,19 +130,87 @@ function processDraft(userId, draftId) {
     if (!String(structured.cleanNote || '').trim()) {
       throw domainError('EMPTY_CLEAN_NOTE', 'The simulated cleaner returned an empty note');
     }
-    draft = sql.transitionSessionDraft(userId, draftId, ['structuring'], {
+    draft = transitionDraft(userId, draftId, ['structuring'], {
       status: 'ready',
       cleanNote: String(structured.cleanNote).trim(),
       clearFailure: true,
       failedStage: null,
       processingFinishedAt: new Date().toISOString(),
-    });
+    }, options);
     if (!draft) throw domainError('DRAFT_NOT_PROCESSABLE', 'The draft changed while preparing the note');
     return { draft, processed: true, failed: false };
   } catch (error) {
-    draft = markFailed(userId, draftId, 'structuring', 'structuring', error);
+    draft = markFailed(userId, draftId, 'structuring', 'structuring', error, options);
     return { draft, processed: true, failed: true };
   }
+}
+
+function ingestUpload(userId, payload, storedMedia, options = {}) {
+  const source = options.source || 'web';
+  const sourceMessageId = String(options.sourceMessageId || '').trim();
+  if (!payload.patientId || !sourceMessageId || !storedMedia?.reference) {
+    throw domainError('INVALID_AUDIO_INPUT', 'patientId, uploaded audio and idempotency key are required');
+  }
+
+  const clinicalDate = payload.clinicalDate || clinicalDateKey();
+  const sessionType = payload.sessionType || 'individual';
+  const durationMinutes = payload.durationMinutes ?? null;
+  const careModality = payload.careModality || 'unspecified';
+  const audioDurationSeconds = payload.audioDurationSeconds ?? null;
+  const inputFingerprint = fingerprint({
+    patientId: String(payload.patientId),
+    source,
+    clinicalDate,
+    sessionType,
+    durationMinutes,
+    careModality,
+    audioDurationSeconds,
+    mediaMimeType: storedMedia.mimeType,
+    mediaSizeBytes: storedMedia.sizeBytes,
+    mediaSha256: storedMedia.sha256,
+  });
+
+  const created = sessionDraftService.createQueuedAudioDraft(userId, {
+    patientId: String(payload.patientId),
+    clinicalDate,
+    sessionType,
+    durationMinutes,
+    careModality,
+    audioDurationSeconds,
+    mediaReference: storedMedia.reference,
+    mediaMimeType: storedMedia.mimeType,
+    mediaSizeBytes: storedMedia.sizeBytes,
+    mediaSha256: storedMedia.sha256,
+    mediaExpiresAt: storedMedia.expiresAt,
+    inputFingerprint,
+  }, { source, sourceMessageId });
+
+  if (!created.created) {
+    temporaryAudioStore.remove(storedMedia.reference);
+    if (created.draft.inputFingerprint !== inputFingerprint) {
+      throw domainError('IDEMPOTENCY_CONFLICT', 'The idempotency key was already used with another audio input');
+    }
+    const job = created.job || (
+      ['received', 'transcribing'].includes(created.draft.status)
+        ? sql.ensureAudioProcessingJob(userId, created.draft.id)
+        : null
+    );
+    return {
+      draft: created.draft,
+      processing: job,
+      created: false,
+      deduplicated: true,
+      queued: ['queued', 'running'].includes(job?.status),
+    };
+  }
+
+  return {
+    draft: created.draft,
+    processing: created.job,
+    created: true,
+    deduplicated: false,
+    queued: true,
+  };
 }
 
 function ingest(userId, payload, options = {}) {
@@ -194,11 +277,41 @@ function retry(userId, draftId) {
   if (current.inputType !== 'audio' || !recoverable) {
     throw domainError('DRAFT_NOT_PROCESSABLE', 'Only interrupted or failed audio drafts can be retried');
   }
+  if (temporaryAudioStore.isUploadReference(current.mediaReference)) {
+    if (!current.rawTranscript) {
+      temporaryAudioStore.verifyStoredMedia(current.mediaReference, {
+        sizeBytes: current.mediaSizeBytes,
+        sha256: current.mediaSha256,
+      });
+    }
+    const job = sql.ensureAudioProcessingJob(userId, current.id);
+    const queued = sql.requeueAudioProcessingJob(userId, current.id);
+    if (!queued || !['queued', 'running'].includes(queued.status)) {
+      throw domainError('DRAFT_NOT_PROCESSABLE', 'The uploaded audio job cannot be retried');
+    }
+    return { draft: current, processing: queued || job, queued: true, processed: false };
+  }
   return processDraft(userId, draftId);
 }
 
+function getProcessing(userId, draftId) {
+  const draft = sessionDraftService.getDraft(userId, draftId);
+  return { draft, processing: sql.getAudioProcessingJob(userId, draftId) };
+}
+
+function failDraftFromWorker(userId, draftId, error, options = {}) {
+  const current = sessionDraftService.getDraft(userId, draftId);
+  if (['ready', 'confirmed', 'cancelled', 'failed'].includes(current.status)) return current;
+  const stage = current.rawTranscript ? 'structuring' : 'transcribing';
+  return markFailed(userId, draftId, current.status, stage, error, options)
+    || sessionDraftService.getDraft(userId, draftId);
+}
+
 module.exports = {
+  failDraftFromWorker,
   ingest,
+  ingestUpload,
+  getProcessing,
   processDraft,
   retry,
 };

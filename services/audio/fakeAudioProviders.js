@@ -71,15 +71,26 @@ function cleanConservatively(rawTranscript) {
 
 const fakeTranscriber = Object.freeze({
   name: 'fake',
-  transcribe({ mediaReference, attempt }) {
-    const fixture = getFixture(fixtureIdFromReference(mediaReference));
-    if (fixture.transcriptionFailsOnce && Number(attempt) === 1) {
-      throw providerError('TRANSCRIPTION_FAILED', 'The simulated transcription failed');
+  transcribe({ mediaReference, mediaPath, attempt, durationHintSeconds }) {
+    const fixtureId = fixtureIdFromReference(mediaReference);
+    if (fixtureId) {
+      const fixture = getFixture(fixtureId);
+      if (fixture.transcriptionFailsOnce && Number(attempt) === 1) {
+        throw providerError('TRANSCRIPTION_FAILED', 'The simulated transcription failed');
+      }
+      return {
+        text: fixture.rawTranscript,
+        durationSeconds: fixture.durationSeconds,
+        providerRequestId: `fake-transcription-${fixture.id}-${attempt}`,
+      };
+    }
+    if (!String(mediaReference || '').startsWith('upload://') || !mediaPath) {
+      throw providerError('INVALID_AUDIO_INPUT', 'The fake transcriber could not resolve the uploaded audio');
     }
     return {
-      text: fixture.rawTranscript,
-      durationSeconds: fixture.durationSeconds,
-      providerRequestId: `fake-transcription-${fixture.id}-${attempt}`,
+      text: 'Transcripción simulada para validar la carga y el procesamiento asíncrono del archivo de audio.',
+      durationSeconds: durationHintSeconds ?? null,
+      providerRequestId: `fake-upload-transcription-${attempt}`,
     };
   },
 });
@@ -87,9 +98,12 @@ const fakeTranscriber = Object.freeze({
 const fakeNoteCleaner = Object.freeze({
   name: 'fake',
   clean({ rawTranscript, mediaReference, attempt }) {
-    const fixture = getFixture(fixtureIdFromReference(mediaReference));
-    if (fixture.cleaningFailsOnce && Number(attempt) === 1) {
-      throw providerError('CLEANING_FAILED', 'The simulated note preparation failed');
+    const fixtureId = fixtureIdFromReference(mediaReference);
+    if (fixtureId) {
+      const fixture = getFixture(fixtureId);
+      if (fixture.cleaningFailsOnce && Number(attempt) === 1) {
+        throw providerError('CLEANING_FAILED', 'The simulated note preparation failed');
+      }
     }
     return { cleanNote: cleanConservatively(rawTranscript) };
   },

@@ -92,6 +92,8 @@ async function main() {
     JWT_SECRET: crypto.randomBytes(32).toString('hex'),
     DATA_KEY: crypto.randomBytes(32).toString('hex'),
     TEST_URL: testUrl,
+    AUDIO_UPLOAD_DIR: path.join(dataDir, 'audio-uploads'),
+    AUDIO_WORKER_POLL_MS: '10',
   };
 
   const serverProcess = spawn(process.execPath, ['server.js'], {
@@ -99,6 +101,7 @@ async function main() {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let workerProcess = null;
 
   const collectServerLog = (chunk) => {
     serverLogs.push(chunk.toString());
@@ -110,7 +113,17 @@ async function main() {
 
   try {
     await waitForHealth(`${testUrl}/health`, serverProcess);
+    workerProcess = spawn(process.execPath, ['workers/audio-worker.js'], {
+      cwd: ROOT_DIR,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    workerProcess.stdout.on('data', collectServerLog);
+    workerProcess.stderr.on('data', collectServerLog);
     const exitCode = await runTestProcess(env);
+    if (exitCode !== 0 && serverLogs.length) {
+      console.error('\nServer and worker output:\n' + serverLogs.join(''));
+    }
     process.exitCode = exitCode;
   } catch (error) {
     console.error(`Functional test runner failed: ${error.message}`);
@@ -119,6 +132,7 @@ async function main() {
     }
     process.exitCode = 1;
   } finally {
+    if (workerProcess && !workerProcess.killed) workerProcess.kill('SIGTERM');
     if (!serverProcess.killed) serverProcess.kill('SIGTERM');
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

@@ -1,4 +1,5 @@
 const sql = require('./sqlite');
+const temporaryAudioStore = require('./audio/temporaryAudioStore');
 const { clinicalDateKey } = require('../utils/clinicalDate');
 
 const EDITABLE_FIELDS = new Set([
@@ -60,6 +61,40 @@ function createDraft(userId, payload, options = {}) {
     mediaReference: payload.mediaReference ?? null,
     mediaMimeType: payload.mediaMimeType ?? null,
     inputFingerprint: payload.inputFingerprint ?? null,
+    mediaSizeBytes: payload.mediaSizeBytes ?? null,
+    mediaSha256: payload.mediaSha256 ?? null,
+    mediaExpiresAt: payload.mediaExpiresAt ?? null,
+    mediaDeletedAt: payload.mediaDeletedAt ?? null,
+  });
+}
+
+function createQueuedAudioDraft(userId, payload, options = {}) {
+  if (!payload.patientId || !payload.mediaReference || !payload.inputFingerprint) {
+    throw domainError('INVALID_AUDIO_INPUT', 'patientId, media reference and fingerprint are required');
+  }
+  return sql.addSessionDraftWithAudioJob(userId, {
+    patientId: String(payload.patientId),
+    clinicalDate: payload.clinicalDate || clinicalDateKey(),
+    sessionType: payload.sessionType || 'individual',
+    durationMinutes: payload.durationMinutes ?? null,
+    careModality: payload.careModality || 'unspecified',
+    source: options.source || 'web',
+    inputType: 'audio',
+    status: 'received',
+    rawTranscript: null,
+    cleanNote: '',
+    medicationNotes: null,
+    moodAssessment: null,
+    requiresFollowUp: false,
+    audioDurationSeconds: payload.audioDurationSeconds ?? null,
+    sourceMessageId: options.sourceMessageId || null,
+    mediaReference: payload.mediaReference,
+    mediaMimeType: payload.mediaMimeType,
+    inputFingerprint: payload.inputFingerprint,
+    mediaSizeBytes: payload.mediaSizeBytes,
+    mediaSha256: payload.mediaSha256,
+    mediaExpiresAt: payload.mediaExpiresAt,
+    mediaDeletedAt: null,
   });
 }
 
@@ -83,6 +118,13 @@ function updateDraft(userId, draftId, input) {
   }
 
   const changes = {};
+  if (
+    current.inputType === 'audio'
+    && input?.patientId !== undefined
+    && String(input.patientId) !== current.patientId
+  ) {
+    throw domainError('INVALID_DRAFT', 'The patient of an audio draft cannot be changed');
+  }
   for (const [key, value] of Object.entries(input || {})) {
     if (EDITABLE_FIELDS.has(key)) changes[key] = value;
   }
@@ -95,33 +137,44 @@ function updateDraft(userId, draftId, input) {
   return updated;
 }
 
+function cleanupAudioResources(userId, draft) {
+  if (!draft || draft.inputType !== 'audio') return;
+  sql.cancelAudioProcessingJob(userId, draft.id);
+  if (temporaryAudioStore.isUploadReference(draft.mediaReference)) {
+    const removed = temporaryAudioStore.remove(draft.mediaReference);
+    if (removed) sql.markSessionDraftMediaDeleted(userId, draft.id);
+  }
+}
+
 function cancelDraft(userId, draftId) {
   const current = getDraft(userId, draftId);
-  if (current.status === 'cancelled') return current;
+  if (current.status === 'cancelled') {
+    cleanupAudioResources(userId, current);
+    return getDraft(userId, draftId);
+  }
   if (current.status === 'confirmed') {
     throw domainError('DRAFT_NOT_READY', 'Confirmed drafts cannot be cancelled');
   }
-  const cancelled = sql.transitionSessionDraft(
-    userId,
-    draftId,
-    ['received', 'transcribing', 'structuring', 'ready', 'failed'],
-    {
-      status: 'cancelled',
-      processingFinishedAt: new Date().toISOString(),
-    }
-  );
-  if (cancelled) return cancelled;
+  const cancelled = sql.cancelSessionDraftAndAudioJob(userId, draftId);
+  if (cancelled) {
+    cleanupAudioResources(userId, cancelled);
+    return getDraft(userId, draftId);
+  }
   const latest = getDraft(userId, draftId);
   if (latest.status === 'cancelled') return latest;
   throw domainError('DRAFT_NOT_READY', 'The draft changed before it could be cancelled');
 }
 
 function confirmDraft(userId, draftId) {
-  return sql.confirmSessionDraft(userId, draftId);
+  const result = sql.confirmSessionDraft(userId, draftId);
+  cleanupAudioResources(userId, result.draft);
+  result.draft = getDraft(userId, draftId);
+  return result;
 }
 
 module.exports = {
   createDraft,
+  createQueuedAudioDraft,
   getDraft,
   listDrafts,
   updateDraft,

@@ -20,25 +20,23 @@ function runMigrations(connection, options = {}) {
     )
   `);
 
-  const appliedIds = new Set(
-    connection.prepare('SELECT id FROM schema_migrations').all().map((row) => row.id)
-  );
-
   const appliedNow = [];
 
   for (const fileName of listMigrationFiles(migrationsDir)) {
-    if (appliedIds.has(fileName)) continue;
-
     const sql = fs.readFileSync(path.join(migrationsDir, fileName), 'utf8');
     const applyMigration = connection.transaction(() => {
+      const alreadyApplied = connection.prepare(
+        'SELECT 1 FROM schema_migrations WHERE id = ?'
+      ).get(fileName);
+      if (alreadyApplied) return false;
       connection.exec(sql);
       connection.prepare(
         'INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)'
       ).run(fileName, new Date().toISOString());
+      return true;
     });
 
-    applyMigration();
-    appliedNow.push(fileName);
+    if (applyMigration.immediate()) appliedNow.push(fileName);
   }
 
   return appliedNow;

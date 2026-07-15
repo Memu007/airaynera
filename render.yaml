@@ -21,6 +21,18 @@ services:
         value: America/Argentina/Buenos_Aires
       - key: AUDIO_PROCESSING_LEASE_MS
         value: 300000
+      - key: AUDIO_JOB_LEASE_MS
+        value: 300000
+      - key: AUDIO_WORKER_POLL_MS
+        value: 500
+      - key: AUDIO_UPLOAD_DIR
+        value: /app/data/audio-uploads
+      - key: DATA_DIR
+        value: /app/data
+      - key: AUDIO_UPLOAD_MAX_BYTES
+        value: 26214400
+      - key: AUDIO_UPLOAD_RETENTION_MS
+        value: 86400000
     healthCheckPath: /health
     disk:
       name: aira-data

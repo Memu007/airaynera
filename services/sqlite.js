@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('node:crypto');
 const { clinicalDateKey } = require('../utils/clinicalDate');
 const bcrypt = require('bcrypt');
 const { encryptString, decryptString, getKey } = require('../utils/crypto');
@@ -31,6 +32,7 @@ function getDb() {
   }
   db = new BetterSqlite3(dbFile);
   db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
   runMigrations(db);
   return db;
@@ -91,6 +93,10 @@ function mapSessionDraftRow(row) {
     mediaReference: row.media_reference || null,
     mediaMimeType: row.media_mime_type || null,
     inputFingerprint: row.input_fingerprint || null,
+    mediaSizeBytes: row.media_size_bytes == null ? null : Number(row.media_size_bytes),
+    mediaSha256: row.media_sha256 || null,
+    mediaExpiresAt: row.media_expires_at || null,
+    mediaDeletedAt: row.media_deleted_at || null,
     processingAttempts: Number(row.processing_attempts || 0),
     failedStage: row.failed_stage || null,
     processingStartedAt: row.processing_started_at || null,
@@ -102,6 +108,27 @@ function mapSessionDraftRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     confirmedAt: row.confirmed_at || null,
+  };
+}
+
+function mapAudioProcessingJobRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    draftId: String(row.draft_id),
+    status: row.status,
+    attempts: Number(row.attempts || 0),
+    availableAt: row.available_at,
+    leaseOwner: row.lease_owner || null,
+    leaseToken: row.lease_token || null,
+    leaseExpiresAt: row.lease_expires_at || null,
+    failure: row.error_code || row.error_message
+      ? { code: row.error_code || 'AUDIO_JOB_FAILED', message: row.error_message || '' }
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    finishedAt: row.finished_at || null,
   };
 }
 
@@ -413,8 +440,9 @@ function addSessionDraft(userId, draft) {
       care_modality, source, input_type, status, raw_transcript, clean_note,
       medication_notes, mood_assessment, requires_follow_up,
       audio_duration_seconds, source_message_id, media_reference, media_mime_type,
-      input_fingerprint, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      input_fingerprint, media_size_bytes, media_sha256, media_expires_at,
+      media_deleted_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     userId,
     draft.patientId,
@@ -435,6 +463,10 @@ function addSessionDraft(userId, draft) {
     draft.mediaReference,
     draft.mediaMimeType,
     draft.inputFingerprint,
+    draft.mediaSizeBytes,
+    draft.mediaSha256,
+    draft.mediaExpiresAt,
+    draft.mediaDeletedAt,
     now,
     now
   );
@@ -443,6 +475,257 @@ function addSessionDraft(userId, draft) {
     draft: getSessionDraft(userId, info.lastInsertRowid),
     created: true,
   };
+}
+
+function getAudioProcessingJob(userId, draftId) {
+  const row = getDb().prepare(`
+    SELECT * FROM audio_processing_jobs
+    WHERE user_id = ? AND draft_id = ?
+  `).get(userId, draftId);
+  return mapAudioProcessingJobRow(row);
+}
+
+function addSessionDraftWithAudioJob(userId, draft) {
+  const conn = getDb();
+  const create = conn.transaction(() => {
+    const result = addSessionDraft(userId, draft);
+    if (!result.created) {
+      return { ...result, job: getAudioProcessingJob(userId, result.draft.id) };
+    }
+
+    const now = new Date().toISOString();
+    conn.prepare(`
+      INSERT INTO audio_processing_jobs (
+        user_id, draft_id, status, attempts, available_at, created_at, updated_at
+      ) VALUES (?, ?, 'queued', 0, ?, ?, ?)
+    `).run(userId, result.draft.id, now, now, now);
+
+    return {
+      ...result,
+      job: getAudioProcessingJob(userId, result.draft.id),
+    };
+  });
+  return create.immediate();
+}
+
+function ensureAudioProcessingJob(userId, draftId) {
+  const existing = getAudioProcessingJob(userId, draftId);
+  if (existing) return existing;
+  const now = new Date().toISOString();
+  try {
+    getDb().prepare(`
+      INSERT INTO audio_processing_jobs (
+        user_id, draft_id, status, attempts, available_at, created_at, updated_at
+      ) VALUES (?, ?, 'queued', 0, ?, ?, ?)
+    `).run(userId, draftId, now, now, now);
+  } catch (error) {
+    if (!String(error.code || '').startsWith('SQLITE_CONSTRAINT')) throw error;
+  }
+  return getAudioProcessingJob(userId, draftId);
+}
+
+function claimNextAudioProcessingJob(workerId, leaseMs, nowValue = new Date()) {
+  const conn = getDb();
+  const now = new Date(nowValue).toISOString();
+  const leaseExpiresAt = new Date(new Date(nowValue).getTime() + leaseMs).toISOString();
+  const hasEligibleJob = conn.prepare(`
+    SELECT 1 FROM audio_processing_jobs
+    WHERE (status='queued' AND available_at <= ?)
+      OR (status='running' AND lease_expires_at <= ?)
+    LIMIT 1
+  `).get(now, now);
+  if (!hasEligibleJob) return null;
+  const claim = conn.transaction(() => {
+    conn.prepare(`
+      UPDATE audio_processing_jobs SET
+        status='queued', lease_owner=NULL, lease_token=NULL, lease_expires_at=NULL,
+        updated_at=?
+      WHERE status='running' AND lease_expires_at <= ?
+    `).run(now, now);
+
+    const candidate = conn.prepare(`
+      SELECT id FROM audio_processing_jobs
+      WHERE status='queued' AND available_at <= ?
+      ORDER BY available_at, id
+      LIMIT 1
+    `).get(now);
+    if (!candidate) return null;
+
+    const leaseToken = crypto.randomUUID();
+    const info = conn.prepare(`
+      UPDATE audio_processing_jobs SET
+        status='running', attempts=attempts+1, lease_owner=?, lease_token=?,
+        lease_expires_at=?, error_code=NULL, error_message=NULL, updated_at=?
+      WHERE id=? AND status='queued'
+    `).run(workerId, leaseToken, leaseExpiresAt, now, candidate.id);
+    if (!info.changes) return null;
+    return mapAudioProcessingJobRow(
+      conn.prepare('SELECT * FROM audio_processing_jobs WHERE id = ?').get(candidate.id)
+    );
+  });
+  return claim.immediate();
+}
+
+function renewAudioProcessingJob(jobId, workerId, leaseToken, leaseMs, nowValue = new Date()) {
+  const now = new Date(nowValue).toISOString();
+  const leaseExpiresAt = new Date(new Date(nowValue).getTime() + leaseMs).toISOString();
+  const info = getDb().prepare(`
+    UPDATE audio_processing_jobs SET lease_expires_at=?, updated_at=?
+    WHERE id=? AND status='running' AND lease_owner=? AND lease_token=?
+  `).run(leaseExpiresAt, now, jobId, workerId, leaseToken);
+  return info.changes === 1;
+}
+
+function finishAudioProcessingJob(jobId, workerId, leaseToken, result) {
+  const now = new Date().toISOString();
+  const status = result.status;
+  const info = getDb().prepare(`
+    UPDATE audio_processing_jobs SET
+      status=?, error_code=?, error_message=?, finished_at=?, updated_at=?,
+      lease_owner=NULL, lease_token=NULL, lease_expires_at=NULL
+    WHERE id=? AND status='running' AND lease_owner=? AND lease_token=?
+  `).run(
+    status,
+    result.errorCode || null,
+    result.errorMessage || null,
+    now,
+    now,
+    jobId,
+    workerId,
+    leaseToken
+  );
+  return info.changes === 1;
+}
+
+function requeueAudioProcessingJob(userId, draftId, nowValue = new Date()) {
+  const now = new Date(nowValue).toISOString();
+  const info = getDb().prepare(`
+    UPDATE audio_processing_jobs SET
+      status='queued', available_at=?, error_code=NULL, error_message=NULL,
+      lease_owner=NULL, lease_token=NULL, lease_expires_at=NULL,
+      finished_at=NULL, updated_at=?
+    WHERE user_id=? AND draft_id=? AND (
+      status IN ('queued', 'failed')
+      OR (status='running' AND lease_expires_at <= ?)
+    )
+  `).run(now, now, userId, draftId, now);
+  if (!info.changes) return getAudioProcessingJob(userId, draftId);
+  return getAudioProcessingJob(userId, draftId);
+}
+
+function cancelAudioProcessingJob(userId, draftId) {
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    UPDATE audio_processing_jobs SET
+      status='cancelled', finished_at=?, updated_at=?,
+      lease_owner=NULL, lease_token=NULL, lease_expires_at=NULL
+    WHERE user_id=? AND draft_id=? AND status IN ('queued', 'running', 'failed')
+  `).run(now, now, userId, draftId);
+  return getAudioProcessingJob(userId, draftId);
+}
+
+function cancelSessionDraftAndAudioJob(userId, draftId) {
+  const conn = getDb();
+  const cancel = conn.transaction(() => {
+    const current = getSessionDraft(userId, draftId);
+    if (!current || current.status === 'confirmed') return current;
+    const now = new Date().toISOString();
+    if (current.status !== 'cancelled') {
+      const info = conn.prepare(`
+        UPDATE session_drafts SET
+          status='cancelled', processing_finished_at=?, updated_at=?
+        WHERE id=? AND user_id=?
+          AND status IN ('received', 'transcribing', 'structuring', 'ready', 'failed')
+      `).run(now, now, draftId, userId);
+      if (!info.changes) return getSessionDraft(userId, draftId);
+    }
+    conn.prepare(`
+      UPDATE audio_processing_jobs SET
+        status='cancelled', finished_at=?, updated_at=?,
+        lease_owner=NULL, lease_token=NULL, lease_expires_at=NULL
+      WHERE user_id=? AND draft_id=? AND status IN ('queued', 'running', 'failed')
+    `).run(now, now, userId, draftId);
+    return getSessionDraft(userId, draftId);
+  });
+  return cancel.immediate();
+}
+
+function markSessionDraftMediaDeleted(userId, draftId) {
+  const now = new Date().toISOString();
+  const info = getDb().prepare(`
+    UPDATE session_drafts SET media_deleted_at=?, updated_at=?
+    WHERE id=? AND user_id=? AND media_reference LIKE 'upload://%'
+  `).run(now, now, draftId, userId);
+  return info.changes ? getSessionDraft(userId, draftId) : null;
+}
+
+function listRequiredAudioUploadReferences() {
+  return getDb().prepare(`
+    SELECT media_reference FROM session_drafts
+    WHERE media_reference LIKE 'upload://%'
+      AND media_deleted_at IS NULL
+      AND raw_transcript IS NULL
+      AND status IN ('received', 'transcribing', 'failed')
+  `).all().map((row) => row.media_reference);
+}
+
+function listAudioUploadsPendingCleanup() {
+  return getDb().prepare(`
+    SELECT user_id, id AS draft_id, media_reference
+    FROM session_drafts
+    WHERE media_reference LIKE 'upload://%'
+      AND media_deleted_at IS NULL
+      AND (
+        raw_transcript IS NOT NULL
+        OR status IN ('ready', 'confirmed', 'cancelled')
+      )
+  `).all().map((row) => ({
+    userId: String(row.user_id),
+    draftId: String(row.draft_id),
+    mediaReference: row.media_reference,
+  }));
+}
+
+function listExpiredAudioUploads(nowValue = new Date()) {
+  const now = new Date(nowValue).toISOString();
+  return getDb().prepare(`
+    SELECT user_id, id AS draft_id, media_reference
+    FROM session_drafts
+    WHERE media_reference LIKE 'upload://%'
+      AND media_deleted_at IS NULL
+      AND media_expires_at IS NOT NULL
+      AND media_expires_at <= ?
+      AND raw_transcript IS NULL
+      AND status IN ('received', 'transcribing', 'failed')
+  `).all(now).map((row) => ({
+    userId: String(row.user_id),
+    draftId: String(row.draft_id),
+    mediaReference: row.media_reference,
+  }));
+}
+
+function expireAudioUpload(userId, draftId) {
+  const conn = getDb();
+  const expire = conn.transaction(() => {
+    const now = new Date().toISOString();
+    conn.prepare(`
+      UPDATE audio_processing_jobs SET
+        status='cancelled', finished_at=?, updated_at=?,
+        lease_owner=NULL, lease_token=NULL, lease_expires_at=NULL
+      WHERE user_id=? AND draft_id=? AND status IN ('queued', 'running', 'failed')
+    `).run(now, now, userId, draftId);
+    conn.prepare(`
+      UPDATE session_drafts SET
+        status='failed', failed_stage='transcribing',
+        error_code='AUDIO_UPLOAD_EXPIRED',
+        error_message='The temporary audio file expired before transcription completed',
+        processing_finished_at=?, updated_at=?
+      WHERE id=? AND user_id=? AND raw_transcript IS NULL
+        AND status IN ('received', 'transcribing', 'failed')
+    `).run(now, now, draftId, userId);
+    return getSessionDraft(userId, draftId);
+  });
+  return expire.immediate();
 }
 
 function updateSessionDraft(userId, id, changes) {
@@ -519,7 +802,7 @@ function setSessionDraftStatus(userId, id, status) {
   return info.changes ? getSessionDraft(userId, id) : null;
 }
 
-function transitionSessionDraft(userId, id, expectedStatuses, changes) {
+function transitionSessionDraft(userId, id, expectedStatuses, changes, options = {}) {
   const conn = getDb();
   const statuses = Array.isArray(expectedStatuses) ? expectedStatuses : [expectedStatuses];
   if (!statuses.length) return null;
@@ -550,10 +833,24 @@ function transitionSessionDraft(userId, id, expectedStatuses, changes) {
   }
 
   const placeholders = statuses.map(() => '?').join(', ');
+  const leaseClause = options.leaseToken
+    ? `AND EXISTS (
+        SELECT 1 FROM audio_processing_jobs job
+        WHERE job.draft_id=session_drafts.id
+          AND job.user_id=session_drafts.user_id
+          AND job.status='running'
+          AND job.lease_token=?
+          AND job.lease_expires_at > ?
+      )`
+    : '';
+  const leaseValues = options.leaseToken
+    ? [options.leaseToken, options.now || new Date().toISOString()]
+    : [];
   const info = conn.prepare(`
     UPDATE session_drafts SET ${assignments.join(', ')}
     WHERE id=? AND user_id=? AND status IN (${placeholders})
-  `).run(...values, id, userId, ...statuses);
+      ${leaseClause}
+  `).run(...values, id, userId, ...statuses, ...leaseValues);
   return info.changes ? getSessionDraft(userId, id) : null;
 }
 
@@ -623,7 +920,7 @@ function confirmSessionDraft(userId, id) {
     };
   });
 
-  return confirm();
+  return confirm.immediate();
 }
 
 // ===== WHATSAPP LINK FUNCTIONS =====
@@ -787,7 +1084,7 @@ function consumeWhatsappLinkCode({ messageId, phoneNumber, code, payloadHash, no
     return { link, deduplicated: false };
   });
 
-  const result = consume();
+  const result = consume.immediate();
   if (result.errorCode === 'LINK_CODE_EXPIRED') {
     const error = new Error('Link code expired');
     error.code = result.errorCode;
@@ -932,7 +1229,7 @@ function addWhatsappInboundEvent(event) {
 }
 
 function withTransaction(work) {
-  return getDb().transaction(work)();
+  return getDb().transaction(work).immediate();
 }
 
 // ===== USER FUNCTIONS =====
@@ -1009,10 +1306,24 @@ module.exports = {
   getSessionDraftBySourceMessage,
   listSessionDrafts,
   addSessionDraft,
+  addSessionDraftWithAudioJob,
   updateSessionDraft,
   setSessionDraftStatus,
   transitionSessionDraft,
   confirmSessionDraft,
+  getAudioProcessingJob,
+  ensureAudioProcessingJob,
+  claimNextAudioProcessingJob,
+  renewAudioProcessingJob,
+  finishAudioProcessingJob,
+  requeueAudioProcessingJob,
+  cancelAudioProcessingJob,
+  cancelSessionDraftAndAudioJob,
+  markSessionDraftMediaDeleted,
+  listRequiredAudioUploadReferences,
+  listAudioUploadsPendingCleanup,
+  listExpiredAudioUploads,
+  expireAudioUpload,
   getWhatsappLink,
   getLinkedWhatsappByPhone,
   requestWhatsappLink,

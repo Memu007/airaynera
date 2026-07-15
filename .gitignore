@@ -166,6 +166,6 @@ credentials/
 
 # Application specific
 uploads/
+data/audio-uploads/
 sessions/
 audit-logs/
-
