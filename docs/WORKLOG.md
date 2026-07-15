@@ -36,8 +36,16 @@ Integrar Gemini como primer proveedor real sin bloquear la web, sin romper fixtu
 - `npm run lint`, `npm run check:syntax` y `git diff --check`: aprobados.
 - `npm run benchmark:audio-worker`: 40/40 `ready`, cero residuos y todos los gates aprobados después de introducir el pipeline asíncrono.
 - `npm run smoke:gemini -- --validate-only`: 40/40 WAV generados y validados offline en macOS.
-- Smoke real Gemini: no ejecutado; `GEMINI_API_KEY` y `GOOGLE_API_KEY` no estaban configuradas en este entorno.
+- En el cierre inicial el smoke real no se ejecutó porque faltaba una clave; la actualización posterior con credencial temporal se registra debajo.
 - Commit funcional: `74a6ba3` (`add gemini audio worker integration`).
+
+Actualización con credencial temporal:
+
+- La credencial autenticó contra `models/gemini-3.1-flash-lite` con HTTP 200 y se mantuvo sólo en memoria del proceso.
+- La primera corrida real completó 0/40: Interactions v1 rechazó cada request porque texto y audio estaban enviados como contenidos directos en vez de estar envueltos en un paso `user_input`.
+- El reporte fallido quedó preservado en `benchmarks/audio/results/gemini-smoke-20260715-failed-input-shape.json`; no contiene la clave.
+- Se corrigió el payload, se agregó la aserción contractual correspondiente y un `--probe` de un audio antes de repetir la corrida completa.
+- Seis cleanup remotos superaron el timeout inicial de un segundo; se amplió a tres segundos, todavía por debajo de la gracia de apagado del supervisor.
 
 ### Decisión de uso
 

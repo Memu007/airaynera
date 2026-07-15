@@ -213,16 +213,16 @@ async function runLiveSmoke(generated, options) {
     0
   );
   const summary = {
-    purpose: 'synthetic-integration-smoke',
+    purpose: options.probe ? 'synthetic-integration-probe' : 'synthetic-integration-smoke',
     provider: 'gemini',
     model: transcriber.model,
     cases: entries.length,
     completed: completed.length,
     completionRate: rounded(completionRate),
-    wer: rounded(aggregate.wer),
-    cer: rounded(aggregate.cer),
-    criticalSpanRecall: rounded(aggregate.criticalAccuracy),
-    negationSpanRecall: rounded(aggregate.negationAccuracy),
+    wer: completed.length ? rounded(aggregate.wer) : null,
+    cer: completed.length ? rounded(aggregate.cer) : null,
+    criticalSpanRecall: completed.length ? rounded(aggregate.criticalAccuracy) : null,
+    negationSpanRecall: completed.length ? rounded(aggregate.negationAccuracy) : null,
     latencyMs: {
       p50: percentile(latencies, 0.5),
       p95: percentile(latencies, 0.95),
@@ -234,9 +234,10 @@ async function runLiveSmoke(generated, options) {
     gates: {
       completionAbove90Percent: completionRate > 0.9,
       workerProducedReadyDrafts: completed.length === entries.length,
-      noDetectedCriticalContradictions: completed.every((entry) => (
-        entry.criticalSpans.every((span) => !span.contradictionDetected)
-      )),
+      noDetectedCriticalContradictions: completed.length === entries.length
+        && completed.every((entry) => (
+          entry.criticalSpans.every((span) => !span.contradictionDetected)
+        )),
     },
   };
   const commit = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim() || null;
@@ -258,9 +259,13 @@ async function runLiveSmoke(generated, options) {
 
 async function main() {
   const validateOnly = process.argv.includes('--validate-only');
-  const count = integerArgument('count', 40);
+  const probe = process.argv.includes('--probe');
+  const count = integerArgument('count', probe ? 1 : 40);
   const delayMs = integerArgument('delay-ms', 4000);
-  if (count < 30 || count > 40) throw new Error('count must be between 30 and 40');
+  if (probe && count !== 1) throw new Error('probe always runs exactly one audio');
+  if (!probe && (count < 30 || count > 40)) {
+    throw new Error('count must be between 30 and 40');
+  }
   if (delayMs < 0) throw new Error('delay-ms cannot be negative');
   if (validateOnly) {
     const requestedManifest = argumentValue('corpus-manifest');
@@ -292,7 +297,7 @@ async function main() {
   if (!reportPath) throw new Error('Live smoke requires --report so evidence is not discarded');
   const generated = loadGeneratedCorpus(corpusManifest);
   validateCorpus(generated);
-  const report = await runLiveSmoke(generated, { count, delayMs });
+  const report = await runLiveSmoke(generated, { count, delayMs, probe });
   const absoluteReportPath = path.resolve(reportPath);
   fs.mkdirSync(path.dirname(absoluteReportPath), { recursive: true });
   fs.writeFileSync(absoluteReportPath, `${JSON.stringify(report, null, 2)}\n`);

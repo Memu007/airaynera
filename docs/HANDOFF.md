@@ -11,8 +11,8 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
 - Último hito funcional: `74a6ba3` (`add gemini audio worker integration`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline ya acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite; sigue desactivado por defecto y no se hizo una llamada real porque este entorno no tiene clave. El smoke sintético de 40 WAV quedó generado y validado offline. La batería funcional aprobó 129/129.
-- Próximo objetivo: configurar `GEMINI_API_KEY` localmente, ejecutar el smoke integrado y conservar el reporte. Después corresponde preparar el corpus humano decisorio y comparar los mismos bytes con otros proveedores antes de aprobar uso clínico. Meta real se incorpora después y solamente cuando existan credenciales.
+- Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite, desactivado por defecto. Una credencial temporal autenticó el modelo; la primera corrida real detectó y corrigió un shape inválido de `user_input`, y queda pendiente repetir el probe/smoke. La batería funcional aprobó 129/129.
+- Próximo objetivo: repetir el probe y el smoke integrado después de corregir el shape `user_input` detectado por la primera corrida real. Después corresponde preparar el corpus humano decisorio y comparar los mismos bytes con otros proveedores antes de aprobar uso clínico. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -78,7 +78,7 @@ Registro web
 - El deploy de prueba declara `WHATSAPP_ADAPTER=fake`; debe reemplazarse por Meta antes de producción real.
 - Un audio fallido queda asociado a la conversación y puede reintentarse por etapa o cancelarse.
 - La respuesta de audio listo muestra la nota preparada antes de guardar.
-- No existe todavía un webhook real de Meta, envío real de respuestas ni descarga de audio. Gemini está implementado para uploads web, pero sigue desactivado y sin smoke real ejecutado.
+- No existe todavía un webhook real de Meta, envío real de respuestas ni descarga de audio. Gemini está implementado para uploads web y sigue desactivado por defecto; el primer smoke real falló por contrato y ya fue corregido para repetirlo.
 - Los endpoints heredados que escribían directamente en `sessions` ahora devuelven `410`.
 - El reconocimiento y envío n8n restantes siguen siendo prototipos y no forman parte del vertical nuevo.
 
