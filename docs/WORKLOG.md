@@ -32,7 +32,9 @@ Entender el estado real del repositorio y redefinir la implementación alrededor
 - Se detectó que varios workflows de GitHub referencian archivos o scripts archivados o inexistentes.
 - Se detectó inicialmente que GitHub CLI no estaba instalado.
 - Se instaló GitHub CLI y se autenticó la cuenta `Memu007` mediante el flujo oficial de dispositivo.
-- Se creó la rama `agent/document-product-roadmap` para publicar la documentación mediante un PR, sin escribir directamente sobre `main`.
+- Se creó y publicó la rama `agent/document-product-roadmap` sin escribir directamente sobre `main`.
+- Se creó el commit `221522e` (`document product roadmap and handoff`).
+- Se abrió el PR documental en borrador [#1](https://github.com/Memu007/Aira.final/pull/1).
 
 ### Resultado
 
@@ -40,6 +42,5 @@ La dirección del producto y el plan de implementación dejaron de depender de l
 
 ### Siguiente trabajo
 
-1. Completar el commit, push y PR en borrador de la documentación.
-2. Crear `agent/01-web-core` desde el estado documentado.
-3. Ejecutar la Etapa 0 y la Etapa 1 del roadmap.
+1. Crear `agent/01-web-core` desde el estado documentado.
+2. Ejecutar la Etapa 0 y la Etapa 1 del roadmap.

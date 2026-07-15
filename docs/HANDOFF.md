@@ -140,14 +140,16 @@ No bloquean el vertical de texto.
 - Los archivos documentales se prepararon y validaron localmente.
 - GitHub CLI (`gh`) quedó instalado y autenticado como `Memu007`.
 - Se creó la rama `agent/document-product-roadmap` para publicar estos cambios sin modificar directamente `main`.
-- El commit, push y PR en borrador se completan como parte de este mismo bloque de trabajo.
+- Commit documental: `221522e` (`document product roadmap and handoff`).
+- Rama publicada: `origin/agent/document-product-roadmap`.
+- PR documental en borrador: [#1 — Document product roadmap and living handoff](https://github.com/Memu007/Aira.final/pull/1).
 
 ## Cómo retomar
 
 1. Leer este archivo.
 2. Revisar `git status -sb` y `git diff`.
 3. Confirmar que solamente estén los cambios documentales esperados.
-4. Confirmar el estado del PR documental.
+4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
 5. Crear o retomar la rama `agent/01-web-core` desde el commit documental.
 6. Instalar dependencias y establecer la línea base de pruebas.
 7. Comenzar la Etapa 0.
