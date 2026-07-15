@@ -9,10 +9,10 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
-- Último hito funcional: `179c329` (`process real audio uploads in sqlite worker`).
+- Último hito funcional: `4a0a082` (`harden audio expiry and inactive patient flow`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: la web acepta archivos de audio reales, los guarda temporalmente fuera de SQLite y los procesa mediante un worker con job, lease y recuperación persistentes. La transcripción continúa siendo simulada. La batería completa aprobó 126/126 en tres corridas consecutivas bajo polling intensivo.
-- Próximo objetivo: ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real al worker ya existente. Meta real se incorpora después y solamente cuando existan credenciales.
+- Etapa técnica: la web acepta archivos de audio reales, los guarda temporalmente fuera de SQLite y los procesa mediante un worker con job, lease y recuperación persistentes. La expiración usa compare-and-set antes de cancelar el job o borrar el medio; un paciente inactivo conserva su historia pero no admite sesiones ni borradores nuevos. La transcripción continúa siendo simulada. La batería funcional aprobó 129/129.
+- Próximo objetivo: cerrar las correcciones de integridad y UX web junto con el gate del supervisor; después ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -92,6 +92,7 @@ Registro web
 - `services/audio/temporaryAudioStore.js` recibe un stream binario, valida tamaño, firma y MIME, escribe primero un archivo parcial y entrega una referencia opaca `upload://...`.
 - `POST /api/audio-drafts/upload` responde sin esperar la transcripción; el límite predeterminado es 25 MB y la retención máxima es 24 horas.
 - `workers/audio-worker.js` reclama jobs con lease y fencing token, recupera trabajo abandonado y limpia el archivo después de persistir la transcripción o alcanzar un estado terminal.
+- El barrido de expiración sólo cancela el job y elimina el medio si logró marcar atómicamente el borrador vencido; si otra instancia ya persistió la transcripción, el trabajo continúa.
 - `npm start` supervisa servidor y worker; en Render, base y archivos temporales comparten el disco persistente montado en `/app/data`.
 - Estados: `received → transcribing → structuring → ready/failed`; confirmar y cancelar siguen usando el servicio canónico.
 - Un retry de estructuración conserva la transcripción y no vuelve a transcribir.
@@ -104,7 +105,8 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La batería integral actual aprobó 126 de 126 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación, audio sintético y worker de uploads.
+- La batería integral actual aprobó 129 de 129 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación, audio sintético y worker de uploads.
+- La suite del worker cubre límite streamed, expiración integral, carrera después del snapshot y recuperación desde un segundo proceso real.
 - La prueba funcional se repitió tres veces con polling del worker cada 10 ms; las tres corridas terminaron 126/126 y cubren 20 entradas de WhatsApp concurrentes.
 - La suite específica cubre deduplicación binaria, conflicto de clave, MIME inválido, cancelación atómica, lease abandonado, fencing contra escritura obsoleta, fallo inesperado del worker, retry y limpieza del archivo.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
@@ -278,6 +280,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 - Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`, publicado el 2026-07-15.
 - Verificación del hito actual: `npm test`, build, sintaxis embebida y `git diff --check` aprobados; 126/126 pruebas funcionales en tres corridas consecutivas.
 - Implementación del hito actual: `179c329` (`process real audio uploads in sqlite worker`).
+- Corrección de confiabilidad posterior a la auditoría: `4a0a082` (`harden audio expiry and inactive patient flow`).
 - El remoto local `origin` continúa apuntando a `Memu007/Aira.final` para conservar el historial; el remoto `airaynera` es el destino activo de publicación.
 - Los archivos documentales se prepararon y validaron localmente.
 - GitHub CLI (`gh`) está instalado, pero la gestión de PR puede requerir reautenticación; la publicación vigente se realizó con las credenciales de Git configuradas localmente.

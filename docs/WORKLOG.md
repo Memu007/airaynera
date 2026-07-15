@@ -2,6 +2,30 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-15 — Expiración atómica y pacientes inactivos
+
+### Objetivo
+
+Corregir los dos riesgos backend detectados en la auditoría funcional: la carrera entre expiración y persistencia de la transcripción, y la creación de notas nuevas para pacientes inactivos.
+
+### Trabajo realizado
+
+- `expireAudioUpload` marca primero el borrador mediante compare-and-set con precondiciones de referencia, retención, ausencia de transcripción y estado.
+- El job se cancela y el archivo se elimina solamente cuando esa transición afectó exactamente una fila; si otro worker ya avanzó a `structuring`, no se toca el trabajo.
+- Nuevas sesiones, borradores y confirmaciones exigen un paciente activo; sesiones históricas y lectura de borradores permanecen disponibles después de desactivarlo.
+- La suite agrega límite de upload streamed, limpieza de parciales, expiración integral, reproducción de la carrera después del snapshot y recuperación de un lease desde un segundo proceso Node real.
+
+### Verificaciones
+
+- `npm run test:audio-upload-worker`: aprobado.
+- `npm test`: aprobado, incluida la batería funcional 129/129.
+- `npm run check:syntax` y `git diff --check`: aprobados.
+- Commit: `4a0a082` (`harden audio expiry and inactive patient flow`).
+
+### Próximo paso
+
+Cerrar el formulario clínico explícito, la conservación del borrador de audio y los gates de supervisor/UI antes de retomar el benchmark de proveedores.
+
 ## 2026-07-15 — Archivo real, almacenamiento temporal y worker SQLite
 
 ### Objetivo
