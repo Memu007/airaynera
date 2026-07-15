@@ -2,6 +2,34 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-15 — Supervisor verificable y contratos activos alineados
+
+### Objetivo
+
+Cerrar las brechas operativas de la auditoría: desarrollo sin worker, CI distinta del proceso desplegado y documentación activa que todavía describía el audio real como pendiente.
+
+### Trabajo realizado
+
+- `npm run dev` inicia el mismo supervisor servidor+worker que producción y reinicia ambos ante cambios del backend.
+- Se agregó un smoke del supervisor que crea entorno temporal, espera health, registra cuenta/paciente, sube WAV real, espera `ready` y exige apagado limpio.
+- Build dejó de ser un `echo`: valida sintaxis de servidor, worker, scripts y JavaScript embebido.
+- Lint ejecuta además el contrato UI de metadatos clínicos y seguimiento explícito.
+- CI corre batería funcional, smoke del supervisor, build y contrato UI.
+- `ROADMAP.md` y `DOMAIN_CONTRACTS.md` reflejan carga binaria real, almacenamiento temporal, job SQLite y worker ya implementados.
+
+### Verificaciones
+
+- `npm test`: aprobado, 129/129 pruebas funcionales.
+- `npm run test:runtime-supervisor`: aprobado de health a `ready` y apagado limpio.
+- `npm run build`: 19 archivos Node y dos scripts embebidos aprobados.
+- `npm run lint`: contrato UI y sintaxis aprobados.
+- `git diff --check`: aprobado.
+- Commit: `f1472c4` (`verify supervised runtime and current contracts`).
+
+### Próximo paso
+
+Preparar 30 a 50 recortes creados o anonimizados, ejecutar el benchmark Groq/Gemini/OpenAI y conectar el proveedor elegido dentro del worker existente. Meta real queda después y requiere credenciales.
+
 ## 2026-07-15 — Flujo clínico explícito y UX recuperable
 
 ### Objetivo

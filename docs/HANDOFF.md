@@ -9,10 +9,10 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
-- Último hito funcional: `e533eb9` (`make clinical web flow explicit and recoverable`).
+- Último hito funcional: `f1472c4` (`verify supervised runtime and current contracts`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
 - Etapa técnica: la web pide y persiste explícitamente fecha, tipo, duración, modalidad, ánimo opcional y seguimiento decidido por el profesional. La carga real conserva el borrador al cerrar, exige confirmación para descartarlo y limita el polling. La expiración backend usa compare-and-set antes de cancelar el job o borrar el medio; un paciente inactivo conserva su historia pero no admite sesiones ni borradores nuevos. La transcripción continúa siendo simulada. La batería funcional aprobó 129/129.
-- Próximo objetivo: cerrar el gate del supervisor y alinear los comandos/documentos activos; después ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real. Meta real se incorpora después y solamente cuando existan credenciales.
+- Próximo objetivo: ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real al worker existente. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -98,7 +98,7 @@ Registro web
 - `POST /api/audio-drafts/upload` responde sin esperar la transcripción; el límite predeterminado es 25 MB y la retención máxima es 24 horas.
 - `workers/audio-worker.js` reclama jobs con lease y fencing token, recupera trabajo abandonado y limpia el archivo después de persistir la transcripción o alcanzar un estado terminal.
 - El barrido de expiración sólo cancela el job y elimina el medio si logró marcar atómicamente el borrador vencido; si otra instancia ya persistió la transcripción, el trabajo continúa.
-- `npm start` supervisa servidor y worker; en Render, base y archivos temporales comparten el disco persistente montado en `/app/data`.
+- `npm start` supervisa servidor y worker; `npm run dev` usa el mismo supervisor con autoreload. En Render, base y archivos temporales comparten el disco persistente montado en `/app/data`.
 - Estados: `received → transcribing → structuring → ready/failed`; confirmar y cancelar siguen usando el servicio canónico.
 - Un retry de estructuración conserva la transcripción y no vuelve a transcribir.
 - `received`, jobs fallidos y leases vencidos son recuperables después de reiniciar; un worker con token obsoleto no puede sobrescribir al reemplazo.
@@ -113,7 +113,9 @@ Registro web
 - La batería integral actual aprobó 129 de 129 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación, audio sintético y worker de uploads.
 - `scripts/ui-contract-tests.js` verifica los campos clínicos explícitos y que seguimiento no se derive del ánimo.
 - La suite del worker cubre límite streamed, expiración integral, carrera después del snapshot y recuperación desde un segundo proceso real.
-- La prueba funcional se repitió tres veces con polling del worker cada 10 ms; las tres corridas terminaron 126/126 y cubren 20 entradas de WhatsApp concurrentes.
+- `scripts/runtime-supervisor-smoke.js` levanta el proceso de producción, verifica health, carga real, procesamiento hasta `ready` y apagado limpio.
+- La CI ejecuta la batería integral, el supervisor real, sintaxis de Node/scripts embebidos y el contrato UI.
+- En el hito anterior la prueba funcional se repitió tres veces con polling del worker cada 10 ms; las tres corridas terminaron 126/126 y cubrieron 20 entradas de WhatsApp concurrentes.
 - La suite específica cubre deduplicación binaria, conflicto de clave, MIME inválido, cancelación atómica, lease abandonado, fencing contra escritura obsoleta, fallo inesperado del worker, retry y limpieza del archivo.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
@@ -284,8 +286,8 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 ## Historial y estado de publicación
 
 - Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`, publicado el 2026-07-15.
-- Verificación del hito actual: `npm test`, build, sintaxis embebida y `git diff --check` aprobados; 126/126 pruebas funcionales en tres corridas consecutivas.
-- Implementación del hito actual: `179c329` (`process real audio uploads in sqlite worker`).
+- Verificación del hito actual: `npm test` con 129/129, smoke del supervisor, build, contrato UI, sintaxis embebida y `git diff --check` aprobados.
+- Implementación de la auditoría: `4a0a082` (backend/worker), `e533eb9` (flujo web) y `f1472c4` (operación/contratos).
 - Corrección de confiabilidad posterior a la auditoría: `4a0a082` (`harden audio expiry and inactive patient flow`).
 - Corrección de integridad y UX web: `e533eb9` (`make clinical web flow explicit and recoverable`).
 - El remoto local `origin` continúa apuntando a `Memu007/Aira.final` para conservar el historial; el remoto `airaynera` es el destino activo de publicación.
@@ -306,7 +308,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar que `airaynera/main` tenga el último commit publicado.
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test` antes de cada publicación; las últimas tres corridas funcionales aprobaron 126/126.
+6. Ejecutar `npm test`, `npm run test:runtime-supervisor`, `npm run build` y `npm run lint` antes de cada publicación; la batería actual aprueba 129/129.
 7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
 8. Publicar el siguiente hito verificado en `airaynera/main` y registrar el resultado aquí y en `docs/WORKLOG.md`.
 9. Preparar 30 a 50 recortes creados o anonimizados y ejecutar el benchmark Groq/Gemini/OpenAI usando el worker existente.
