@@ -125,7 +125,8 @@ Estado remoto del PR técnico #2:
 - Verificación remota de vinculación: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
 - Implementación del menú persistente: `7366868` (`add persistent whatsapp text menu`).
 - Verificación remota del menú: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
-- El PR técnico #2 sigue publicado con el menú de texto verde. Los cambios de audio y sus correcciones competitivas están locales hasta repetir la suite integral y publicar el nuevo commit.
+- Commit local del hito de audio: `4cc5a13` (`add provider-neutral audio draft pipeline`).
+- El PR técnico #2 sigue publicado con el menú de texto verde. El commit de audio está local hasta repetir la suite integral y poder publicarlo.
 
 ## Decisiones técnicas vigentes
 

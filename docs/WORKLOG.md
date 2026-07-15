@@ -36,6 +36,7 @@ El worker asíncrono no se incorporó todavía: es obligatorio antes de llamar a
 - Antes de la revisión final, `npm test` aprobó migraciones, vínculo, conversación, audio y 109/109 pruebas funcionales.
 - Después de las correcciones se aprobaron `test:audio-pipeline` y `test:whatsapp-conversation`, incluidos restart desde `received/structuring` y replay de un hash histórico.
 - La corrida funcional integral posterior no pudo iniciarse por un límite temporal de ejecución de herramientas; queda como gate obligatorio antes de publicar.
+- Commit local del hito: `4cc5a13` (`add provider-neutral audio draft pipeline`).
 - Recorrido visible aprobado: un paciente, una sesión de audio web y una sesión de audio WhatsApp persistieron tras recargar.
 - La transcripción original fue de solo lectura; la nota limpia se editó antes de guardar.
 - El flujo de WhatsApp recorrió `MENÚ → NUEVA NOTA → PACIENTE → audio → GUARDAR`.
