@@ -2,6 +2,49 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-15 — Archivo real, almacenamiento temporal y worker SQLite
+
+### Objetivo
+
+Aceptar un archivo de audio real desde la web y completar el recorrido asíncrono sin integrar todavía un proveedor pago ni Meta.
+
+### Trabajo realizado
+
+- Tres agentes compararon diseños independientes; se eligió carga binaria de un archivo, referencia opaca y almacenamiento fuera de SQLite.
+- `POST /api/audio-drafts/upload` valida cuenta, paciente, clave idempotente, tamaño, MIME y firma del contenedor antes de crear el borrador.
+- El archivo se escribe como parcial y se renombra al completar; borrador y `audio_processing_job` se crean atómicamente.
+- La migración `006_audio_processing_jobs.sql` agrega metadata temporal, jobs, estados, reintentos y leases persistentes.
+- Un proceso worker separado reclama con fencing token, renueva el lease, recupera jobs abandonados y deja visibles los fallos reintentables.
+- El archivo se elimina después de persistir la transcripción o al confirmar/cancelar; el barrido reconcilia limpiezas interrumpidas, vencimientos y huérfanos.
+- La web selecciona un archivo real, conserva la idempotencia ante respuesta perdida, sigue el job por polling y mantiene la transcripción simulada claramente identificada.
+- `npm start` supervisa servidor y worker; Render dirige tanto SQLite como uploads al disco `/app/data`.
+- Se mantuvo intacto el camino sintético de web/WhatsApp y no se incorporó ningún proveedor real.
+
+### Revisión competitiva
+
+- La primera ronda encontró persistencia incompleta en Render, cleanup optimista, cancelación no atómica, fallo no terminal del worker, retry sin polling, abort tardío, fencing sin cobertura y un shutdown incompleto.
+- La segunda ronda detectó dos carreras intermitentes: upgrade de transacción SQLite frente al polling y snapshot `draft=failed/job=queued` inmediatamente después de retry.
+- Se hicieron `IMMEDIATE` las transacciones read→write, el claim vacío quedó read-only, el polling prioriza el estado del job y se agregaron pruebas de contención y snapshot intermedio.
+- Los tres revisores volvieron a auditar el diff corregido y no encontraron bloqueantes.
+
+### Verificaciones
+
+- `npm test`: migraciones, vínculo, conversación, audio sintético, upload/worker y 126/126 pruebas funcionales aprobadas.
+- La prueba funcional se ejecutó tres veces consecutivas con polling del worker cada 10 ms; las tres terminaron 126/126.
+- Cubiertos: upload real, deduplicación, conflicto de clave, bytes inválidos, aislamiento de cuenta, job separado, fallo/retry, lease abandonado, stale write rechazado, cancelación y cleanup.
+- Cubierta la contención con 20 eventos entrantes concurrentes mientras el worker está activo.
+- `/data/aira.db` devuelve 404; base y archivos temporales no quedan expuestos por el montaje estático.
+- `npm run build`, sintaxis de los dos scripts embebidos y `git diff --check`: aprobados.
+- Revisión visible: el modal muestra selección de archivo y aviso explícito de almacenamiento temporal/transcripción simulada; sin errores de consola.
+- Commit funcional: `179c329` (`process real audio uploads in sqlite worker`).
+
+### Próximo paso
+
+1. Preparar 30 a 50 recortes creados o anonimizados.
+2. Ejecutar el benchmark Groq/Gemini/OpenAI a través del worker existente.
+3. Elegir e integrar el primer proveedor real sin mover la llamada al servidor web.
+4. Conectar Meta después del benchmark y cuando estén disponibles sus credenciales.
+
 ## 2026-07-15 — Publicación del hito de audio en el repositorio nuevo
 
 ### Resultado

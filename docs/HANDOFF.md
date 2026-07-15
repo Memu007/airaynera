@@ -8,11 +8,11 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
-- Rama local actual: `agent/01-web-core`, publicada en `airaynera/main`.
-- Base de la rama: `41892d3` (`record green ci baseline`).
+- Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
+- Último hito funcional: `179c329` (`process real audio uploads in sqlite worker`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: vertical web, texto por WhatsApp simulado y audio sintético por web/WhatsApp funcionando sobre el mismo borrador persistente; la batería completa aprobó 115/115.
-- Próximo objetivo: aceptar un archivo real desde la web, ejecutar el benchmark de proveedores y mover el procesamiento de red a un worker SQLite. Meta real se incorpora cuando existan credenciales.
+- Etapa técnica: la web acepta archivos de audio reales, los guarda temporalmente fuera de SQLite y los procesa mediante un worker con job, lease y recuperación persistentes. La transcripción continúa siendo simulada. La batería completa aprobó 126/126 en tres corridas consecutivas bajo polling intensivo.
+- Próximo objetivo: ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real al worker ya existente. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -50,8 +50,9 @@ Registro web
 - El nombre del paciente se obtiene mediante la relación persistida, no queda vacío.
 - Fechas clínicas, timestamps, duración clínica y futura duración de audio están separadas.
 - El cambio de estado de paciente dejó de ser local y se persiste mediante la API.
-- El formulario de sesión ofrece texto o audio sintético, muestra la transcripción original como solo lectura y deja la nota limpia editable.
-- Mientras existe un borrador de audio, paciente y fixture quedan fijados; la confirmación valida nuevamente la asociación.
+- El formulario de sesión ofrece texto o carga de archivo real, muestra la transcripción simulada como solo lectura y deja la nota limpia editable.
+- Mientras existe un borrador de audio, paciente y archivo quedan fijados; la confirmación valida nuevamente la asociación.
+- La carga conserva una clave idempotente ante respuesta perdida, sigue el job por polling y permite reintentar o cancelar sin crear una sesión prematuramente.
 - Las notas sin evaluación anímica muestran `Sin registrar` en lugar de valores indefinidos.
 - Quedan pendientes la edición visible general de sesiones y una bandeja para recuperar borradores fuera del modal.
 
@@ -85,11 +86,16 @@ Registro web
 ### Audio
 
 - `db/migrations/005_audio_pipeline.sql` agrega referencia al medio, huella, intentos, etapa fallida y timestamps de procesamiento a `session_drafts`.
+- `db/migrations/006_audio_processing_jobs.sql` agrega metadata del archivo temporal y la cola durable `audio_processing_jobs`.
 - `services/audioDraftPipeline.js` es el punto común para web y WhatsApp.
 - `services/audio/fakeAudioProviders.js` contiene fixtures artificiales y limpieza conservadora; no contiene audios ni datos clínicos.
+- `services/audio/temporaryAudioStore.js` recibe un stream binario, valida tamaño, firma y MIME, escribe primero un archivo parcial y entrega una referencia opaca `upload://...`.
+- `POST /api/audio-drafts/upload` responde sin esperar la transcripción; el límite predeterminado es 25 MB y la retención máxima es 24 horas.
+- `workers/audio-worker.js` reclama jobs con lease y fencing token, recupera trabajo abandonado y limpia el archivo después de persistir la transcripción o alcanzar un estado terminal.
+- `npm start` supervisa servidor y worker; en Render, base y archivos temporales comparten el disco persistente montado en `/app/data`.
 - Estados: `received → transcribing → structuring → ready/failed`; confirmar y cancelar siguen usando el servicio canónico.
 - Un retry de estructuración conserva la transcripción y no vuelve a transcribir.
-- `received` y claims vencidos son recuperables después de reiniciar; el lease predeterminado es de cinco minutos.
+- `received`, jobs fallidos y leases vencidos son recuperables después de reiniciar; un worker con token obsoleto no puede sobrescribir al reemplazo.
 - La fecha clínica por defecto usa `APP_TIME_ZONE=America/Argentina/Buenos_Aires`.
 - `rawTranscript`, `inputType` y `audioDurationSeconds` son inmutables en la revisión y después de confirmar.
 - El comparativo de Groq, Gemini y OpenAI está en `docs/AUDIO_PROVIDER_BENCHMARK.md`. Groq Whisper Large v3 Turbo queda como baseline de costo, no como proveedor aprobado todavía.
@@ -98,14 +104,15 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La última batería integral anterior a la revisión competitiva pasó 109 de 109 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación y audio.
-- Después de la revisión competitiva se aprobaron por separado los tests de audio con recuperación real de `received/structuring` y los tests conversacionales con compatibilidad de hashes históricos. La corrida integral posterior quedó pendiente por límite temporal de ejecución de herramientas, no por un fallo observado.
+- La batería integral actual aprobó 126 de 126 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación, audio sintético y worker de uploads.
+- La prueba funcional se repitió tres veces con polling del worker cada 10 ms; las tres corridas terminaron 126/126 y cubren 20 entradas de WhatsApp concurrentes.
+- La suite específica cubre deduplicación binaria, conflicto de clave, MIME inválido, cancelación atómica, lease abandonado, fencing contra escritura obsoleta, fallo inesperado del worker, retry y limpieza del archivo.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
 - `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
 - SQLite ahora aplica migraciones versionadas desde `db/migrations/`.
 - La migración `003_whatsapp_links.sql` fue probada sobre base nueva, base heredada y segunda ejecución vacía.
-- Las migraciones `004_whatsapp_conversations.sql` y `005_audio_pipeline.sql`, la reapertura conversacional y la recuperación de audio desde otro proceso están probadas.
+- Las migraciones `004_whatsapp_conversations.sql`, `005_audio_pipeline.sql` y `006_audio_processing_jobs.sql`, la reapertura conversacional y la recuperación de audio desde otro proceso están probadas.
 - La migración inicial es idempotente y fue probada contra una base nueva y una base con datos existentes.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
@@ -139,7 +146,7 @@ Estado remoto histórico del PR técnico #2 en `Memu007/Aira.final`:
 - Implementar proveedores intercambiables para transcripción y estructuración.
 - Mantener el proveedor falso hasta medir proveedores reales con el mismo corpus.
 - Conservar transcripción literal y nota limpia por separado.
-- El fake es síncrono; antes de usar red, persistir un job SQLite y procesarlo fuera de la transacción del webhook.
+- Los fixtures heredados continúan síncronos; los archivos reales ya crean un job SQLite y se procesan fuera de la solicitud, aun usando el proveedor falso.
 - Los contratos vigentes están en `docs/DOMAIN_CONTRACTS.md`.
 - Los identificadores JSON son strings y las respuestas nuevas usan solamente `camelCase`.
 - `clinicalDate` es el día clínico; `createdAt` es el momento de persistencia.
@@ -173,6 +180,14 @@ Los tres agentes auditaron una segunda vez el diff corregido y declararon que no
 
 La decisión de proveedor se difiere al benchmark. Con precios revisados el 2026-07-14, Groq Turbo es la baseline publicada más barata; Gemini y OpenAI se mantienen como challengers de simplicidad/calidad.
 
+### Decisión multiagente: archivo real y worker
+
+El 2026-07-15 se compararon tres propuestas independientes. Se eligió una entrada binaria de un solo archivo porque evita reincorporar un parser multipart antes de necesitar formularios complejos. El medio se almacena fuera de SQLite con referencia opaca; borrador y job se crean en una única transacción.
+
+Dos rondas competitivas encontraron y corrigieron fallos que no aparecían siempre en el happy path: persistencia de SQLite en Render, cancelación y cleanup atómicos, error terminal del worker, fencing obsoleto, recuperación de respuesta perdida, retry con polling, arranque del supervisor y contención `SQLITE_BUSY`. Después de las correcciones, los tres revisores declararon el corte publicable.
+
+El worker usa SQLite deliberadamente para este volumen del MVP. No se incorpora Redis ni un proveedor real hasta medir el corpus; la interfaz actual permite reemplazar el fake sin mover la llamada de red al proceso web.
+
 ### Decisión multiagente: dependencias y CI
 
 El 2026-07-14 se compararon tres propuestas independientes:
@@ -205,9 +220,9 @@ Rama prevista: `agent/01-web-core`.
 - [x] Crear el doble de transcripción y limpieza para audio.
 - [x] Conectar audio sintético por web y WhatsApp.
 - [x] Persistir etapas, reintentos y recuperación tras reinicio.
-- [ ] Aceptar un archivo real desde la web y almacenarlo temporalmente.
+- [x] Aceptar un archivo real desde la web y almacenarlo temporalmente.
 - [ ] Ejecutar el benchmark Groq/Gemini/OpenAI.
-- [ ] Separar el proveedor real en un worker SQLite antes de conectarlo a WhatsApp.
+- [x] Separar el procesamiento de archivos reales en un worker SQLite antes de conectar un proveedor o WhatsApp real.
 
 ### Etapa 1
 
@@ -235,6 +250,8 @@ El 2026-07-14 se aprobó el menú completo: crear paciente → vincular → `MEN
 
 El 2026-07-14 se aprobó visualmente el audio sintético: crear paciente → preparar audio con pausas → revisar raw/clean → guardar web → recargar → vincular WhatsApp → seleccionar paciente → enviar audio → guardar → recargar. Quedaron 1 paciente y 2 sesiones persistidas. La nota de WhatsApp sin estado anímico mostró `Sin registrar` y la consola del navegador no tuvo errores.
 
+El 2026-07-15 se cerró el corte de archivo real: carga binaria → almacenamiento temporal → job durable → worker separado → transcripción simulada → revisión → confirmación. La prueba funcional verificó que la solicitud responde en cola, el worker prepara el mismo borrador y la sesión definitiva sólo aparece al confirmar. También se verificaron reinicio, retry, cancelación, deduplicación, aislamiento y cleanup.
+
 ## Dependencias que necesitaremos más adelante
 
 ### Meta / WhatsApp
@@ -254,12 +271,13 @@ No bloquean la Etapa 0 o 1.
 - Credencial del primer proveedor de transcripción.
 - Audios de prueba creados o anonimizados.
 
-No bloquean el vertical sintético ya aprobado.
+No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 
 ## Historial y estado de publicación
 
 - Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`, publicado el 2026-07-15.
-- Verificación previa a esa publicación: `npm test` aprobado, 115/115 pruebas funcionales.
+- Verificación del hito actual: `npm test`, build, sintaxis embebida y `git diff --check` aprobados; 126/126 pruebas funcionales en tres corridas consecutivas.
+- Implementación del hito actual: `179c329` (`process real audio uploads in sqlite worker`).
 - El remoto local `origin` continúa apuntando a `Memu007/Aira.final` para conservar el historial; el remoto `airaynera` es el destino activo de publicación.
 - Los archivos documentales se prepararon y validaron localmente.
 - GitHub CLI (`gh`) está instalado, pero la gestión de PR puede requerir reautenticación; la publicación vigente se realizó con las credenciales de Git configuradas localmente.
@@ -278,11 +296,11 @@ No bloquean el vertical sintético ya aprobado.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar que `airaynera/main` tenga el último commit publicado.
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test` antes de cada publicación; la última corrida integral aprobó 115/115.
+6. Ejecutar `npm test` antes de cada publicación; las últimas tres corridas funcionales aprobaron 126/126.
 7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
 8. Publicar el siguiente hito verificado en `airaynera/main` y registrar el resultado aquí y en `docs/WORKLOG.md`.
-9. Implementar entrada de archivo real en web con almacenamiento temporal.
-10. Comparar proveedores con 30 a 50 recortes y conectar Meta solamente después de medir costo, calidad y latencia.
+9. Preparar 30 a 50 recortes creados o anonimizados y ejecutar el benchmark Groq/Gemini/OpenAI usando el worker existente.
+10. Elegir el primer proveedor por calidad, costo y latencia; conectar Meta solamente después y con credenciales disponibles.
 
 ## Regla para el próximo handoff
 
