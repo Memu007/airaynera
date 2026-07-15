@@ -35,13 +35,21 @@ Comenzar el primer bloque del roadmap con una prueba funcional confiable y ejecu
 - GitHub Actions: `Functional baseline` y `semgrep` aprobados.
 - GitHub Actions: `trufflehog` falló porque el workflow pasa dos veces `--fail`; no reportó un secreto.
 - GitHub Actions: `audit` detectó 30 vulnerabilidades heredadas, incluyendo 14 altas y 1 crítica.
+- Tres agentes analizaron de forma independiente los fallos de CI.
+- Se comparó una actualización conservadora del lockfile contra dos propuestas de poda de dependencias.
+- Se eligió eliminar diez dependencias sin uso del código activo y volver a agregarlas solamente cuando exista una integración real.
+- Se quitaron Firestore, Gemini SDK, Axios, Celebrate, Joi, Mongoose, Multer, node-fetch, Socket.IO y Winston.
+- Se corrigió TruffleHog eliminando solamente el `--fail` duplicado; el gate sigue activo.
+- El árbol auditado bajó de 349 a 174 paquetes.
+- `npm audit`: 0 vulnerabilidades después del cambio, sin usar `--force`.
+- `npm test`: migraciones y 30/30 pruebas aprobadas después de la limpieza.
+- `npm run build`: aprobado después de la limpieza.
 
 ### Siguiente trabajo
 
-1. Corregir la configuración duplicada de TruffleHog.
-2. Aplicar actualizaciones no disruptivas de dependencias y volver a auditar.
-3. Definir contratos canónicos de paciente, sesión y borrador.
-4. Corregir el recorrido web de registro, carga y persistencia.
+1. Confirmar que los cuatro checks remotos del PR #2 queden aprobados.
+2. Definir contratos canónicos de paciente, sesión y borrador.
+3. Corregir el recorrido web de registro, carga y persistencia.
 
 ## 2026-07-14 — Revisión de producto y planificación del MVP
 

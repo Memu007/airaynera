@@ -82,9 +82,11 @@ Estado remoto del PR técnico #2:
 
 - `Functional baseline`: aprobado.
 - `semgrep`: aprobado.
-- `audit`: falló por dependencias heredadas; `npm audit` informó 30 vulnerabilidades, incluyendo 14 altas y 1 crítica.
-- `trufflehog`: falló por configuración, no por un secreto detectado. El workflow repite el argumento `--fail` que la acción ya agrega.
-- Próxima acción propuesta: corregir el argumento duplicado y aplicar solamente actualizaciones de dependencias no disruptivas, verificando luego la batería completa.
+- El primer `audit` falló por dependencias heredadas; informaba 30 vulnerabilidades, incluyendo 14 altas y 1 crítica.
+- El primer `trufflehog` falló por configuración, no por un secreto detectado: el workflow repetía el argumento `--fail`.
+- La corrección ya fue aplicada localmente: se eliminaron diez dependencias sin uso, se regeneró el lockfile sin `--force` y se quitó el argumento duplicado.
+- Verificación posterior local: 174 paquetes auditados, 0 vulnerabilidades, 30/30 pruebas y build aprobado.
+- Falta confirmar la nueva ejecución remota después del push de esta corrección.
 
 ## Decisiones técnicas vigentes
 
@@ -97,6 +99,18 @@ Estado remoto del PR técnico #2:
 - Validar primero el recorrido completo con texto y después agregar audio.
 - Conservar transcripción literal y nota limpia por separado.
 - Usar una cola persistente sencilla en SQLite para el piloto.
+
+### Decisión multiagente: dependencias y CI
+
+El 2026-07-14 se compararon tres propuestas independientes:
+
+- actualizar solamente el lockfile y conservar dependencias inactivas;
+- retirar dependencias inactivas y aplicar correcciones compatibles;
+- retirar dependencias inactivas, validar en copia aislada y mantener gates de CI.
+
+Se eligió retirar las dependencias inactivas. Firestore, Gemini SDK, Axios, Celebrate, Joi, Mongoose, Multer, node-fetch, Socket.IO y Winston no tenían importaciones en el código activo. Podrán reincorporarse en versiones actuales cuando exista un uso real.
+
+La alternativa de lockfile únicamente fue descartada porque mantenía casi la mitad del árbol sin aportar funcionalidad al MVP.
 
 ## Próximo bloque de trabajo
 
