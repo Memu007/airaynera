@@ -2,6 +2,36 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-15 — Flujo clínico explícito y UX recuperable
+
+### Objetivo
+
+Eliminar valores clínicos inventados, decisiones automáticas y pérdidas silenciosas de trabajo detectadas en la auditoría de UX.
+
+### Trabajo realizado
+
+- El formulario muestra fecha clínica, tipo de sesión, duración clínica y modalidad; texto y audio envían esos valores canónicos.
+- El ánimo pasó a ser opcional y seguimiento es una decisión explícita mediante checkbox.
+- Cerrar conserva el borrador de audio; cambiar de modo o descartarlo exige confirmación. El polling se detiene después de dos minutos o tres fallos consecutivos y puede retomarse.
+- Nuevas notas muestran sólo pacientes activos; formatos y límite de 25 MB se comunican antes de subir.
+- Se unificó el menú móvil y las tarjetas principales admiten teclado.
+- La evolución anímica se calcula desde sesiones reales y muestra un estado vacío sin datos.
+- Registro entra directamente al panel sin pago ficticio; perfil, configuración y contraseña sin persistencia quedaron desactivados y rotulados en desarrollo.
+- Landing y FAQ distinguen lo disponible, simulado y pendiente; se retiraron cifras, testimonios, precios y contactos no verificados.
+- Se agregó un gate estático que exige los campos clínicos explícitos y prohíbe derivar seguimiento desde el ánimo.
+
+### Verificaciones
+
+- `node scripts/ui-contract-tests.js`: aprobado.
+- `node scripts/check-syntax.js`: 19 archivos Node y dos scripts embebidos aprobados.
+- `git diff --check -- index.html scripts/ui-contract-tests.js`: aprobado.
+- Navegador: landing, login y modal clínico revisados; los controles nuevos y la señalización de funciones quedaron visibles.
+- Commit: `e533eb9` (`make clinical web flow explicit and recoverable`).
+
+### Próximo paso
+
+Cerrar el arranque supervisado de desarrollo/producción, incorporarlo a CI y ejecutar la verificación integral antes de publicar.
+
 ## 2026-07-15 — Expiración atómica y pacientes inactivos
 
 ### Objetivo

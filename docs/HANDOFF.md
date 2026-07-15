@@ -9,10 +9,10 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
-- Último hito funcional: `4a0a082` (`harden audio expiry and inactive patient flow`).
+- Último hito funcional: `e533eb9` (`make clinical web flow explicit and recoverable`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: la web acepta archivos de audio reales, los guarda temporalmente fuera de SQLite y los procesa mediante un worker con job, lease y recuperación persistentes. La expiración usa compare-and-set antes de cancelar el job o borrar el medio; un paciente inactivo conserva su historia pero no admite sesiones ni borradores nuevos. La transcripción continúa siendo simulada. La batería funcional aprobó 129/129.
-- Próximo objetivo: cerrar las correcciones de integridad y UX web junto con el gate del supervisor; después ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real. Meta real se incorpora después y solamente cuando existan credenciales.
+- Etapa técnica: la web pide y persiste explícitamente fecha, tipo, duración, modalidad, ánimo opcional y seguimiento decidido por el profesional. La carga real conserva el borrador al cerrar, exige confirmación para descartarlo y limita el polling. La expiración backend usa compare-and-set antes de cancelar el job o borrar el medio; un paciente inactivo conserva su historia pero no admite sesiones ni borradores nuevos. La transcripción continúa siendo simulada. La batería funcional aprobó 129/129.
+- Próximo objetivo: cerrar el gate del supervisor y alinear los comandos/documentos activos; después ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -51,8 +51,13 @@ Registro web
 - Fechas clínicas, timestamps, duración clínica y futura duración de audio están separadas.
 - El cambio de estado de paciente dejó de ser local y se persiste mediante la API.
 - El formulario de sesión ofrece texto o carga de archivo real, muestra la transcripción simulada como solo lectura y deja la nota limpia editable.
+- Fecha clínica, tipo, duración clínica y modalidad son controles visibles compartidos por texto y audio; ya no se inventan silenciosamente valores al guardar.
+- La evaluación anímica es opcional y `requiresFollowUp` se marca en un checkbox independiente; la interfaz no deriva seguimiento desde el ánimo.
 - Mientras existe un borrador de audio, paciente y archivo quedan fijados; la confirmación valida nuevamente la asociación.
-- La carga conserva una clave idempotente ante respuesta perdida, sigue el job por polling y permite reintentar o cancelar sin crear una sesión prematuramente.
+- La carga conserva una clave idempotente ante respuesta perdida, sigue el job con polling acotado y permite retomar, reintentar o descartar explícitamente sin crear una sesión prematuramente.
+- Cerrar el modal conserva el borrador de audio en la sesión web; cambiar a texto o descartarlo requiere confirmación.
+- El selector de nuevas notas muestra solamente pacientes activos y el backend aplica la misma regla.
+- La landing distingue funciones disponibles, simuladas y en desarrollo; registro ya no atraviesa un pago ficticio y las operaciones de perfil sin persistencia están desactivadas.
 - Las notas sin evaluación anímica muestran `Sin registrar` en lugar de valores indefinidos.
 - Quedan pendientes la edición visible general de sesiones y una bandeja para recuperar borradores fuera del modal.
 
@@ -106,6 +111,7 @@ Registro web
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
 - La batería integral actual aprobó 129 de 129 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación, audio sintético y worker de uploads.
+- `scripts/ui-contract-tests.js` verifica los campos clínicos explícitos y que seguimiento no se derive del ánimo.
 - La suite del worker cubre límite streamed, expiración integral, carrera después del snapshot y recuperación desde un segundo proceso real.
 - La prueba funcional se repitió tres veces con polling del worker cada 10 ms; las tres corridas terminaron 126/126 y cubren 20 entradas de WhatsApp concurrentes.
 - La suite específica cubre deduplicación binaria, conflicto de clave, MIME inválido, cancelación atómica, lease abandonado, fencing contra escritura obsoleta, fallo inesperado del worker, retry y limpieza del archivo.
@@ -281,6 +287,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 - Verificación del hito actual: `npm test`, build, sintaxis embebida y `git diff --check` aprobados; 126/126 pruebas funcionales en tres corridas consecutivas.
 - Implementación del hito actual: `179c329` (`process real audio uploads in sqlite worker`).
 - Corrección de confiabilidad posterior a la auditoría: `4a0a082` (`harden audio expiry and inactive patient flow`).
+- Corrección de integridad y UX web: `e533eb9` (`make clinical web flow explicit and recoverable`).
 - El remoto local `origin` continúa apuntando a `Memu007/Aira.final` para conservar el historial; el remoto `airaynera` es el destino activo de publicación.
 - Los archivos documentales se prepararon y validaron localmente.
 - GitHub CLI (`gh`) está instalado, pero la gestión de PR puede requerir reautenticación; la publicación vigente se realizó con las credenciales de Git configuradas localmente.
