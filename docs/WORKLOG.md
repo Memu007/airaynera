@@ -44,12 +44,12 @@ Comenzar el primer bloque del roadmap con una prueba funcional confiable y ejecu
 - `npm audit`: 0 vulnerabilidades después del cambio, sin usar `--force`.
 - `npm test`: migraciones y 30/30 pruebas aprobadas después de la limpieza.
 - `npm run build`: aprobado después de la limpieza.
+- GitHub Actions después del push: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
 
 ### Siguiente trabajo
 
-1. Confirmar que los cuatro checks remotos del PR #2 queden aprobados.
-2. Definir contratos canónicos de paciente, sesión y borrador.
-3. Corregir el recorrido web de registro, carga y persistencia.
+1. Definir contratos canónicos de paciente, sesión y borrador.
+2. Corregir el recorrido web de registro, carga y persistencia.
 
 ## 2026-07-14 — Revisión de producto y planificación del MVP
 

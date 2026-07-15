@@ -84,9 +84,9 @@ Estado remoto del PR técnico #2:
 - `semgrep`: aprobado.
 - El primer `audit` falló por dependencias heredadas; informaba 30 vulnerabilidades, incluyendo 14 altas y 1 crítica.
 - El primer `trufflehog` falló por configuración, no por un secreto detectado: el workflow repetía el argumento `--fail`.
-- La corrección ya fue aplicada localmente: se eliminaron diez dependencias sin uso, se regeneró el lockfile sin `--force` y se quitó el argumento duplicado.
+- La corrección fue aplicada: se eliminaron diez dependencias sin uso, se regeneró el lockfile sin `--force` y se quitó el argumento duplicado.
 - Verificación posterior local: 174 paquetes auditados, 0 vulnerabilidades, 30/30 pruebas y build aprobado.
-- Falta confirmar la nueva ejecución remota después del push de esta corrección.
+- Verificación posterior remota: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados sobre `e2e6b93`.
 
 ## Decisiones técnicas vigentes
 
@@ -123,6 +123,7 @@ Rama prevista: `agent/01-web-core`.
 - [x] Registrar los resultados de la línea base: 30/30.
 - [x] Estandarizar Node.js 20.
 - [x] Consolidar una única CI funcional confiable.
+- [x] Dejar los cuatro checks remotos del PR en verde.
 - [x] Introducir migraciones versionadas.
 - [ ] Definir contratos canónicos de paciente, sesión y borrador.
 - [ ] Crear dobles de prueba para WhatsApp y transcripción.
