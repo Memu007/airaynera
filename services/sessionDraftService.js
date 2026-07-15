@@ -1,4 +1,5 @@
 const sql = require('./sqlite');
+const { clinicalDateKey } = require('../utils/clinicalDate');
 
 const EDITABLE_FIELDS = new Set([
   'patientId',
@@ -6,12 +7,10 @@ const EDITABLE_FIELDS = new Set([
   'sessionType',
   'durationMinutes',
   'careModality',
-  'rawTranscript',
   'cleanNote',
   'medicationNotes',
   'moodAssessment',
   'requiresFollowUp',
-  'audioDurationSeconds',
 ]);
 
 const ALLOWED_STATUSES = new Set([
@@ -30,10 +29,6 @@ function domainError(code, message) {
   return error;
 }
 
-function today() {
-  return new Date().toISOString().split('T')[0];
-}
-
 function createDraft(userId, payload, options = {}) {
   const source = options.source || 'web';
   const inputType = payload.inputType || 'text';
@@ -48,7 +43,7 @@ function createDraft(userId, payload, options = {}) {
 
   return sql.addSessionDraft(userId, {
     patientId: String(payload.patientId),
-    clinicalDate: payload.clinicalDate || today(),
+    clinicalDate: payload.clinicalDate || clinicalDateKey(),
     sessionType: payload.sessionType || 'individual',
     durationMinutes: payload.durationMinutes ?? null,
     careModality: payload.careModality || 'unspecified',
@@ -62,6 +57,9 @@ function createDraft(userId, payload, options = {}) {
     requiresFollowUp: Boolean(payload.requiresFollowUp),
     audioDurationSeconds: payload.audioDurationSeconds ?? null,
     sourceMessageId: options.sourceMessageId || payload.sourceMessageId || null,
+    mediaReference: payload.mediaReference ?? null,
+    mediaMimeType: payload.mediaMimeType ?? null,
+    inputFingerprint: payload.inputFingerprint ?? null,
   });
 }
 
@@ -92,7 +90,9 @@ function updateDraft(userId, draftId, input) {
     throw domainError('INVALID_DRAFT', 'cleanNote cannot be empty');
   }
 
-  return sql.updateSessionDraft(userId, draftId, changes);
+  const updated = sql.updateSessionDraft(userId, draftId, changes);
+  if (!updated) throw domainError('DRAFT_NOT_READY', 'The draft changed before it could be edited');
+  return updated;
 }
 
 function cancelDraft(userId, draftId) {
@@ -101,7 +101,19 @@ function cancelDraft(userId, draftId) {
   if (current.status === 'confirmed') {
     throw domainError('DRAFT_NOT_READY', 'Confirmed drafts cannot be cancelled');
   }
-  return sql.setSessionDraftStatus(userId, draftId, 'cancelled');
+  const cancelled = sql.transitionSessionDraft(
+    userId,
+    draftId,
+    ['received', 'transcribing', 'structuring', 'ready', 'failed'],
+    {
+      status: 'cancelled',
+      processingFinishedAt: new Date().toISOString(),
+    }
+  );
+  if (cancelled) return cancelled;
+  const latest = getDraft(userId, draftId);
+  if (latest.status === 'cancelled') return latest;
+  throw domainError('DRAFT_NOT_READY', 'The draft changed before it could be cancelled');
 }
 
 function confirmDraft(userId, draftId) {

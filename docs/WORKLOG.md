@@ -2,6 +2,61 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-14 — Audio sintético común para web y WhatsApp
+
+### Objetivo
+
+Validar la idea completa `recorte de audio → transcripción original → nota limpia revisable → guardar/cancelar → ficha web` antes de incorporar archivos, Meta o un proveedor pago.
+
+### Trabajo realizado
+
+- Tres agentes propusieron arquitecturas independientes; se eligió reutilizar `SessionDraft` con etapas persistidas y proveedores intercambiables, sin agregar todavía una cola separada.
+- Se agregó la migración `005_audio_pipeline.sql` con referencia de medio, MIME, huella, intentos, etapa fallida y timestamps.
+- Web y WhatsApp simulado usan `services/audioDraftPipeline.js` y los mismos proveedores falsos deterministas.
+- Se conservan por separado `rawTranscript` y `cleanNote`; solamente la nota limpia puede editarse.
+- La limpieza falsa elimina pausas y una muletilla inicial sin inferir diagnósticos, cambiar negaciones o alterar números.
+- Se agregaron fixtures de éxito, pausas, transcripción fallida, limpieza fallida y audio vacío.
+- Los fallos se reintentan por etapa; `received` y claims vencidos se recuperan tras reiniciar.
+- La web fija paciente y fixture al borrador, conserva la misma clave ante una respuesta perdida y limpia contenido anterior antes de reprocesar.
+- WhatsApp conserva el audio fallido, acepta `REINTENTAR/CANCELAR` y muestra la nota preparada antes de guardar.
+- Se mantuvo compatibilidad de deduplicación con hashes de mensajes de texto persistidos antes de incorporar audio.
+- La fecha clínica por defecto usa la zona de Argentina y la evidencia/metadata de audio confirmada quedó inmutable.
+- Confirmar, cancelar y editar borradores usan condiciones de estado para evitar que una operación terminal pise a otra.
+- El dashboard representa una evaluación anímica ausente como `Sin registrar`.
+- Los tres agentes revisaron nuevamente las correcciones y no encontraron bloqueantes restantes para el corte sintético; el worker de red quedó explícitamente fuera de este veredicto.
+
+### Revisión competitiva
+
+Los tres revisores coincidieron en dos bloqueantes: paciente web modificable después de preparar y borradores interrumpidos sin recuperación. También se tomaron los mejores hallazgos secundarios: retry/cancel de WhatsApp fallido, compatibilidad de hashes, fecha clínica, huella completa, metadata confirmada inmutable y transiciones terminales condicionadas.
+
+El worker asíncrono no se incorporó todavía: es obligatorio antes de llamar a un proveedor real para no mantener abierta la transacción del webhook.
+
+### Verificaciones
+
+- Antes de la revisión final, `npm test` aprobó migraciones, vínculo, conversación, audio y 109/109 pruebas funcionales.
+- Después de las correcciones se aprobaron `test:audio-pipeline` y `test:whatsapp-conversation`, incluidos restart desde `received/structuring` y replay de un hash histórico.
+- La corrida funcional integral posterior no pudo iniciarse por un límite temporal de ejecución de herramientas; queda como gate obligatorio antes de publicar.
+- Recorrido visible aprobado: un paciente, una sesión de audio web y una sesión de audio WhatsApp persistieron tras recargar.
+- La transcripción original fue de solo lectura; la nota limpia se editó antes de guardar.
+- El flujo de WhatsApp recorrió `MENÚ → NUEVA NOTA → PACIENTE → audio → GUARDAR`.
+- Después de corregir la ausencia de mood, el dashboard y el detalle mostraron `Sin registrar`.
+- Consola del navegador: sin errores.
+
+### Proveedores
+
+- Groq `whisper-large-v3-turbo` queda como baseline de costo publicada.
+- Gemini queda como challenger de proveedor único y OpenAI como challenger de calidad.
+- No se eligió ni integró todavía un proveedor real.
+- Costos, fuentes y gate están en `docs/AUDIO_PROVIDER_BENCHMARK.md`.
+
+### Siguiente trabajo
+
+1. Repetir la suite integral y publicar este hito en el PR #2.
+2. Aceptar un archivo real desde la web y crear almacenamiento temporal fuera de SQLite.
+3. Incorporar job/worker SQLite antes de cualquier llamada de red.
+4. Ejecutar el benchmark con 30 a 50 recortes creados o anonimizados.
+5. Conectar Meta solamente después de elegir proveedor y disponer de credenciales.
+
 ## 2026-07-14 — Menú de texto completo sobre teléfono vinculado
 
 ### Objetivo

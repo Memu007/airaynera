@@ -13,6 +13,14 @@ services:
         generateValue: true
       - key: WHATSAPP_ADAPTER
         value: fake
+      - key: AUDIO_TRANSCRIBER
+        value: fake
+      - key: NOTE_CLEANER
+        value: fake
+      - key: APP_TIME_ZONE
+        value: America/Argentina/Buenos_Aires
+      - key: AUDIO_PROCESSING_LEASE_MS
+        value: 300000
     healthCheckPath: /health
     disk:
       name: aira-data

@@ -20,6 +20,7 @@ try {
     '002_canonical_sessions_and_drafts.sql',
     '003_whatsapp_links.sql',
     '004_whatsapp_conversations.sql',
+    '005_audio_pipeline.sql',
   ]);
   assert.deepEqual(secondRun, []);
 
@@ -37,10 +38,10 @@ try {
     'SELECT id, applied_at FROM schema_migrations ORDER BY id'
   ).all();
 
-  assert.equal(migrationRows.length, 4);
+  assert.equal(migrationRows.length, 5);
   assert.deepEqual(
     migrationRows.map((row) => row.id),
-    ['001_initial_schema.sql', '002_canonical_sessions_and_drafts.sql', '003_whatsapp_links.sql', '004_whatsapp_conversations.sql']
+    ['001_initial_schema.sql', '002_canonical_sessions_and_drafts.sql', '003_whatsapp_links.sql', '004_whatsapp_conversations.sql', '005_audio_pipeline.sql']
   );
   assert.ok(migrationRows.every((row) => row.applied_at));
 
@@ -65,6 +66,7 @@ try {
       '002_canonical_sessions_and_drafts.sql',
       '003_whatsapp_links.sql',
       '004_whatsapp_conversations.sql',
+      '005_audio_pipeline.sql',
     ]);
     const legacyUser = legacyConnection.prepare(
       'SELECT dni, name FROM users WHERE dni = ?'

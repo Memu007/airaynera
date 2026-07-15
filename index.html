@@ -3668,6 +3668,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 </div>
               </div>
               <small class="form-text text-muted">Probá: MENÚ, NUEVA NOTA, PACIENTE &lt;número&gt;, una nota, y GUARDAR o CANCELAR.</small>
+              <button type="button" id="sendWhatsappTestAudioBtn" class="btn btn-outline-primary btn-sm mt-2" onclick="sendWhatsappTestAudio()">
+                Enviar audio de prueba
+              </button>
               <div id="whatsappTestReply" class="alert alert-light mt-3 mb-0 d-none" style="white-space: pre-line"></div>
             </div>
           </div>
@@ -3912,6 +3915,39 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 >
                   <option value="">Seleccionar paciente</option>
                 </select>
+              </div>
+              <div class="form-group">
+                <label class="d-block">Origen de la nota</label>
+                <div class="custom-control custom-radio custom-control-inline">
+                  <input type="radio" id="sessionInputText" name="sessionInputType" value="text" class="custom-control-input" checked onchange="setSessionInputMode('text')" />
+                  <label class="custom-control-label" for="sessionInputText">Texto</label>
+                </div>
+                <div class="custom-control custom-radio custom-control-inline">
+                  <input type="radio" id="sessionInputAudio" name="sessionInputType" value="audio" class="custom-control-input" onchange="setSessionInputMode('audio')" />
+                  <label class="custom-control-label" for="sessionInputAudio">Audio de prueba</label>
+                </div>
+              </div>
+              <div id="webAudioFixtureSection" class="border rounded p-3 mb-3 d-none">
+                <label for="webAudioFixture">Audio sintético</label>
+                <select id="webAudioFixture" class="form-control mb-2">
+                  <option value="clear-es-01">Nota breve y clara</option>
+                  <option value="pause-heavy-es-01">Nota con pausas y muletillas</option>
+                  <option value="cleaning-fails-once">Falla recuperable de preparación</option>
+                </select>
+                <button type="button" id="prepareWebAudioBtn" class="btn btn-outline-primary" onclick="prepareWebAudioDraft()">
+                  Preparar nota desde audio
+                </button>
+                <button type="button" id="retryWebAudioBtn" class="btn btn-outline-warning d-none" onclick="retryWebAudioDraft()">
+                  Reintentar
+                </button>
+                <div id="webAudioStatus" class="small text-muted mt-2" role="status">
+                  Este corte usa audios sintéticos; todavía no envía archivos a un proveedor real.
+                </div>
+                <div id="webAudioTranscriptSection" class="form-group mt-3 mb-0 d-none">
+                  <label for="webAudioRawTranscript">Transcripción original</label>
+                  <textarea id="webAudioRawTranscript" class="form-control" rows="3" readonly></textarea>
+                  <small class="form-text text-muted">La original no se modifica; revisá la nota preparada debajo.</small>
+                </div>
               </div>
               <div class="form-group">
                 <label for="sessionContent">Contenido de la Sesión</label>
@@ -4546,6 +4582,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       let pendingWhatsappLink = null;
       let linkedWhatsappPhone = null;
       let whatsappTestMessageCounter = 0;
+      let currentWebAudioDraftId = null;
+      let currentWebAudioDraftPatientId = null;
+      let currentWebAudioIdempotencyKey = null;
+      let currentWebAudioRequestFingerprint = null;
 
       // Datos se cargan desde el backend via API
 
@@ -5486,6 +5526,18 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         populateTodaysSessionsModal(sessionsTodayList);
       }
 
+      function hasMoodAssessment(value) {
+        const score = Number(value);
+        return Number.isInteger(score) && score >= 1 && score <= 5;
+      }
+
+      function formatMoodAssessment(value) {
+        if (!hasMoodAssessment(value)) return "Sin registrar";
+        const moodEmojis = { 1: "😢", 2: "😕", 3: "😐", 4: "🙂", 5: "😊" };
+        const score = Number(value);
+        return `${moodEmojis[score]} ${score}/5`;
+      }
+
       function loadRecentSessions() {
         const container = $("#recentSessionsList");
         if (appData.sessions.length === 0) {
@@ -5500,7 +5552,6 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           .slice(0, 5);
         const html = recentSessions
           .map((session) => {
-            const moodEmojis = { 1: "😢", 2: "😕", 3: "😐", 4: "🙂", 5: "😊" };
             const badgeClass =
               session.source === "whatsapp"
                 ? "badge-whatsapp"
@@ -5527,9 +5578,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                                       session.clinicalDate
                                     ).toLocaleDateString("es-AR")}</span>
                                     <span class="mx-2">|</span>
-                                    <span>${
-                                      moodEmojis[session.moodAssessment]
-                                    } ${session.moodAssessment}/5</span>
+                                    <span>${formatMoodAssessment(
+                                      session.moodAssessment
+                                    )}</span>
                                 </div>
                             </div>
                             <div class="text-right">
@@ -5713,9 +5764,8 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const html = [...sessionsArray]
           .sort((a, b) => b.clinicalDate.localeCompare(a.clinicalDate))
           .map((session) => {
-            const moodEmojis = { 1: "😢", 2: "😕", 3: "😐", 4: "🙂", 5: "😊" };
-
             const getMoodColorClass = (moodScore) => {
+              if (!hasMoodAssessment(moodScore)) return "info";
               if (moodScore <= 2) return "danger";
               if (moodScore === 3) return "warning";
               if (moodScore >= 4) return "success";
@@ -5759,9 +5809,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                             <p class="card-text text-muted mb-3 flex-grow-1 text-clamp-3">${session.cleanNote}</p>
                             <div class="d-flex align-items-center justify-content-between mt-auto">
                                 <div class="text-muted small">
-                                    <i class="fas fa-smile mr-1"></i> Estado: ${
-                                      moodEmojis[session.moodAssessment]
-                                    } ${session.moodAssessment}/5
+                                    <i class="fas fa-smile mr-1"></i> Estado: ${formatMoodAssessment(
+                                      session.moodAssessment
+                                    )}
                                 </div>
                                 ${followupBadge}
                             </div>
@@ -6094,7 +6144,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 <div class="row">
                     <div class="col-md-6">
                         <h6><i class="fas fa-smile mr-2 text-primary"></i>Estado Anímico</h6>
-                        <p>${moodEmojis[session.moodAssessment]}</p>
+                        <p>${moodEmojis[session.moodAssessment] || "Sin registrar"}</p>
                     </div>
                     <div class="col-md-6">
                         <h6><i class="fas fa-calendar-alt mr-2 text-primary"></i>Fecha y Hora</h6>
@@ -6168,6 +6218,12 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       }
       function showNewSessionModal(patientId) {
         $("#newSessionForm")[0].reset();
+        currentWebAudioDraftId = null;
+        currentWebAudioDraftPatientId = null;
+        currentWebAudioIdempotencyKey = null;
+        currentWebAudioRequestFingerprint = null;
+        $("#sessionPatient, #webAudioFixture").prop("disabled", false);
+        setSessionInputMode("text", { discard: false });
         const patientOptions = appData.patients
           .map((p) => `<option value="${p.id}">${p.name}</option>`)
           .join("");
@@ -6180,6 +6236,140 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         }
         $("#newSessionModal").modal("show");
       }
+
+      function setSessionInputMode(mode, options = {}) {
+        const audio = mode === "audio";
+        if (!audio && options.discard !== false) discardCurrentWebAudioDraft();
+        $("#webAudioFixtureSection").toggleClass("d-none", !audio);
+        $("#sessionContent").attr(
+          "placeholder",
+          audio
+            ? "La nota preparada aparecerá acá para que la revises..."
+            : "Describe la sesión, observaciones, tratamiento aplicado..."
+        );
+        if (!audio) {
+          $("#webAudioTranscriptSection, #retryWebAudioBtn").addClass("d-none");
+          $("#webAudioRawTranscript").val("");
+          $("#webAudioStatus").text(
+            "Este corte usa audios sintéticos; todavía no envía archivos a un proveedor real."
+          );
+        }
+      }
+
+      function discardCurrentWebAudioDraft() {
+        const draftId = currentWebAudioDraftId;
+        currentWebAudioDraftId = null;
+        currentWebAudioDraftPatientId = null;
+        currentWebAudioIdempotencyKey = null;
+        currentWebAudioRequestFingerprint = null;
+        $("#sessionPatient, #webAudioFixture").prop("disabled", false);
+        if (!draftId) return;
+        $.ajax({
+          url: `/api/session-drafts/${draftId}/cancel`,
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+        });
+      }
+
+      function renderPreparedWebAudio(draft) {
+        currentWebAudioDraftId = draft.id;
+        currentWebAudioDraftPatientId = draft.patientId;
+        $("#sessionPatient").val(draft.patientId).prop("disabled", true);
+        $("#webAudioFixture").prop("disabled", true);
+        $("#webAudioRawTranscript").val(draft.rawTranscript || "");
+        $("#webAudioTranscriptSection").removeClass("d-none");
+        if (draft.status === "ready") {
+          $("#sessionContent").val(draft.cleanNote || "").focus();
+          $("#webAudioStatus").text(
+            "Nota preparada. Revisala y después guardá la sesión."
+          );
+          $("#retryWebAudioBtn").addClass("d-none");
+        } else {
+          $("#sessionContent").val("");
+          $("#webAudioStatus").text(
+            "La preparación falló, pero el borrador quedó guardado para reintentar."
+          );
+          $("#retryWebAudioBtn").removeClass("d-none");
+        }
+      }
+
+      function prepareWebAudioDraft() {
+        const patientId = $("#sessionPatient").val();
+        if (!patientId) {
+          notificaciones.error(
+            "Falta el paciente",
+            "Seleccioná un paciente antes de preparar el audio."
+          );
+          return;
+        }
+        if (currentWebAudioDraftId) discardCurrentWebAudioDraft();
+        const fixtureId = $("#webAudioFixture").val();
+        const requestFingerprint = `${patientId}:${fixtureId}`;
+        if (!currentWebAudioIdempotencyKey || currentWebAudioRequestFingerprint !== requestFingerprint) {
+          currentWebAudioIdempotencyKey = nextWhatsappTestMessageId("web-audio");
+          currentWebAudioRequestFingerprint = requestFingerprint;
+        }
+        const button = $("#prepareWebAudioBtn");
+        button.prop("disabled", true).text("Preparando...");
+        $("#sessionPatient, #webAudioFixture").prop("disabled", true);
+        $("#sessionContent, #webAudioRawTranscript").val("");
+        $("#webAudioTranscriptSection, #retryWebAudioBtn").addClass("d-none");
+        $("#webAudioStatus").text("Transcribiendo y preparando la nota...");
+        $.ajax({
+          url: "/api/audio-drafts",
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+            "Idempotency-Key": currentWebAudioIdempotencyKey,
+          },
+          contentType: "application/json",
+          data: JSON.stringify({
+            patientId,
+            clinicalDate: localDateKey(),
+            fixtureId,
+          }),
+          success: function (response) {
+            renderPreparedWebAudio(response.draft);
+          },
+          error: function (xhr) {
+            $("#webAudioStatus").text(
+              xhr.responseJSON?.message || "No se pudo preparar el audio."
+            );
+            if (!currentWebAudioDraftId) {
+              $("#sessionPatient, #webAudioFixture").prop("disabled", false);
+            }
+          },
+          complete: function () {
+            button.prop("disabled", false).text("Preparar nota desde audio");
+          },
+        });
+      }
+
+      function retryWebAudioDraft() {
+        if (!currentWebAudioDraftId) return;
+        const button = $("#retryWebAudioBtn");
+        button.prop("disabled", true).text("Reintentando...");
+        $.ajax({
+          url: `/api/audio-drafts/${currentWebAudioDraftId}/retry`,
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+          success: function (response) {
+            renderPreparedWebAudio(response.draft);
+          },
+          error: function (xhr) {
+            $("#webAudioStatus").text(
+              xhr.responseJSON?.message || "No se pudo reintentar."
+            );
+          },
+          complete: function () {
+            button.prop("disabled", false).text("Reintentar");
+          },
+        });
+      }
+
+      $("#newSessionModal").on("hidden.bs.modal", function () {
+        discardCurrentWebAudioDraft();
+      });
 
       // Cargar datos de pacientes
       function loadPatientsData() {
@@ -6276,11 +6466,21 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const mood = $("#sessionMood").val();
         const medication = $("#sessionMedication").val().trim();
         const token = localStorage.getItem("authToken");
+        const inputType = $("input[name='sessionInputType']:checked").val() || "text";
 
-        if (!patientId || !content || !mood) {
+        if (!patientId || !content || !mood || (inputType === "audio" && !currentWebAudioDraftId)) {
           notificaciones.error(
             "Campos Incompletos",
-            "Por favor, seleccioná un paciente, completá el contenido de la sesión y el estado de ánimo."
+            inputType === "audio" && !currentWebAudioDraftId
+              ? "Primero prepará el audio y revisá la nota."
+              : "Por favor, seleccioná un paciente, completá el contenido de la sesión y el estado de ánimo."
+          );
+          return;
+        }
+        if (inputType === "audio" && patientId !== currentWebAudioDraftPatientId) {
+          notificaciones.error(
+            "Paciente cambiado",
+            "El audio fue preparado para otro paciente. Cancelalo y preparalo nuevamente."
           );
           return;
         }
@@ -6288,6 +6488,60 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const btn = $(this).find('button[type="submit"]');
         const originalText = btn.html();
         btn.html('<i class="fas fa-spinner fa-spin"></i> Guardando...').prop('disabled', true);
+
+        const confirmPreparedDraft = function (draftId) {
+          $.ajax({
+            url: `/api/session-drafts/${draftId}/confirm`,
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            success: function () {
+              btn.html(originalText).prop('disabled', false);
+              currentWebAudioDraftId = null;
+              currentWebAudioDraftPatientId = null;
+              currentWebAudioIdempotencyKey = null;
+              currentWebAudioRequestFingerprint = null;
+              $("#sessionPatient, #webAudioFixture").prop("disabled", false);
+              $("#newSessionModal").modal("hide");
+              $("#newSessionForm")[0].reset();
+              loadSessionsData();
+              notificaciones.exito(
+                "Sesión Registrada",
+                "La nota fue confirmada y guardada en la ficha."
+              );
+            },
+            error: function (xhr) {
+              btn.html(originalText).prop('disabled', false);
+              const msg = xhr.responseJSON?.message || "El borrador quedó guardado para reintentar";
+              notificaciones.advertencia("Borrador guardado", msg);
+            },
+          });
+        };
+
+        if (inputType === "audio") {
+          $.ajax({
+            url: `/api/session-drafts/${currentWebAudioDraftId}`,
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${token}` },
+            contentType: "application/json",
+            data: JSON.stringify({
+              cleanNote: content,
+              moodAssessment: parseInt(mood),
+              medicationNotes: medication || null,
+              requiresFollowUp: parseInt(mood) <= 2,
+            }),
+            success: function (response) {
+              confirmPreparedDraft(response.draft.id);
+            },
+            error: function (xhr) {
+              btn.html(originalText).prop('disabled', false);
+              notificaciones.error(
+                "Error",
+                xhr.responseJSON?.message || "No se pudo revisar el borrador de audio"
+              );
+            },
+          });
+          return;
+        }
 
         $.ajax({
           url: "/api/session-drafts",
@@ -6307,26 +6561,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             inputType: "text"
           }),
           success: function (draftResponse) {
-            $.ajax({
-              url: `/api/session-drafts/${draftResponse.draft.id}/confirm`,
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-              success: function () {
-                btn.html(originalText).prop('disabled', false);
-                $("#newSessionModal").modal("hide");
-                $("#newSessionForm")[0].reset();
-                loadSessionsData();
-                notificaciones.exito(
-                  "Sesión Registrada",
-                  "La nota fue confirmada y guardada en la ficha."
-                );
-              },
-              error: function (xhr) {
-                btn.html(originalText).prop('disabled', false);
-                const msg = xhr.responseJSON?.message || "El borrador quedó guardado para reintentar";
-                notificaciones.advertencia("Borrador guardado", msg);
-              },
-            });
+            confirmPreparedDraft(draftResponse.draft.id);
           },
           error: function (xhr) {
             btn.html(originalText).prop('disabled', false);
@@ -6763,6 +6998,39 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           },
           complete: function () {
             $("#sendWhatsappTestMessageBtn").prop("disabled", false);
+          },
+        });
+      }
+
+      function sendWhatsappTestAudio() {
+        if (!linkedWhatsappPhone) return;
+        const button = $("#sendWhatsappTestAudioBtn");
+        button.prop("disabled", true).text("Enviando...");
+        $.ajax({
+          url: "/api/dev/whatsapp/inbound",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({
+            messageId: nextWhatsappTestMessageId("web-chat-audio"),
+            from: linkedWhatsappPhone,
+            message: { type: "audio", fixtureId: "pause-heavy-es-01" },
+          }),
+          success: function (response) {
+            $("#whatsappTestReply")
+              .removeClass("d-none")
+              .text(response.reply?.text || "Audio procesado.");
+          },
+          error: function (xhr) {
+            $("#whatsappTestReply")
+              .removeClass("d-none")
+              .text(
+                xhr.responseJSON?.reply?.text ||
+                  xhr.responseJSON?.message ||
+                  "No se pudo procesar el audio."
+              );
+          },
+          complete: function () {
+            button.prop("disabled", false).text("Enviar audio de prueba");
           },
         });
       }

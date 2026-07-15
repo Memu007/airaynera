@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { clinicalDateKey } = require('../utils/clinicalDate');
 const bcrypt = require('bcrypt');
 const { encryptString, decryptString, getKey } = require('../utils/crypto');
 const { runMigrations } = require('../db/migrate');
@@ -87,6 +88,13 @@ function mapSessionDraftRow(row) {
     requiresFollowUp: row.requires_follow_up === 1,
     audioDurationSeconds: row.audio_duration_seconds == null ? null : Number(row.audio_duration_seconds),
     sourceMessageId: row.source_message_id || null,
+    mediaReference: row.media_reference || null,
+    mediaMimeType: row.media_mime_type || null,
+    inputFingerprint: row.input_fingerprint || null,
+    processingAttempts: Number(row.processing_attempts || 0),
+    failedStage: row.failed_stage || null,
+    processingStartedAt: row.processing_started_at || null,
+    processingFinishedAt: row.processing_finished_at || null,
     sessionId: row.session_id == null ? null : String(row.session_id),
     failure: row.error_code || row.error_message
       ? { code: row.error_code || 'PROCESSING_FAILED', message: row.error_message || '' }
@@ -136,7 +144,7 @@ function listPatients(userId) {
 
 function addPatient(userId, p) {
   const conn = getDb();
-  const now = new Date().toISOString().split('T')[0];
+  const now = clinicalDateKey();
   const timestamp = new Date().toISOString();
   const stmt = conn.prepare('INSERT INTO patients (userId, name, dni, phone, email, insurance, habilitado, created_via, fechaRegistro, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   
@@ -234,7 +242,7 @@ function getSessionById(userId, id) {
 function addSession(userId, s) {
   const conn = getDb();
   const timestamp = new Date().toISOString();
-  const today = timestamp.split('T')[0];
+  const today = clinicalDateKey();
   
   // Verify patient belongs to user
   const patient = conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(s.pacienteId, userId);
@@ -299,9 +307,15 @@ function updateSession(userId, id, changes) {
   const cleanNote = String(changes.cleanNote ?? changes.notas ?? current.clean_note ?? current.notas ?? '');
   const sessionType = String(changes.sessionType ?? changes.tipo ?? current.tipo ?? 'individual');
   const clinicalDate = String(changes.clinicalDate ?? current.clinical_date ?? current.fecha);
-  const durationMinutes = Number(changes.durationMinutes ?? changes.duracion ?? current.duracion ?? 60);
+  const durationValue = changes.durationMinutes !== undefined
+    ? changes.durationMinutes
+    : (changes.duracion !== undefined ? changes.duracion : current.duracion);
+  const durationMinutes = durationValue == null ? null : Number(durationValue);
   const medicationNotes = String(changes.medicationNotes ?? changes.medication_notes ?? current.medication_notes ?? '');
-  const moodAssessment = Number(changes.moodAssessment ?? changes.mood_assessment ?? current.mood_assessment ?? 4);
+  const moodValue = changes.moodAssessment !== undefined
+    ? changes.moodAssessment
+    : (changes.mood_assessment !== undefined ? changes.mood_assessment : current.mood_assessment);
+  const moodAssessment = moodValue == null ? null : Number(moodValue);
   const requiresFollowUp = Boolean(changes.requiresFollowUp ?? changes.requires_followup ?? current.requires_followup);
   const rawTranscript = changes.rawTranscript === undefined ? current.raw_transcript : changes.rawTranscript;
   const inputType = String(changes.inputType ?? current.input_type ?? 'text');
@@ -398,8 +412,9 @@ function addSessionDraft(userId, draft) {
       user_id, patient_id, clinical_date, session_type, duration_minutes,
       care_modality, source, input_type, status, raw_transcript, clean_note,
       medication_notes, mood_assessment, requires_follow_up,
-      audio_duration_seconds, source_message_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      audio_duration_seconds, source_message_id, media_reference, media_mime_type,
+      input_fingerprint, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     userId,
     draft.patientId,
@@ -417,6 +432,9 @@ function addSessionDraft(userId, draft) {
     draft.requiresFollowUp ? 1 : 0,
     draft.audioDurationSeconds,
     draft.sourceMessageId,
+    draft.mediaReference,
+    draft.mediaMimeType,
+    draft.inputFingerprint,
     now,
     now
   );
@@ -466,12 +484,12 @@ function updateSessionDraft(userId, id, changes) {
     updatedAt: new Date().toISOString(),
   };
 
-  conn.prepare(`
+  const info = conn.prepare(`
     UPDATE session_drafts SET
       patient_id=?, clinical_date=?, session_type=?, duration_minutes=?,
       care_modality=?, raw_transcript=?, clean_note=?, medication_notes=?,
       mood_assessment=?, requires_follow_up=?, audio_duration_seconds=?, updated_at=?
-    WHERE id=? AND user_id=?
+    WHERE id=? AND user_id=? AND status='ready'
   `).run(
     next.patientId,
     next.clinicalDate,
@@ -489,7 +507,7 @@ function updateSessionDraft(userId, id, changes) {
     userId
   );
 
-  return getSessionDraft(userId, id);
+  return info.changes ? getSessionDraft(userId, id) : null;
 }
 
 function setSessionDraftStatus(userId, id, status) {
@@ -498,6 +516,44 @@ function setSessionDraftStatus(userId, id, status) {
     UPDATE session_drafts SET status = ?, updated_at = ?
     WHERE id = ? AND user_id = ?
   `).run(status, new Date().toISOString(), id, userId);
+  return info.changes ? getSessionDraft(userId, id) : null;
+}
+
+function transitionSessionDraft(userId, id, expectedStatuses, changes) {
+  const conn = getDb();
+  const statuses = Array.isArray(expectedStatuses) ? expectedStatuses : [expectedStatuses];
+  if (!statuses.length) return null;
+
+  const assignments = ['status=?', 'updated_at=?'];
+  const values = [changes.status, new Date().toISOString()];
+  const fields = [
+    ['rawTranscript', 'raw_transcript'],
+    ['cleanNote', 'clean_note'],
+    ['audioDurationSeconds', 'audio_duration_seconds'],
+    ['failedStage', 'failed_stage'],
+    ['errorCode', 'error_code'],
+    ['errorMessage', 'error_message'],
+    ['processingStartedAt', 'processing_started_at'],
+    ['processingFinishedAt', 'processing_finished_at'],
+  ];
+  for (const [property, column] of fields) {
+    if (changes[property] !== undefined) {
+      assignments.push(`${column}=?`);
+      values.push(changes[property]);
+    }
+  }
+  if (changes.incrementProcessingAttempts) {
+    assignments.push('processing_attempts=processing_attempts+1');
+  }
+  if (changes.clearFailure) {
+    assignments.push('error_code=NULL', 'error_message=NULL');
+  }
+
+  const placeholders = statuses.map(() => '?').join(', ');
+  const info = conn.prepare(`
+    UPDATE session_drafts SET ${assignments.join(', ')}
+    WHERE id=? AND user_id=? AND status IN (${placeholders})
+  `).run(...values, id, userId, ...statuses);
   return info.changes ? getSessionDraft(userId, id) : null;
 }
 
@@ -549,11 +605,16 @@ function confirmSessionDraft(userId, id) {
     });
     const now = new Date().toISOString();
 
-    conn.prepare(`
+    const confirmation = conn.prepare(`
       UPDATE session_drafts SET
         status='confirmed', session_id=?, confirmed_at=?, updated_at=?
-      WHERE id=? AND user_id=?
+      WHERE id=? AND user_id=? AND status='ready'
     `).run(session.id, now, now, id, userId);
+    if (confirmation.changes !== 1) {
+      const error = new Error('Draft changed while it was being confirmed');
+      error.code = 'DRAFT_NOT_READY';
+      throw error;
+    }
 
     return {
       draft: getSessionDraft(userId, id),
@@ -950,6 +1011,7 @@ module.exports = {
   addSessionDraft,
   updateSessionDraft,
   setSessionDraftStatus,
+  transitionSessionDraft,
   confirmSessionDraft,
   getWhatsappLink,
   getLinkedWhatsappByPhone,

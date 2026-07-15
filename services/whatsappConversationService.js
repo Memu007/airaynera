@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const sql = require('./sqlite');
 const sessionDraftService = require('./sessionDraftService');
+const audioDraftPipeline = require('./audioDraftPipeline');
 const whatsappLinkService = require('./whatsappLinkService');
 
 function domainError(code, message) {
@@ -17,7 +18,27 @@ function fold(value) {
     .trim();
 }
 
-function payloadHash(phoneNumber, text) {
+function normalizeMessage(input) {
+  if (input?.message?.type === 'audio') {
+    return {
+      type: 'audio',
+      fixtureId: String(input.message.fixtureId || input.message.audio?.fixtureId || '').trim(),
+    };
+  }
+  return {
+    type: 'text',
+    text: String(input?.message?.text ?? input?.text ?? '').trim(),
+  };
+}
+
+function payloadHash(phoneNumber, message) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify({ phoneNumber, message }))
+    .digest('hex');
+}
+
+function legacyTextPayloadHash(phoneNumber, text) {
   return crypto
     .createHash('sha256')
     .update(JSON.stringify({ phoneNumber, type: 'text', text }))
@@ -76,6 +97,20 @@ function menuReply() {
 }
 
 function pendingDraftReply(conversation, draft) {
+  if (draft?.status === 'failed') {
+    return {
+      code: 'AUDIO_FAILED',
+      text: `El audio del borrador ${conversation.currentDraftId} no pudo prepararse. Escribí REINTENTAR o CANCELAR.`,
+      draftId: conversation.currentDraftId,
+    };
+  }
+  if (['received', 'transcribing', 'structuring'].includes(draft?.status)) {
+    return {
+      code: 'AUDIO_PROCESSING',
+      text: `El audio del borrador ${conversation.currentDraftId} todavía se está procesando.`,
+      draftId: conversation.currentDraftId,
+    };
+  }
   return {
     code: 'DRAFT_PENDING',
     text: `Tenés el borrador ${conversation.currentDraftId} pendiente${draft?.patientName ? ` para ${draft.patientName}` : ''}. Escribí GUARDAR o CANCELAR.`,
@@ -117,18 +152,11 @@ function reconcileTerminalDraft(userId, conversation, draft, now) {
       session: draft.sessionId ? { id: draft.sessionId, patientId: draft.patientId, status: 'confirmed' } : null,
     };
   }
-  if (draft.status !== 'ready') {
-    const reset = resetToMenu(userId, now);
-    return {
-      reply: { code: 'DRAFT_NOT_READY', text: 'El borrador ya no está disponible para guardar. Iniciá una nueva nota.' },
-      conversation: conversationView(reset),
-      draft,
-    };
-  }
   return null;
 }
 
-function dispatch(userId, phoneNumber, originalText, messageId, now) {
+function dispatch(userId, phoneNumber, message, messageId, now) {
+  const originalText = message.type === 'text' ? message.text : '';
   const command = fold(originalText);
   let conversation = sql.ensureWhatsappConversation(userId, phoneNumber, now);
 
@@ -169,6 +197,66 @@ function dispatch(userId, phoneNumber, originalText, messageId, now) {
     const reconciled = reconcileTerminalDraft(userId, conversation, draft, now);
     if (reconciled) return reconciled;
 
+    if (command === 'REINTENTAR') {
+      if (draft.inputType !== 'audio') {
+        return {
+          reply: { code: 'DRAFT_NOT_PROCESSABLE', text: 'Este borrador no necesita reprocesarse.' },
+          conversation: conversationView(conversation),
+          draft,
+        };
+      }
+      if (draft.status === 'ready') {
+        return {
+          reply: pendingDraftReply(conversation, draft),
+          conversation: conversationView(conversation),
+          draft,
+        };
+      }
+      const retried = audioDraftPipeline.retry(userId, draft.id);
+      if (retried.draft.status === 'ready') {
+        return {
+          reply: {
+            code: 'DRAFT_READY',
+            text: `Nota preparada: ${retried.draft.cleanNote}\nEscribí GUARDAR o CANCELAR.`,
+            draftId: retried.draft.id,
+          },
+          conversation: conversationView(conversation),
+          draft: retried.draft,
+        };
+      }
+      return {
+        reply: pendingDraftReply(conversation, retried.draft),
+        conversation: conversationView(conversation),
+        draft: retried.draft,
+      };
+    }
+
+    const cancel = /^CANCELAR(?:\s+(\d+))?$/.exec(command);
+    if (cancel) {
+      if (cancel[1] && cancel[1] !== conversation.currentDraftId) {
+        return {
+          reply: { code: 'INVALID_DRAFT_REFERENCE', text: `El borrador pendiente es ${conversation.currentDraftId}. Escribí CANCELAR.` },
+          conversation: conversationView(conversation),
+          draft,
+        };
+      }
+      const cancelledDraft = sessionDraftService.cancelDraft(userId, conversation.currentDraftId);
+      conversation = resetToMenu(userId, now);
+      return {
+        reply: { code: 'DRAFT_CANCELLED', text: 'Borrador cancelado.' },
+        conversation: conversationView(conversation),
+        draft: cancelledDraft,
+      };
+    }
+
+    if (draft.status !== 'ready') {
+      return {
+        reply: pendingDraftReply(conversation, draft),
+        conversation: conversationView(conversation),
+        draft,
+      };
+    }
+
     const save = /^GUARDAR(?:\s+(\d+))?$/.exec(command);
     if (save) {
       if (save[1] && save[1] !== conversation.currentDraftId) {
@@ -194,24 +282,6 @@ function dispatch(userId, phoneNumber, originalText, messageId, now) {
           draftId: String(confirmed.draft.id),
           status: 'confirmed',
         },
-      };
-    }
-
-    const cancel = /^CANCELAR(?:\s+(\d+))?$/.exec(command);
-    if (cancel) {
-      if (cancel[1] && cancel[1] !== conversation.currentDraftId) {
-        return {
-          reply: { code: 'INVALID_DRAFT_REFERENCE', text: `El borrador pendiente es ${conversation.currentDraftId}. Escribí CANCELAR.` },
-          conversation: conversationView(conversation),
-          draft,
-        };
-      }
-      const cancelledDraft = sessionDraftService.cancelDraft(userId, conversation.currentDraftId);
-      conversation = resetToMenu(userId, now);
-      return {
-        reply: { code: 'DRAFT_CANCELLED', text: 'Borrador cancelado.' },
-        conversation: conversationView(conversation),
-        draft: cancelledDraft,
       };
     }
 
@@ -292,6 +362,57 @@ function dispatch(userId, phoneNumber, originalText, messageId, now) {
       };
     }
 
+    if (message.type === 'audio') {
+      let processed;
+      try {
+        processed = audioDraftPipeline.ingest(userId, {
+          patientId: patient.id,
+          fixtureId: message.fixtureId,
+        }, {
+          source: 'whatsapp',
+          sourceMessageId: messageId,
+        });
+      } catch (error) {
+        if (error.code !== 'INVALID_AUDIO_INPUT') throw error;
+        return {
+          reply: { code: 'INVALID_AUDIO', text: 'No pude leer ese audio de prueba. Enviá otro o escribí CANCELAR.' },
+          conversation: conversationView(conversation),
+        };
+      }
+
+      if (processed.draft.status === 'failed') {
+        conversation = updateConversation(
+          userId,
+          'awaitingConfirmation',
+          patient.id,
+          processed.draft.id,
+          now
+        );
+        return {
+          reply: pendingDraftReply(conversation, processed.draft),
+          conversation: conversationView(conversation),
+          draft: processed.draft,
+        };
+      }
+
+      conversation = updateConversation(
+        userId,
+        'awaitingConfirmation',
+        patient.id,
+        processed.draft.id,
+        now
+      );
+      return {
+        reply: {
+          code: 'DRAFT_READY',
+          text: `Audio preparado para ${patient.name}.\nNota preparada: ${processed.draft.cleanNote}\nEscribí GUARDAR o CANCELAR.`,
+          draftId: processed.draft.id,
+        },
+        conversation: conversationView(conversation),
+        draft: processed.draft,
+      };
+    }
+
     const created = sessionDraftService.createDraft(userId, {
       patientId: patient.id,
       inputType: 'text',
@@ -321,16 +442,20 @@ function dispatch(userId, phoneNumber, originalText, messageId, now) {
   return { reply: menuReply(), conversation: conversationView(conversation) };
 }
 
-function handleInbound({ messageId, from, text }, options = {}) {
+function handleInbound(input, options = {}) {
+  const { messageId, from } = input;
   const phoneNumber = whatsappLinkService.normalizePhone(from);
-  const originalText = String(text || '').trim();
-  const hash = payloadHash(phoneNumber, originalText);
+  const message = normalizeMessage(input);
+  const hash = payloadHash(phoneNumber, message);
+  const acceptedHashes = message.type === 'text'
+    ? [hash, legacyTextPayloadHash(phoneNumber, message.text)]
+    : [hash];
   const now = options.now ? new Date(options.now).toISOString() : new Date().toISOString();
 
   return sql.withTransaction(() => {
     const previous = sql.getWhatsappInboundEvent(messageId);
     if (previous) {
-      if (previous.phoneNumber !== phoneNumber || previous.payloadHash !== hash) {
+      if (previous.phoneNumber !== phoneNumber || !acceptedHashes.includes(previous.payloadHash)) {
         throw domainError('MESSAGE_ID_CONFLICT', 'messageId was already used by another event');
       }
       return {
@@ -355,7 +480,7 @@ function handleInbound({ messageId, from, text }, options = {}) {
     } else {
       status = 200;
       body = {
-        ...dispatch(userId, phoneNumber, originalText, messageId, now),
+        ...dispatch(userId, phoneNumber, message, messageId, now),
         deduplicated: false,
       };
     }
@@ -376,4 +501,6 @@ function handleInbound({ messageId, from, text }, options = {}) {
 module.exports = {
   fold,
   handleInbound,
+  normalizeMessage,
+  legacyTextPayloadHash,
 };

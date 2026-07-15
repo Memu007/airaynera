@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -42,6 +43,25 @@ function runPhaseOne() {
   assert.equal(selected.body.conversation.state, 'awaitingNote');
   assert.equal(selected.body.conversation.selectedPatientId, patient.id);
   assert.equal(sql.listSessions(userId).length, 0);
+
+  const legacyText = 'MENÚ';
+  const legacyHash = crypto
+    .createHash('sha256')
+    .update(JSON.stringify({ phoneNumber: phone, type: 'text', text: legacyText }))
+    .digest('hex');
+  sql.addWhatsappInboundEvent({
+    messageId: 'legacy-text-event',
+    phoneNumber: phone,
+    payloadHash: legacyHash,
+    userId,
+    responseStatus: 200,
+    response: {
+      reply: { code: 'LEGACY_RESPONSE', text: 'Respuesta persistida antes del cambio de formato.' },
+      conversation: selected.body.conversation,
+      deduplicated: false,
+    },
+    createdAt: new Date().toISOString(),
+  });
 }
 
 function runPhaseTwo() {
@@ -53,6 +73,10 @@ function runPhaseTwo() {
   const restored = sql.getWhatsappConversation(userId);
   assert.equal(restored.state, 'awaitingNote');
   assert.ok(restored.selectedPatientId);
+
+  const legacyReplay = inbound(conversationService, 'legacy-text-event', 'MENÚ');
+  assert.equal(legacyReplay.body.deduplicated, true);
+  assert.equal(legacyReplay.body.reply.code, 'LEGACY_RESPONSE');
 
   const note = inbound(
     conversationService,

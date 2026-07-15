@@ -8,6 +8,7 @@ Este directorio contiene la documentación vigente del producto. Su objetivo es 
 2. [PRODUCT.md](PRODUCT.md): problema, alcance y decisiones del producto.
 3. [ROADMAP.md](ROADMAP.md): etapas, entregables y criterios de aceptación.
 4. [WORKLOG.md](WORKLOG.md): registro cronológico de lo realizado.
+5. [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md): costos, candidatos y gate para elegir transcripción real.
 
 ## Regla de mantenimiento
 

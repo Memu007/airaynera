@@ -16,15 +16,14 @@ Cuenta web
 
 ## Estado del proyecto
 
-El proyecto está en una etapa de consolidación funcional. El recorrido web registro → paciente → borrador → sesión → recarga ya funciona localmente. La web también puede vincular un teléfono y simular el recorrido `MENÚ → paciente → nota → GUARDAR/CANCELAR`; la cuenta y el paciente salen del estado persistido, no del contenido. El transporte real de Meta y el audio todavía no funcionan de punta a punta.
+El proyecto está en una etapa de consolidación funcional. El recorrido web registro → paciente → borrador → sesión → recarga ya funciona localmente. La web también puede vincular un teléfono y simular el recorrido `MENÚ → paciente → nota → GUARDAR/CANCELAR`; la cuenta y el paciente salen del estado persistido, no del contenido. Los recortes de audio sintéticos ya recorren el mismo pipeline desde web y WhatsApp, conservan transcripción original y nota limpia por separado, permiten reintentar y solamente crean una sesión después de confirmar. Todavía no se reciben archivos reales ni se usa el transporte de Meta o un proveedor externo.
 
 Las prioridades vigentes son:
 
-1. Estabilizar registro, pacientes y sesiones en la web.
-2. Vincular una cuenta web con un número de WhatsApp.
-3. Completar el recorrido mediante una nota de texto.
-4. Incorporar audio reutilizando el mismo sistema de borradores.
-5. Probar el producto con profesionales.
+1. Incorporar un archivo de audio real en la web sin cambiar el contrato probado.
+2. Comparar Groq, Gemini y OpenAI con el mismo conjunto de recortes de prueba.
+3. Conectar el webhook y la descarga de medios de Meta cuando existan credenciales.
+4. Probar el producto con profesionales y medir tiempo de corrección, latencia y costo.
 
 El detalle y el estado actualizado se encuentran en la [documentación activa](docs/README.md).
 
@@ -35,6 +34,7 @@ El detalle y el estado actualizado se encuentran en la [documentación activa](d
 - [Handoff actualizado](docs/HANDOFF.md)
 - [Registro de trabajo](docs/WORKLOG.md)
 - [Contratos funcionales del dominio](docs/DOMAIN_CONTRACTS.md)
+- [Decisión y benchmark de proveedores de audio](docs/AUDIO_PROVIDER_BENCHMARK.md)
 
 Al retomar el proyecto, empezar siempre por `docs/HANDOFF.md`.
 
@@ -71,6 +71,8 @@ Las variables, tokens y credenciales reales nunca deben subirse al repositorio.
 server.js             servidor Express actual
 index.html            interfaz web actual
 services/sqlite.js    acceso y esquema SQLite actual
+services/audioDraftPipeline.js  pipeline común de audio y borradores
+services/audio/       proveedores falsos y futuros adaptadores reales
 utils/                utilidades compartidas
 js/ css/ images/      recursos de la interfaz
 scripts/              scripts activos o pendientes de consolidación

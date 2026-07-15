@@ -128,6 +128,8 @@ app.use(express.static(path.join(__dirname)));
 // Persistence Service (SQLite)
 const sql = require("./services/sqlite");
 const sessionDraftService = require("./services/sessionDraftService");
+const audioDraftPipeline = require("./services/audioDraftPipeline");
+const { listFixtures: listAudioFixtures } = require("./services/audio/fakeAudioProviders");
 const whatsappLinkService = require("./services/whatsappLinkService");
 const whatsappConversationService = require("./services/whatsappConversationService");
 
@@ -195,7 +197,7 @@ function normalizeSessionInput(req, res, next) {
     normalized.careModality = firstDefined(input.careModality, "unspecified");
   }
   if (cleanNote !== undefined || isCreate) normalized.cleanNote = cleanNote || "";
-  if (input.rawTranscript !== undefined || input.transcription !== undefined) {
+  if (isCreate && (input.rawTranscript !== undefined || input.transcription !== undefined)) {
     normalized.rawTranscript = firstDefined(input.rawTranscript, input.transcription);
   }
   if (input.medicationNotes !== undefined || input.medication_notes !== undefined) {
@@ -207,10 +209,10 @@ function normalizeSessionInput(req, res, next) {
   if (input.requiresFollowUp !== undefined || input.requires_followup !== undefined) {
     normalized.requiresFollowUp = firstDefined(input.requiresFollowUp, input.requires_followup);
   }
-  if (input.audioDurationSeconds !== undefined) {
+  if (isCreate && input.audioDurationSeconds !== undefined) {
     normalized.audioDurationSeconds = input.audioDurationSeconds;
   }
-  if (input.inputType !== undefined || isCreate) {
+  if (isCreate) {
     normalized.inputType = firstDefined(
       input.inputType,
       input.rawTranscript || input.transcription ? "audio" : "text"
@@ -235,6 +237,11 @@ function sendDraftError(res, error) {
     DRAFT_NOT_FOUND: 404,
     DRAFT_NOT_READY: 409,
     DRAFT_CANCELLED: 409,
+    INVALID_AUDIO_INPUT: 400,
+    IDEMPOTENCY_CONFLICT: 409,
+    DRAFT_NOT_PROCESSABLE: 409,
+    PROCESSING_ALREADY_CLAIMED: 409,
+    AUDIO_PROVIDER_NOT_CONFIGURED: 503,
   };
   const status = statusByCode[error.code] || 500;
   if (status === 500) console.error('Session draft error:', error);
@@ -545,7 +552,7 @@ app.post('/api/session-drafts',
   body('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
   body('sessionType').optional().isIn(['individual', 'group', 'family', 'couple', 'other']),
   body('durationMinutes').optional({ nullable: true }).isInt({ min: 1, max: 480 }),
-  body('inputType').optional().isIn(['text', 'audio']),
+  body('inputType').optional().equals('text').withMessage('Los audios deben ingresar por /api/audio-drafts'),
   body('cleanNote').optional().isString().isLength({ max: 10000 }),
   body('moodAssessment').optional({ nullable: true }).isInt({ min: 1, max: 5 }),
   handleValidationErrors,
@@ -584,6 +591,44 @@ app.post('/api/session-drafts/:id/confirm', authMiddleware, (req, res) => {
       draft: result.draft,
       session: normalizeSession(result.session),
     });
+  } catch (error) {
+    sendDraftError(res, error);
+  }
+});
+
+app.get('/api/audio-drafts/fixtures', authMiddleware, (req, res) => {
+  res.json({ fixtures: listAudioFixtures() });
+});
+
+app.post('/api/audio-drafts',
+  authMiddleware,
+  body('patientId').notEmpty().withMessage('patientId es requerido'),
+  body('fixtureId').isString().trim().isLength({ min: 1, max: 100 }),
+  body('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  handleValidationErrors,
+  (req, res) => {
+    try {
+      const idempotencyKey = String(req.get('Idempotency-Key') || '').trim();
+      if (!idempotencyKey || idempotencyKey.length > 200) {
+        return res.status(400).json({
+          error: 'INVALID_AUDIO_INPUT',
+          message: 'Idempotency-Key is required',
+        });
+      }
+      const result = audioDraftPipeline.ingest(req.user.id, req.body, {
+        source: 'web',
+        sourceMessageId: idempotencyKey,
+      });
+      return res.status(result.created ? 201 : 200).json(result);
+    } catch (error) {
+      return sendDraftError(res, error);
+    }
+  }
+);
+
+app.post('/api/audio-drafts/:id/retry', authMiddleware, (req, res) => {
+  try {
+    res.json(audioDraftPipeline.retry(req.user.id, req.params.id));
   } catch (error) {
     sendDraftError(res, error);
   }
@@ -634,11 +679,14 @@ app.post('/api/dev/whatsapp/inbound',
       const from = String(req.body.from || '').trim();
       const message = req.body.message || {};
       const text = String(message.text || '').trim();
-      if (!messageId || !from || message.type !== 'text' || !text || text.length > 10000) {
+      const fixtureId = String(message.fixtureId || message.audio?.fixtureId || '').trim();
+      const validText = message.type === 'text' && text && text.length <= 10000;
+      const validAudio = message.type === 'audio' && fixtureId && fixtureId.length <= 100;
+      if (!messageId || !from || (!validText && !validAudio)) {
         return res.status(400).json({ error: 'INVALID_WHATSAPP_EVENT' });
       }
 
-      if (/^VINCULAR\b/i.test(text)) {
+      if (message.type === 'text' && /^VINCULAR\b/i.test(text)) {
         const linked = whatsappLinkService.consumeCommand({ messageId, from, text });
         return res.status(linked.deduplicated ? 200 : 201).json({
           reply: {
@@ -650,10 +698,18 @@ app.post('/api/dev/whatsapp/inbound',
         });
       }
 
-      const result = whatsappConversationService.handleInbound({ messageId, from, text });
+      const result = whatsappConversationService.handleInbound({ messageId, from, message });
       return res.status(result.status).json(result.body);
     } catch (error) {
-      if (error.code?.startsWith('DRAFT') || error.code === 'PATIENT_NOT_FOUND' || error.code === 'INVALID_DRAFT') {
+      if (
+        error.code?.startsWith('DRAFT')
+        || error.code === 'PATIENT_NOT_FOUND'
+        || error.code === 'INVALID_DRAFT'
+        || error.code === 'INVALID_AUDIO_INPUT'
+        || error.code === 'IDEMPOTENCY_CONFLICT'
+        || error.code === 'PROCESSING_ALREADY_CLAIMED'
+        || error.code === 'AUDIO_PROVIDER_NOT_CONFIGURED'
+      ) {
         return sendDraftError(res, error);
       }
       return sendWhatsappError(res, error);

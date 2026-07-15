@@ -15,7 +15,7 @@ class FunctionalTests {
     this.token2 = null;
   }
 
-  async request(method, path, body = null, token = null) {
+  async request(method, path, body = null, token = null, customHeaders = {}) {
     const url = new URL(path, BASE_URL);
     
     return new Promise((resolve, reject) => {
@@ -26,7 +26,8 @@ class FunctionalTests {
         method,
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          ...customHeaders,
         }
       };
 
@@ -177,6 +178,8 @@ class FunctionalTests {
     let legacySessionId;
     let draftSessionId;
     let whatsappSessionId;
+    let webAudioSessionId;
+    let whatsappAudioSessionId;
     {
       // Create
       const createRes = await this.request('POST', '/api/sessions', {
@@ -310,6 +313,116 @@ class FunctionalTests {
         this.token
       );
       this.test('Cancelled draft cannot be confirmed', confirmCancelled.status === 409);
+
+      const genericAudioDraft = await this.request('POST', '/api/session-drafts', {
+        patientId,
+        inputType: 'audio'
+      }, this.token);
+      this.test('Generic draft intake rejects unprocessable audio', genericAudioDraft.status === 400);
+
+      const audioFixtures = await this.request('GET', '/api/audio-drafts/fixtures', null, this.token);
+      this.test('Web exposes only synthetic audio fixtures',
+        audioFixtures.status === 200 &&
+        audioFixtures.data?.fixtures?.some(fixture => fixture.id === 'pause-heavy-es-01'));
+
+      const audioWithoutKey = await this.request('POST', '/api/audio-drafts', {
+        patientId,
+        fixtureId: 'pause-heavy-es-01'
+      }, this.token);
+      this.test('Web audio requires an idempotency key', audioWithoutKey.status === 400);
+
+      const audioDraft = await this.request('POST', '/api/audio-drafts', {
+        patientId,
+        clinicalDate: '2026-07-14',
+        fixtureId: 'pause-heavy-es-01'
+      }, this.token, { 'Idempotency-Key': 'functional-web-audio-001' });
+      const webAudioDraftId = audioDraft.data?.draft?.id;
+      this.test('Synthetic web audio becomes a ready draft',
+        audioDraft.status === 201 &&
+        audioDraft.data?.draft?.status === 'ready' &&
+        audioDraft.data?.draft?.inputType === 'audio');
+      this.test('Audio keeps raw and cleaned text separate',
+        audioDraft.data?.draft?.rawTranscript?.startsWith('Eh...') &&
+        audioDraft.data?.draft?.cleanNote === 'Hoy registré una nota de prueba, con varias pausas para revisar el resultado.');
+
+      const repeatedAudioDraft = await this.request('POST', '/api/audio-drafts', {
+        patientId,
+        clinicalDate: '2026-07-14',
+        fixtureId: 'pause-heavy-es-01'
+      }, this.token, { 'Idempotency-Key': 'functional-web-audio-001' });
+      this.test('Repeated web audio intake returns the same draft',
+        repeatedAudioDraft.status === 200 &&
+        repeatedAudioDraft.data?.deduplicated === true &&
+        repeatedAudioDraft.data?.draft?.id === webAudioDraftId);
+
+      const conflictingAudioDraft = await this.request('POST', '/api/audio-drafts', {
+        patientId,
+        clinicalDate: '2026-07-14',
+        fixtureId: 'clear-es-01'
+      }, this.token, { 'Idempotency-Key': 'functional-web-audio-001' });
+      this.test('Reusing the web audio key with another input is rejected', conflictingAudioDraft.status === 409);
+
+      const tamperedRaw = await this.request('PATCH', `/api/session-drafts/${webAudioDraftId}`, {
+        rawTranscript: 'Payload must not replace the raw transcript',
+        audioDurationSeconds: 1,
+        cleanNote: 'Nota de audio revisada.'
+      }, this.token);
+      this.test('Review edits only the clean note, not audio evidence',
+        tamperedRaw.data?.draft?.cleanNote === 'Nota de audio revisada.' &&
+        tamperedRaw.data?.draft?.rawTranscript === audioDraft.data?.draft?.rawTranscript &&
+        tamperedRaw.data?.draft?.audioDurationSeconds === 52);
+
+      const foreignAudioRetry = await this.request(
+        'POST',
+        `/api/audio-drafts/${webAudioDraftId}/retry`,
+        null,
+        this.token2
+      );
+      this.test('Another account cannot process an audio draft', foreignAudioRetry.status === 404);
+
+      const confirmWebAudio = await this.request(
+        'POST',
+        `/api/session-drafts/${webAudioDraftId}/confirm`,
+        null,
+        this.token
+      );
+      webAudioSessionId = confirmWebAudio.data?.session?.id;
+      this.test('Reviewed web audio confirms through the canonical service',
+        confirmWebAudio.status === 201 &&
+        confirmWebAudio.data?.session?.inputType === 'audio' &&
+        confirmWebAudio.data?.session?.cleanNote === 'Nota de audio revisada.');
+
+      const tamperedConfirmedAudio = await this.request('PATCH', `/api/sessions/${webAudioSessionId}`, {
+        cleanNote: 'Nota confirmada con revisión posterior.',
+        rawTranscript: 'Confirmed evidence must stay immutable',
+        inputType: 'text',
+        audioDurationSeconds: 1
+      }, this.token);
+      this.test('Confirmed audio keeps raw evidence and media metadata immutable',
+        tamperedConfirmedAudio.data?.cleanNote === 'Nota confirmada con revisión posterior.' &&
+        tamperedConfirmedAudio.data?.rawTranscript === audioDraft.data?.draft?.rawTranscript &&
+        tamperedConfirmedAudio.data?.inputType === 'audio' &&
+        tamperedConfirmedAudio.data?.audioDurationSeconds === 52);
+
+      const failedAudio = await this.request('POST', '/api/audio-drafts', {
+        patientId,
+        fixtureId: 'cleaning-fails-once'
+      }, this.token, { 'Idempotency-Key': 'functional-web-audio-failure' });
+      this.test('A processing failure remains persisted and visible',
+        failedAudio.status === 201 &&
+        failedAudio.data?.draft?.status === 'failed' &&
+        failedAudio.data?.draft?.failedStage === 'structuring');
+      const retriedAudio = await this.request(
+        'POST',
+        `/api/audio-drafts/${failedAudio.data?.draft?.id}/retry`,
+        null,
+        this.token
+      );
+      this.test('Retry resumes the failed stage and reaches ready',
+        retriedAudio.status === 200 &&
+        retriedAudio.data?.draft?.status === 'ready' &&
+        retriedAudio.data?.draft?.processingAttempts === 2);
+      await this.request('POST', `/api/session-drafts/${retriedAudio.data?.draft?.id}/cancel`, null, this.token);
 
       const linkWithoutToken = await this.request('POST', '/api/whatsapp/link', {
         phoneNumber: '1122334455'
@@ -531,6 +644,128 @@ class FunctionalTests {
         cancelWhatsapp.data?.draft?.status === 'cancelled' &&
         cancelWhatsapp.data?.conversation?.state === 'menu');
 
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-audio-new-note-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'NUEVA NOTA' }
+      });
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-audio-patient-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: `PACIENTE ${patientId}` }
+      });
+      const whatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-audio-message-001',
+        from: '+5491122334455',
+        selectedPatientId: otherPatient.data?.id,
+        message: { type: 'audio', fixtureId: 'pause-heavy-es-01' }
+      });
+      const whatsappAudioDraftId = whatsappAudio.data?.draft?.id;
+      this.test('WhatsApp audio uses the selected patient and shared pipeline',
+        whatsappAudio.status === 200 &&
+        whatsappAudio.data?.reply?.code === 'DRAFT_READY' &&
+        whatsappAudio.data?.draft?.patientId === patientId &&
+        whatsappAudio.data?.draft?.inputType === 'audio');
+
+      const repeatedWhatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-audio-message-001',
+        from: '+5491122334455',
+        message: { type: 'audio', fixtureId: 'pause-heavy-es-01' }
+      });
+      this.test('Repeated WhatsApp audio does not transcribe twice',
+        repeatedWhatsappAudio.data?.deduplicated === true &&
+        repeatedWhatsappAudio.data?.draft?.id === whatsappAudioDraftId &&
+        repeatedWhatsappAudio.data?.draft?.processingAttempts === 1);
+
+      const conflictingWhatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-audio-message-001',
+        from: '+5491122334455',
+        message: { type: 'audio', fixtureId: 'clear-es-01' }
+      });
+      this.test('A WhatsApp message id cannot point to another audio', conflictingWhatsappAudio.status === 409);
+
+      const saveWhatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-audio-save-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'GUARDAR' }
+      });
+      whatsappAudioSessionId = saveWhatsappAudio.data?.session?.id;
+      this.test('WhatsApp audio saves one canonical session',
+        saveWhatsappAudio.data?.reply?.code === 'SESSION_SAVED' &&
+        saveWhatsappAudio.data?.session?.draftId === whatsappAudioDraftId);
+
+      const sessionsAfterWhatsappAudio = await this.request('GET', '/api/sessions', null, this.token);
+      this.test('WhatsApp audio appears in the web account after saving',
+        sessionsAfterWhatsappAudio.data?.sessions?.some(session =>
+          session.id === whatsappAudioSessionId && session.inputType === 'audio'
+        ));
+
+      const reviewedWhatsappSession = await this.request('PATCH', `/api/sessions/${whatsappAudioSessionId}`, {
+        cleanNote: 'Nota de WhatsApp revisada desde la web.'
+      }, this.token);
+      this.test('Editing an unscored WhatsApp note preserves its missing mood',
+        reviewedWhatsappSession.data?.cleanNote === 'Nota de WhatsApp revisada desde la web.' &&
+        reviewedWhatsappSession.data?.moodAssessment === null);
+
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-failed-audio-new-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'NUEVA NOTA' }
+      });
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-failed-audio-patient-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: `PACIENTE ${patientId}` }
+      });
+      const failedWhatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-failed-audio-001',
+        from: '+5491122334455',
+        message: { type: 'audio', fixtureId: 'cleaning-fails-once' }
+      });
+      this.test('Failed WhatsApp audio stays attached to the conversation',
+        failedWhatsappAudio.data?.draft?.status === 'failed' &&
+        failedWhatsappAudio.data?.conversation?.state === 'awaitingConfirmation' &&
+        failedWhatsappAudio.data?.conversation?.currentDraftId === failedWhatsappAudio.data?.draft?.id);
+      const cancelFailedWhatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-failed-audio-cancel-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'CANCELAR' }
+      });
+      this.test('Failed WhatsApp audio can be cancelled',
+        cancelFailedWhatsappAudio.data?.draft?.status === 'cancelled' &&
+        cancelFailedWhatsappAudio.data?.conversation?.state === 'menu');
+
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-retry-audio-new-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'NUEVA NOTA' }
+      });
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-retry-audio-patient-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: `PACIENTE ${patientId}` }
+      });
+      const retryableWhatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-retry-audio-001',
+        from: '+5491122334455',
+        message: { type: 'audio', fixtureId: 'cleaning-fails-once' }
+      });
+      const retriedWhatsappAudio = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-retry-audio-action-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'REINTENTAR' }
+      });
+      this.test('WhatsApp retries the persisted failed stage',
+        retryableWhatsappAudio.data?.draft?.status === 'failed' &&
+        retriedWhatsappAudio.data?.draft?.status === 'ready' &&
+        retriedWhatsappAudio.data?.draft?.processingAttempts === 2 &&
+        retriedWhatsappAudio.data?.reply?.text?.includes(retriedWhatsappAudio.data?.draft?.cleanNote));
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-retry-audio-cancel-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'CANCELAR' }
+      });
+
       await this.request('DELETE', `/api/patients/${otherPatient.data?.id}`, null, this.token2);
 
       const unlink = await this.request('DELETE', '/api/whatsapp/link', null, this.token);
@@ -588,6 +823,10 @@ class FunctionalTests {
       this.test('Delete draft-confirmed session returns 200', delDraftSession.status === 200);
       const delWhatsappSession = await this.request('DELETE', `/api/sessions/${whatsappSessionId}`, null, this.token);
       this.test('Delete WhatsApp-confirmed session returns 200', delWhatsappSession.status === 200);
+      const delWebAudioSession = await this.request('DELETE', `/api/sessions/${webAudioSessionId}`, null, this.token);
+      this.test('Delete web-audio session returns 200', delWebAudioSession.status === 200);
+      const delWhatsappAudioSession = await this.request('DELETE', `/api/sessions/${whatsappAudioSessionId}`, null, this.token);
+      this.test('Delete WhatsApp-audio session returns 200', delWhatsappAudioSession.status === 200);
 
       // Delete patient
       const delPatient = await this.request('DELETE', `/api/patients/${patientId}`, null, this.token);
@@ -619,8 +858,5 @@ tests.run().catch(err => {
   console.error('Error:', err);
   process.exit(1);
 });
-
-
-
 
 

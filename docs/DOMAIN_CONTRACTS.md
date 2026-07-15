@@ -12,7 +12,7 @@ La web y WhatsApp deben terminar en el mismo flujo:
 4. El profesional revisa y confirma.
 5. Recién entonces aparece una sesión en la ficha del paciente.
 
-El primer corte implementa registro, pacientes y sesiones de texto desde la web. El contrato de borradores ya queda definido para agregar audio y WhatsApp sin volver a diseñar el dominio.
+El recorrido de texto está implementado en web y WhatsApp simulado. El audio sintético ya usa el mismo borrador desde ambos canales; archivos reales, Meta y proveedores externos siguen pendientes.
 
 ## Reglas canónicas
 
@@ -121,6 +121,55 @@ POST  /api/session-drafts/:id/cancel
 
 En el vertical de texto, el borrador nace en `ready`. Solamente `ready` puede editarse o confirmarse. Confirmar por primera vez devuelve `201`; repetir la misma confirmación devuelve `200` y la misma sesión.
 
+`POST /api/session-drafts` acepta solamente texto. Todo audio debe entrar por el pipeline específico para que no exista un borrador `received` sin medio ni forma de procesarse.
+
+## Pipeline de audio sintético implementado
+
+La entrada común normalizada es:
+
+```json
+{
+  "patientId": "7",
+  "clinicalDate": "2026-07-14",
+  "fixtureId": "pause-heavy-es-01"
+}
+```
+
+La web usa:
+
+```text
+GET  /api/audio-drafts/fixtures
+POST /api/audio-drafts
+POST /api/audio-drafts/:id/retry
+```
+
+`POST /api/audio-drafts` requiere `Idempotency-Key`. La misma clave y entrada devuelve el mismo borrador; reutilizarla con otro paciente, fecha, fixture o metadato funcional devuelve `409 IDEMPOTENCY_CONFLICT`.
+
+El pipeline persiste:
+
+- referencia opaca al medio y MIME, nunca el binario en SQLite;
+- huella de la entrada;
+- cantidad de intentos y etapa fallida;
+- inicio y fin de procesamiento;
+- `rawTranscript` literal y `cleanNote` por separado.
+
+Estados implementados:
+
+```text
+received → transcribing → structuring → ready → confirmed
+                    ↘ failed ↗
+```
+
+- Un fallo de transcripción reintenta desde `transcribing`.
+- Un fallo de limpieza conserva `rawTranscript` y reintenta solamente `structuring`.
+- Un borrador `received` o un claim vencido puede recuperarse después de reiniciar.
+- El lease de procesamiento usa `AUDIO_PROCESSING_LEASE_MS`, cinco minutos por defecto.
+- `rawTranscript`, tipo y duración de audio no son editables mediante los endpoints de revisión ni después de confirmar.
+- `cleanNote` sí se edita antes o después de confirmar.
+- Confirmar y cancelar usan transiciones condicionadas para que un resultado no sobrescriba al otro.
+
+En este hito `AUDIO_TRANSCRIBER=fake` y `NOTE_CLEANER=fake`. Los fixtures son texto artificial determinista; todavía no existe subida, grabación, descarga o almacenamiento temporal de un archivo real.
+
 ## Vinculación web–WhatsApp implementada
 
 La web autenticada administra el vínculo mediante:
@@ -160,6 +209,8 @@ menu
 
 Comandos: `MENÚ`, `NUEVA NOTA`, `BUSCAR <nombre>`, `PACIENTE <id>`, texto libre, `GUARDAR` y `CANCELAR`.
 
+En `awaitingNote` también se acepta un evento sintético de audio. Si falla, la conversación conserva el borrador y acepta `REINTENTAR` o `CANCELAR`. Cuando queda listo, la respuesta muestra la nota preparada antes de `GUARDAR`.
+
 - Solamente se listan pacientes activos de la cuenta vinculada.
 - El texto libre crea un `SessionDraft` y cero sesiones.
 - `MENÚ` no descarta un borrador pendiente.
@@ -195,3 +246,6 @@ Durante un hito, el servidor puede aceptar estos aliases, pero siempre responde 
 - Un mensaje de WhatsApp repetido crea un solo borrador y una doble confirmación crea una sola sesión.
 - Un teléfono no vinculado no puede crear borradores.
 - Un teléfono vinculado resuelve una sola cuenta y deja de resolverla después de desvincularse.
+- Audio sintético desde web y WhatsApp produce el mismo contrato, conserva raw/clean y no crea sesión antes de guardar.
+- Una caída deja `received` o un claim recuperable; un retry de limpieza no vuelve a transcribir.
+- Los hashes históricos de eventos de texto continúan deduplicando después del cambio que agregó eventos de audio.

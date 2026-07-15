@@ -2,7 +2,7 @@
 
 Última actualización: 2026-07-14.
 
-Estado general: vertical web y flujo completo de texto por WhatsApp simulado aprobados localmente; Meta real y audio pendientes.
+Estado general: vertical web, texto por WhatsApp simulado y audio sintético por ambos canales aprobados localmente. Archivos reales, proveedor externo y Meta real están pendientes.
 
 Alcance actual: priorizar funcionamiento. Seguridad avanzada, cumplimiento formal y estética se retomarán después de validar la idea.
 
@@ -54,7 +54,7 @@ Criterio de salida:
 
 > Una base vacía se crea, las migraciones se aplican y las pruebas mínimas de contrato pasan en local y CI.
 
-Estado: núcleo cumplido. Migraciones `001` a `004`, contratos, doble de WhatsApp y persistencia conversacional aprobados; falta el doble de transcripción.
+Estado: núcleo cumplido. Migraciones `001` a `005`, contratos, dobles de WhatsApp/transcripción/limpieza y persistencia conversacional aprobados.
 
 ## Etapa 1 — Web funcional
 
@@ -203,7 +203,7 @@ structure(rawTranscript) → structuredNote
 
 Esto permite comparar o cambiar Groq, Gemini y OpenAI sin modificar el resto del producto.
 
-Para el piloto se usará una cola persistente en SQLite y un worker dentro de la aplicación. No se agrega Redis inicialmente.
+El doble actual procesa de forma síncrona, pero persiste estados, intentos y leases recuperables. Antes de llamar a un proveedor de red se incorporará un trabajo SQLite y un worker fuera de la transacción del webhook. No se agrega Redis inicialmente.
 
 Estados internos orientativos:
 
@@ -222,6 +222,8 @@ Criterios de salida:
 - El mismo pipeline acepta grabación o subida desde la web.
 
 Tag sugerido: `mvp-v0.4-audio-e2e`.
+
+Estado parcial: el recorrido sintético `audio → raw → clean → revisar → guardar/cancelar → ficha` funciona desde web y WhatsApp. Se probaron idempotencia, fallo por etapa, retry sin retranscribir, recuperación después de reiniciar y confirmación única. Faltan archivo real, almacenamiento temporal, benchmark de proveedores, worker asíncrono y descarga de Meta. La comparación vigente está en [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md).
 
 ## Etapa 5 — Nota clínica estructurada y edición
 

@@ -10,8 +10,8 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Rama actual: `agent/01-web-core`.
 - Base de la rama: `41892d3` (`record green ci baseline`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: vertical web y recorrido completo de texto mediante WhatsApp simulado funcionando.
-- Próximo objetivo: crear el doble de audio y comparar transcripción/costo con audios de prueba; Meta real se incorpora cuando existan credenciales.
+- Etapa técnica: vertical web, texto por WhatsApp simulado y audio sintético por web/WhatsApp funcionando sobre el mismo borrador persistente.
+- Próximo objetivo: aceptar un archivo real desde la web, ejecutar el benchmark de proveedores y mover el procesamiento de red a un worker SQLite. Meta real se incorpora cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -49,7 +49,10 @@ Registro web
 - El nombre del paciente se obtiene mediante la relación persistida, no queda vacío.
 - Fechas clínicas, timestamps, duración clínica y futura duración de audio están separadas.
 - El cambio de estado de paciente dejó de ser local y se persiste mediante la API.
-- Quedan pendientes la edición visible de sesiones y la interfaz de borradores.
+- El formulario de sesión ofrece texto o audio sintético, muestra la transcripción original como solo lectura y deja la nota limpia editable.
+- Mientras existe un borrador de audio, paciente y fixture quedan fijados; la confirmación valida nuevamente la asociación.
+- Las notas sin evaluación anímica muestran `Sin registrar` en lugar de valores indefinidos.
+- Quedan pendientes la edición visible general de sesiones y una bandeja para recuperar borradores fuera del modal.
 
 ### WhatsApp
 
@@ -59,14 +62,16 @@ Registro web
 - El flujo funcional está en `POST /api/dev/whatsapp/inbound`: no acepta JWT ni `userId`; resuelve la cuenta exclusivamente desde `from`.
 - El evento tampoco acepta `selectedPatientId`; la conversación exige `PACIENTE <id>` y persiste la selección.
 - `db/migrations/004_whatsapp_conversations.sql` agrega el estado y un ledger de respuestas para todos los mensajes.
-- Están implementados `MENÚ`, `NUEVA NOTA`, `BUSCAR`, selección de paciente, texto libre, `GUARDAR` y `CANCELAR`.
+- Están implementados `MENÚ`, `NUEVA NOTA`, `BUSCAR`, selección de paciente, texto/audio sintético, `REINTENTAR`, `GUARDAR` y `CANCELAR`.
 - La conversación sobrevive reinicios del proceso; `MENÚ` no descarta un borrador pendiente.
 - El adaptador crea solamente `SessionDraft`; confirma mediante el mismo endpoint canónico que la web.
 - Un `messageId` repetido devuelve el mismo borrador y no crea otra fila.
 - Desvincular corta la resolución de identidad y libera el teléfono.
 - Un pendiente puede retomarse después de recargar la web; un pendiente vencido libera el número incluso si su propietario abandonó el flujo.
 - El deploy de prueba declara `WHATSAPP_ADAPTER=fake`; debe reemplazarse por Meta antes de producción real.
-- No existe todavía un webhook real de Meta, envío real de respuestas, descarga de audio ni proveedor de transcripción.
+- Un audio fallido queda asociado a la conversación y puede reintentarse por etapa o cancelarse.
+- La respuesta de audio listo muestra la nota preparada antes de guardar.
+- No existe todavía un webhook real de Meta, envío real de respuestas, descarga de audio ni proveedor real de transcripción.
 - Los endpoints heredados que escribían directamente en `sessions` ahora devuelven `410`.
 - El reconocimiento y envío n8n restantes siguen siendo prototipos y no forman parte del vertical nuevo.
 
@@ -76,17 +81,30 @@ Registro web
 - Sirven como referencia, pero contienen URLs, contratos y endpoints que no coinciden con la aplicación activa.
 - No deben restaurarse completos sin revisión.
 
+### Audio
+
+- `db/migrations/005_audio_pipeline.sql` agrega referencia al medio, huella, intentos, etapa fallida y timestamps de procesamiento a `session_drafts`.
+- `services/audioDraftPipeline.js` es el punto común para web y WhatsApp.
+- `services/audio/fakeAudioProviders.js` contiene fixtures artificiales y limpieza conservadora; no contiene audios ni datos clínicos.
+- Estados: `received → transcribing → structuring → ready/failed`; confirmar y cancelar siguen usando el servicio canónico.
+- Un retry de estructuración conserva la transcripción y no vuelve a transcribir.
+- `received` y claims vencidos son recuperables después de reiniciar; el lease predeterminado es de cinco minutos.
+- La fecha clínica por defecto usa `APP_TIME_ZONE=America/Argentina/Buenos_Aires`.
+- `rawTranscript`, `inputType` y `audioDurationSeconds` son inmutables en la revisión y después de confirmar.
+- El comparativo de Groq, Gemini y OpenAI está en `docs/AUDIO_PROVIDER_BENCHMARK.md`. Groq Whisper Large v3 Turbo queda como baseline de costo, no como proveedor aprobado todavía.
+
 ### Pruebas y CI
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La batería actual pasa 91 de 91 pruebas funcionales con Node.js 20, además de migración, vínculo y reinicio conversacional.
+- La última batería integral anterior a la revisión competitiva pasó 109 de 109 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación y audio.
+- Después de la revisión competitiva se aprobaron por separado los tests de audio con recuperación real de `received/structuring` y los tests conversacionales con compatibilidad de hashes históricos. La corrida integral posterior quedó pendiente por límite temporal de ejecución de herramientas, no por un fallo observado.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
 - `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
 - SQLite ahora aplica migraciones versionadas desde `db/migrations/`.
 - La migración `003_whatsapp_links.sql` fue probada sobre base nueva, base heredada y segunda ejecución vacía.
-- La migración `004_whatsapp_conversations.sql` y la reapertura del estado desde otro proceso están probadas.
+- Las migraciones `004_whatsapp_conversations.sql` y `005_audio_pipeline.sql`, la reapertura conversacional y la recuperación de audio desde otro proceso están probadas.
 - La migración inicial es idempotente y fue probada contra una base nueva y una base con datos existentes.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
@@ -107,7 +125,7 @@ Estado remoto del PR técnico #2:
 - Verificación remota de vinculación: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
 - Implementación del menú persistente: `7366868` (`add persistent whatsapp text menu`).
 - Verificación remota del menú: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
-- El PR técnico #2 se titula ahora `Build the persistent web and WhatsApp text core` y refleja 91/91 pruebas.
+- El PR técnico #2 sigue publicado con el menú de texto verde. Los cambios de audio y sus correcciones competitivas están locales hasta repetir la suite integral y publicar el nuevo commit.
 
 ## Decisiones técnicas vigentes
 
@@ -117,9 +135,9 @@ Estado remoto del PR técnico #2:
 - Mantener identidad, conversaciones, borradores, confirmación y deduplicación dentro de AIRA.
 - No usar n8n como fuente de verdad.
 - Implementar proveedores intercambiables para transcripción y estructuración.
-- Validar primero el recorrido completo con texto y después agregar audio.
+- Mantener el proveedor falso hasta medir proveedores reales con el mismo corpus.
 - Conservar transcripción literal y nota limpia por separado.
-- Usar una cola persistente sencilla en SQLite para el piloto.
+- El fake es síncrono; antes de usar red, persistir un job SQLite y procesarlo fuera de la transacción del webhook.
 - Los contratos vigentes están en `docs/DOMAIN_CONTRACTS.md`.
 - Los identificadores JSON son strings y las respuestas nuevas usan solamente `camelCase`.
 - `clinicalDate` es el día clínico; `createdAt` es el momento de persistencia.
@@ -142,6 +160,16 @@ Este bloque implementa vínculo, expiración, consumo desde teléfono y notas id
 El 2026-07-14 se compararon tres propuestas de máquina de estados. Se eligió el dispatcher transaccional con ledger inmutable, sumando la regla de no descartar silenciosamente un borrador cuando llega `MENÚ`.
 
 La transición, el efecto sobre `SessionDraft`, la conversación y la respuesta deduplicable se escriben en una transacción SQLite. El paciente nunca llega por un campo lateral ni se deduce de la nota.
+
+### Decisión multiagente: audio
+
+El 2026-07-14 se compararon tres propuestas. Se eligió el corte más liviano: reutilizar `SessionDraft`, procesar proveedores falsos de forma síncrona y persistir etapas/retries sin crear una cola separada antes de medir volumen.
+
+La revisión competitiva posterior encontró huecos que no cubría el happy path. Se corrigieron: paciente web fijado al borrador, recuperación de `received` y claims vencidos, hash compatible con eventos de texto anteriores, fecha clínica en zona de Argentina, retry/cancel de audio fallido por WhatsApp, metadata de audio inmutable y confirmación/cancelación con compare-and-set.
+
+Los tres agentes auditaron una segunda vez el diff corregido y declararon que no quedan bloqueantes para el corte sintético. El lease multiinstancia y el worker fuera del webhook se evalúan al incorporar red real.
+
+La decisión de proveedor se difiere al benchmark. Con precios revisados el 2026-07-14, Groq Turbo es la baseline publicada más barata; Gemini y OpenAI se mantienen como challengers de simplicidad/calidad.
 
 ### Decisión multiagente: dependencias y CI
 
@@ -172,7 +200,12 @@ Rama prevista: `agent/01-web-core`.
 - [x] Crear un doble de prueba de WhatsApp para texto.
 - [x] Vincular explícitamente una cuenta web con un teléfono en el doble de WhatsApp.
 - [x] Completar el menú de texto y la confirmación/cancelación desde el doble de WhatsApp.
-- [ ] Crear el doble de transcripción para audio.
+- [x] Crear el doble de transcripción y limpieza para audio.
+- [x] Conectar audio sintético por web y WhatsApp.
+- [x] Persistir etapas, reintentos y recuperación tras reinicio.
+- [ ] Aceptar un archivo real desde la web y almacenarlo temporalmente.
+- [ ] Ejecutar el benchmark Groq/Gemini/OpenAI.
+- [ ] Separar el proveedor real en un worker SQLite antes de conectarlo a WhatsApp.
 
 ### Etapa 1
 
@@ -198,6 +231,8 @@ El 2026-07-14 se aprobó además el corte de vinculación: login → generar có
 
 El 2026-07-14 se aprobó el menú completo: crear paciente → vincular → `MENÚ` → `PACIENTE <id>` → nota → `MENÚ` conserva borrador → `GUARDAR` → recarga. Quedaron exactamente 1 paciente y 1 sesión con la nota correcta. La batería subió a 91/91 y una prueba separada continuó la conversación después de reiniciar el proceso.
 
+El 2026-07-14 se aprobó visualmente el audio sintético: crear paciente → preparar audio con pausas → revisar raw/clean → guardar web → recargar → vincular WhatsApp → seleccionar paciente → enviar audio → guardar → recargar. Quedaron 1 paciente y 2 sesiones persistidas. La nota de WhatsApp sin estado anímico mostró `Sin registrar` y la consola del navegador no tuvo errores.
+
 ## Dependencias que necesitaremos más adelante
 
 ### Meta / WhatsApp
@@ -212,12 +247,12 @@ El 2026-07-14 se aprobó el menú completo: crear paciente → vincular → `MEN
 
 No bloquean la Etapa 0 o 1.
 
-### Audio
+### Audio real
 
 - Credencial del primer proveedor de transcripción.
 - Audios de prueba creados o anonimizados.
 
-No bloquean el vertical de texto.
+No bloquean el vertical sintético ya aprobado.
 
 ## Estado de publicación de esta documentación
 
@@ -238,10 +273,11 @@ No bloquean el vertical de texto.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test` para confirmar la línea base 91/91.
-7. Definir el contrato del trabajo de audio sin acoplarlo a un proveedor.
-8. Crear dobles de descarga/transcripción y probar `audio → borrador` con archivos no clínicos.
-9. Comparar proveedores y conectar Meta solamente después de medir costo, calidad y latencia.
+6. Ejecutar `npm test`; la próxima corrida integral debe incluir las correcciones competitivas posteriores al 109/109.
+7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
+8. Publicar el hito de audio en el PR técnico #2 y esperar los cuatro checks.
+9. Implementar entrada de archivo real en web con almacenamiento temporal.
+10. Comparar proveedores con 30 a 50 recortes y conectar Meta solamente después de medir costo, calidad y latencia.
 
 ## Regla para el próximo handoff
 
