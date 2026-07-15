@@ -2,6 +2,20 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-15 — Publicación del hito de audio en el repositorio nuevo
+
+### Resultado
+
+- La suite integral se ejecutó después de la revisión competitiva y aprobó 115/115 pruebas funcionales.
+- El hito de audio y su handoff (`4cc5a13`, `00af12f`) se publicaron en [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
+- `Memu007/Aira.final` y sus PR existentes se conservan como historial; los siguientes hitos se publican en `airaynera/main`.
+
+### Próximo paso
+
+1. Aceptar un archivo real desde la web y crear almacenamiento temporal fuera de SQLite.
+2. Incorporar job/worker SQLite antes de cualquier llamada de red.
+3. Ejecutar el benchmark de proveedores con recortes creados o anonimizados antes de conectar Meta.
+
 ## 2026-07-14 — Audio sintético común para web y WhatsApp
 
 ### Objetivo

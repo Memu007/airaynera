@@ -2,15 +2,16 @@
 
 Este es el documento operativo que debe leerse primero al retomar el proyecto.
 
-Última actualización: 2026-07-14.
+Última actualización: 2026-07-15.
 
 ## Estado actual
 
-- Repositorio: `Memu007/Aira.final`.
-- Rama actual: `agent/01-web-core`.
+- Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
+- Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
+- Rama local actual: `agent/01-web-core`, publicada en `airaynera/main`.
 - Base de la rama: `41892d3` (`record green ci baseline`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: vertical web, texto por WhatsApp simulado y audio sintético por web/WhatsApp funcionando sobre el mismo borrador persistente.
+- Etapa técnica: vertical web, texto por WhatsApp simulado y audio sintético por web/WhatsApp funcionando sobre el mismo borrador persistente; la batería completa aprobó 115/115.
 - Próximo objetivo: aceptar un archivo real desde la web, ejecutar el benchmark de proveedores y mover el procesamiento de red a un worker SQLite. Meta real se incorpora cuando existan credenciales.
 
 ## Dirección del producto acordada
@@ -108,7 +109,7 @@ Registro web
 - La migración inicial es idempotente y fue probada contra una base nueva y una base con datos existentes.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
-Estado remoto del PR técnico #2:
+Estado remoto histórico del PR técnico #2 en `Memu007/Aira.final`:
 
 - `Functional baseline`: aprobado.
 - `semgrep`: aprobado.
@@ -125,8 +126,8 @@ Estado remoto del PR técnico #2:
 - Verificación remota de vinculación: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
 - Implementación del menú persistente: `7366868` (`add persistent whatsapp text menu`).
 - Verificación remota del menú: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
-- Commit local del hito de audio: `4cc5a13` (`add provider-neutral audio draft pipeline`).
-- El PR técnico #2 sigue publicado con el menú de texto verde. El commit de audio está local hasta repetir la suite integral y poder publicarlo.
+- El hito de audio (`4cc5a13`, `00af12f`) se verificó luego con 115/115 pruebas y se publicó en `main` de [`Memu007/airaynera`](https://github.com/Memu007/airaynera).
+- El PR técnico #2 permanece como historial del repositorio anterior; no representa el estado de publicación actual.
 
 ## Decisiones técnicas vigentes
 
@@ -255,10 +256,13 @@ No bloquean la Etapa 0 o 1.
 
 No bloquean el vertical sintético ya aprobado.
 
-## Estado de publicación de esta documentación
+## Historial y estado de publicación
 
+- Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`, publicado el 2026-07-15.
+- Verificación previa a esa publicación: `npm test` aprobado, 115/115 pruebas funcionales.
+- El remoto local `origin` continúa apuntando a `Memu007/Aira.final` para conservar el historial; el remoto `airaynera` es el destino activo de publicación.
 - Los archivos documentales se prepararon y validaron localmente.
-- GitHub CLI (`gh`) quedó instalado y autenticado como `Memu007`.
+- GitHub CLI (`gh`) está instalado, pero la gestión de PR puede requerir reautenticación; la publicación vigente se realizó con las credenciales de Git configuradas localmente.
 - Se creó la rama `agent/document-product-roadmap` para publicar estos cambios sin modificar directamente `main`.
 - Commit documental: `221522e` (`document product roadmap and handoff`).
 - Rama publicada: `origin/agent/document-product-roadmap`.
@@ -272,11 +276,11 @@ No bloquean el vertical sintético ya aprobado.
 1. Leer este archivo.
 2. Revisar `git status -sb` y `git diff`.
 3. Confirmar que solamente estén los cambios documentales esperados.
-4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
+4. Confirmar que `airaynera/main` tenga el último commit publicado.
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test`; la próxima corrida integral debe incluir las correcciones competitivas posteriores al 109/109.
+6. Ejecutar `npm test` antes de cada publicación; la última corrida integral aprobó 115/115.
 7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
-8. Publicar el hito de audio en el PR técnico #2 y esperar los cuatro checks.
+8. Publicar el siguiente hito verificado en `airaynera/main` y registrar el resultado aquí y en `docs/WORKLOG.md`.
 9. Implementar entrada de archivo real en web con almacenamiento temporal.
 10. Comparar proveedores con 30 a 50 recortes y conectar Meta solamente después de medir costo, calidad y latencia.
 
