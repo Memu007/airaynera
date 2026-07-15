@@ -32,11 +32,16 @@ Comenzar el primer bloque del roadmap con una prueba funcional confiable y ejecu
 - `npm run test:migrations`: aprobado sobre base nueva y base existente.
 - `git diff --check`: sin errores.
 - Los datos de prueba se almacenaron fuera del repositorio y se eliminaron al terminar.
+- GitHub Actions: `Functional baseline` y `semgrep` aprobados.
+- GitHub Actions: `trufflehog` falló porque el workflow pasa dos veces `--fail`; no reportó un secreto.
+- GitHub Actions: `audit` detectó 30 vulnerabilidades heredadas, incluyendo 14 altas y 1 crítica.
 
 ### Siguiente trabajo
 
-1. Definir contratos canónicos de paciente, sesión y borrador.
-2. Corregir el recorrido web de registro, carga y persistencia.
+1. Corregir la configuración duplicada de TruffleHog.
+2. Aplicar actualizaciones no disruptivas de dependencias y volver a auditar.
+3. Definir contratos canónicos de paciente, sesión y borrador.
+4. Corregir el recorrido web de registro, carga y persistencia.
 
 ## 2026-07-14 — Revisión de producto y planificación del MVP
 

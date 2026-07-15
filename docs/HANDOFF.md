@@ -78,6 +78,14 @@ Registro web
 - La migración inicial es idempotente y fue probada contra una base nueva y una base con datos existentes.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
+Estado remoto del PR técnico #2:
+
+- `Functional baseline`: aprobado.
+- `semgrep`: aprobado.
+- `audit`: falló por dependencias heredadas; `npm audit` informó 30 vulnerabilidades, incluyendo 14 altas y 1 crítica.
+- `trufflehog`: falló por configuración, no por un secreto detectado. El workflow repite el argumento `--fail` que la acción ya agrega.
+- Próxima acción propuesta: corregir el argumento duplicado y aplicar solamente actualizaciones de dependencias no disruptivas, verificando luego la batería completa.
+
 ## Decisiones técnicas vigentes
 
 - Mantener Express y SQLite para el MVP.
