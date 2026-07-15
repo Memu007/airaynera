@@ -326,6 +326,9 @@ app.post('/api/sessions',
         const newSession = sql.addSession(req.user.id, req.body);
         res.status(201).json(normalizeSession(newSession));
     } catch (err) {
+        if (err.code === 'PATIENT_NOT_FOUND') {
+            return res.status(404).json({ error: 'Patient not found' });
+        }
         console.error('Error creating session:', err);
         res.status(500).json({ error: 'Database error' });
     }

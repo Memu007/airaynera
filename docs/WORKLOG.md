@@ -2,6 +2,37 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-14 — Etapa 0: línea base reproducible
+
+### Objetivo
+
+Comenzar el primer bloque del roadmap con una prueba funcional confiable y ejecutable tanto en local como en GitHub Actions.
+
+### Trabajo realizado
+
+- Se creó la rama `agent/01-web-core` desde el estado documental publicado.
+- Se instalaron las dependencias con `npm ci`.
+- Se estableció Node.js 20 mediante `.nvmrc` y `package.json`.
+- Se creó `scripts/run-functional-tests.js`.
+- `npm test` ahora crea una base temporal, levanta el servidor, espera el health check, ejecuta la batería funcional y limpia el entorno.
+- Se reemplazó el workflow principal por una CI sencilla que instala, prueba y verifica el build.
+- Se archivaron cinco workflows que referenciaban servidores, scripts o procesos de despliegue inexistentes.
+- Se corrigió la creación de sesiones para devolver `404` cuando el paciente no existe o no pertenece a la cuenta.
+- Se actualizó la prueba correspondiente, que antes esperaba incorrectamente un error `500`.
+
+### Verificaciones
+
+- `npm test`: 30/30 pruebas funcionales aprobadas.
+- `npm run build`: aprobado.
+- `git diff --check`: sin errores.
+- Los datos de prueba se almacenaron fuera del repositorio y se eliminaron al terminar.
+
+### Siguiente trabajo
+
+1. Introducir migraciones versionadas para SQLite.
+2. Definir contratos canónicos de paciente, sesión y borrador.
+3. Corregir el recorrido web de registro, carga y persistencia.
+
 ## 2026-07-14 — Revisión de producto y planificación del MVP
 
 ### Objetivo

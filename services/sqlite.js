@@ -183,7 +183,11 @@ function addSession(userId, s) {
   
   // Verify patient belongs to user
   const patient = conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(s.pacienteId, userId);
-  if (!patient) throw new Error('Patient not found or access denied');
+  if (!patient) {
+    const error = new Error('Patient not found or access denied');
+    error.code = 'PATIENT_NOT_FOUND';
+    throw error;
+  }
 
   const stmt = conn.prepare('INSERT INTO sessions (userId, pacienteId, notas, tipo, duracion, medication_notes, mood_assessment, requires_followup, created_via, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const info = stmt.run(userId, String(s.pacienteId), String(s.notas || ''), String(s.tipo || 'individual'), Number(s.duracion || 60), String(s.medication_notes || ''), Number(s.mood_assessment || 4), s.requires_followup ? 1 : 0, String(s.created_via || 'web'), now);
@@ -291,5 +295,4 @@ module.exports = {
   createUser,
   verifyUser,
 };
-
 

@@ -7,12 +7,12 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 ## Estado actual
 
 - Repositorio: `Memu007/Aira.final`.
-- Rama actual: `agent/document-product-roadmap`.
+- Rama actual: `agent/01-web-core`.
 - Commit base: `b78d7081810cdea9e2ef37af0dd54409ba7070aa`.
 - El árbol estaba limpio y sincronizado con `origin/main` antes de agregar esta documentación.
 - Etapa de producto: planificación del MVP terminada.
-- Etapa técnica: implementación del nuevo recorrido todavía no iniciada.
-- Próximo objetivo: Etapa 0 y Etapa 1 de `ROADMAP.md`.
+- Etapa técnica: Etapa 0 en curso; línea base reproducible terminada.
+- Próximo objetivo: migraciones versionadas y contratos canónicos de paciente, sesión y borrador.
 
 ## Dirección del producto acordada
 
@@ -68,9 +68,12 @@ Registro web
 
 ### Pruebas y CI
 
-- El repositorio local no tenía dependencias instaladas al hacer esta revisión.
-- La ejecución inicial del servidor falló por faltar `node_modules`; todavía no se estableció una línea base de pruebas actual.
-- Existen varios workflows de GitHub que referencian archivos o comandos archivados o inexistentes.
+- Las dependencias quedaron instaladas con `npm ci`.
+- `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
+- La línea base actual pasa 30 de 30 pruebas funcionales con Node.js 20.
+- Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
+- Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
+- `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
 ## Decisiones técnicas vigentes
@@ -91,11 +94,11 @@ Rama prevista: `agent/01-web-core`.
 
 ### Etapa 0
 
-- [ ] Instalar dependencias con `npm ci`.
-- [ ] Ejecutar el servidor con una base temporal.
-- [ ] Registrar los resultados de la línea base.
-- [ ] Estandarizar Node.js 20.
-- [ ] Consolidar una única CI confiable.
+- [x] Instalar dependencias con `npm ci`.
+- [x] Ejecutar el servidor con una base temporal.
+- [x] Registrar los resultados de la línea base: 30/30.
+- [x] Estandarizar Node.js 20.
+- [x] Consolidar una única CI funcional confiable.
 - [ ] Introducir migraciones versionadas.
 - [ ] Definir contratos canónicos de paciente, sesión y borrador.
 - [ ] Crear dobles de prueba para WhatsApp y transcripción.
@@ -143,6 +146,7 @@ No bloquean el vertical de texto.
 - Commit documental: `221522e` (`document product roadmap and handoff`).
 - Rama publicada: `origin/agent/document-product-roadmap`.
 - PR documental en borrador: [#1 — Document product roadmap and living handoff](https://github.com/Memu007/Aira.final/pull/1).
+- La implementación continúa en `agent/01-web-core`, creada desde el commit documental `db9089c`.
 
 ## Cómo retomar
 
@@ -150,9 +154,9 @@ No bloquean el vertical de texto.
 2. Revisar `git status -sb` y `git diff`.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
-5. Crear o retomar la rama `agent/01-web-core` desde el commit documental.
-6. Instalar dependencias y establecer la línea base de pruebas.
-7. Comenzar la Etapa 0.
+5. Retomar `agent/01-web-core`.
+6. Ejecutar `npm test` para confirmar la línea base 30/30.
+7. Implementar migraciones versionadas y los contratos canónicos.
 
 ## Regla para el próximo handoff
 

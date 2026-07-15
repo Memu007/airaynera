@@ -181,7 +181,7 @@ class FunctionalTests {
         pacienteId: 999999,
         notas: 'Test'
       }, this.token);
-      this.test('Invalid pacienteId returns 500', invalidRes.status === 500);
+      this.test('Invalid pacienteId returns 404', invalidRes.status === 404);
     }
 
     // 6. Data Isolation (Security)
@@ -240,7 +240,6 @@ tests.run().catch(err => {
   console.error('Error:', err);
   process.exit(1);
 });
-
 
 
 
