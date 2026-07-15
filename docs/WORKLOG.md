@@ -31,6 +31,9 @@ Eliminar el JWT del transporte simulado y demostrar que un mensaje entrante pued
 - `npm run build`, sintaxis JavaScript y `git diff --check`: aprobados.
 - Recorrido visible aprobado: login → vincular celular → generar código → recargar pendiente → recuperar código → simular mensaje → estado vinculado.
 - Después de recargar, la web conserva tanto el pendiente recuperable como el teléfono ya vinculado.
+- Commit funcional publicado: `db0d36d` (`link web accounts to whatsapp phones`).
+- PR técnico [#2](https://github.com/Memu007/Aira.final/pull/2) actualizado.
+- GitHub Actions: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados sobre el vertical de vinculación.
 
 ### Siguiente trabajo
 

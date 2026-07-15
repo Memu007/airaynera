@@ -99,7 +99,9 @@ Estado remoto del PR técnico #2:
 - Verificación remota del vertical web: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
 - Implementación de borradores: `e9085b8` (`route notes through session drafts`).
 - Verificación remota de borradores: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
-- Antes de este bloque, el PR técnico #2 reflejaba 66 pruebas, confirmación idempotente y WhatsApp simulado autenticado.
+- Implementación de vinculación: `db0d36d` (`link web accounts to whatsapp phones`).
+- Verificación remota de vinculación: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
+- El PR técnico #2 se titula ahora `Build the persistent web, draft, and WhatsApp link core` y refleja 78/78 pruebas.
 
 ## Decisiones técnicas vigentes
 
