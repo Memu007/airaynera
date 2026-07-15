@@ -15,7 +15,10 @@ try {
   const firstRun = runMigrations(connection);
   const secondRun = runMigrations(connection);
 
-  assert.deepEqual(firstRun, ['001_initial_schema.sql']);
+  assert.deepEqual(firstRun, [
+    '001_initial_schema.sql',
+    '002_canonical_sessions_and_drafts.sql',
+  ]);
   assert.deepEqual(secondRun, []);
 
   const tables = new Set(
@@ -24,7 +27,7 @@ try {
     ).all().map((row) => row.name)
   );
 
-  for (const tableName of ['users', 'patients', 'sessions', 'schema_migrations']) {
+  for (const tableName of ['users', 'patients', 'sessions', 'session_drafts', 'schema_migrations']) {
     assert.ok(tables.has(tableName), `Missing table: ${tableName}`);
   }
 
@@ -32,9 +35,12 @@ try {
     'SELECT id, applied_at FROM schema_migrations ORDER BY id'
   ).all();
 
-  assert.equal(migrationRows.length, 1);
-  assert.equal(migrationRows[0].id, '001_initial_schema.sql');
-  assert.ok(migrationRows[0].applied_at);
+  assert.equal(migrationRows.length, 2);
+  assert.deepEqual(
+    migrationRows.map((row) => row.id),
+    ['001_initial_schema.sql', '002_canonical_sessions_and_drafts.sql']
+  );
+  assert.ok(migrationRows.every((row) => row.applied_at));
 
   const legacyConnection = new BetterSqlite3(path.join(tempDir, 'legacy.db'));
   try {
@@ -52,12 +58,22 @@ try {
       VALUES ('legacy-user', 'hash', 'Legacy User', '', '', '2025-01-01T00:00:00.000Z');
     `);
 
-    assert.deepEqual(runMigrations(legacyConnection), ['001_initial_schema.sql']);
+    assert.deepEqual(runMigrations(legacyConnection), [
+      '001_initial_schema.sql',
+      '002_canonical_sessions_and_drafts.sql',
+    ]);
     const legacyUser = legacyConnection.prepare(
       'SELECT dni, name FROM users WHERE dni = ?'
     ).get('legacy-user');
 
     assert.deepEqual(legacyUser, { dni: 'legacy-user', name: 'Legacy User' });
+
+    const sessionColumns = new Set(
+      legacyConnection.prepare('PRAGMA table_info(sessions)').all().map((column) => column.name)
+    );
+    for (const columnName of ['clinical_date', 'clean_note', 'created_at', 'draft_id']) {
+      assert.ok(sessionColumns.has(columnName), `Missing canonical session column: ${columnName}`);
+    }
   } finally {
     legacyConnection.close();
   }

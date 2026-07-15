@@ -2,6 +2,42 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-14 — Contratos canónicos y vertical web persistente
+
+### Objetivo
+
+Hacer funcionar el recorrido registro → paciente → sesión → recarga antes de conectar audio o WhatsApp.
+
+### Trabajo realizado
+
+- Tres agentes propusieron de forma independiente contratos para paciente, sesión y borrador.
+- Se eligió la propuesta que separa fecha clínica de creación y duración clínica de duración de audio.
+- Se documentaron los contratos en `docs/DOMAIN_CONTRACTS.md`.
+- Se agregó la migración `002_canonical_sessions_and_drafts.sql` sin renombrar ni borrar columnas existentes.
+- La migración prepara timestamps canónicos, campos de sesión y la tabla `session_drafts` con restricciones contra duplicados.
+- SQLite ahora devuelve pacientes con totales y última sesión, y sesiones con el nombre real del paciente.
+- La API responde IDs string y campos `camelCase`; acepta temporalmente aliases heredados en entradas.
+- El registro devuelve JWT y la web restaura la sesión después de recargar.
+- La web carga pacientes y sesiones desde la API, crea sesiones válidas y actualiza historial, filtros, indicadores y gráficos.
+- El estado activo/inactivo del paciente se persiste en el servidor.
+- La prueba visible detectó y corrigió que el formulario leía la contraseña desde un ID inexistente.
+
+### Verificaciones
+
+- `npm test`: migraciones y 45/45 pruebas funcionales aprobadas.
+- La batería cubre registro utilizable, IDs canónicos, fecha clínica, JOIN de paciente, persistencia, filtros y compatibilidad temporal.
+- Sintaxis de `server.js`, `services/sqlite.js` y los dos bloques JavaScript de `index.html`: aprobada.
+- `git diff --check`: sin errores.
+- Recorrido visible local aprobado: registro, activación simulada, paciente, sesión y recarga.
+- Después de recargar: 1 paciente, 1 sesión, nombre y nota visibles.
+- Consola del navegador: sin errores ni advertencias.
+
+### Siguiente trabajo
+
+1. Implementar CRUD y confirmación idempotente de `SessionDraft`.
+2. Hacer que un doble de WhatsApp cree borradores, nunca sesiones directas.
+3. Validar el vertical completo con texto antes de incorporar audio.
+
 ## 2026-07-14 — Etapa 0: línea base reproducible
 
 ### Objetivo

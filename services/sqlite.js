@@ -52,9 +52,32 @@ function maybeDecrypt(jsonStr) {
   } catch (_) { return ''; }
 }
 
+function timestampFromDate(date) {
+  return date ? `${date}T12:00:00.000Z` : null;
+}
+
+function mapSessionRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    id: String(row.id),
+    pacienteId: String(row.pacienteId),
+    patientName: maybeDecrypt(row.patient_name),
+    requires_followup: row.requires_followup === 1,
+  };
+}
+
 function listPatients(userId) {
   const conn = getDb();
-  const rows = conn.prepare('SELECT * FROM patients WHERE userId = ?').all(userId);
+  const rows = conn.prepare(`
+    SELECT p.*, COUNT(s.id) AS total_sessions,
+      MAX(COALESCE(s.clinical_date, s.fecha)) AS last_session_date
+    FROM patients p
+    LEFT JOIN sessions s ON s.pacienteId = p.id AND s.userId = p.userId
+    WHERE p.userId = ?
+    GROUP BY p.id
+    ORDER BY p.id DESC
+  `).all(userId);
   return rows.map(r => ({
     id: String(r.id),
     name: maybeDecrypt(r.name),
@@ -65,13 +88,18 @@ function listPatients(userId) {
     habilitado: r.habilitado === 1,
     created_via: r.created_via || 'web',
     fechaRegistro: r.fechaRegistro || null,
+    created_at: r.created_at || timestampFromDate(r.fechaRegistro),
+    updated_at: r.updated_at || r.created_at || timestampFromDate(r.fechaRegistro),
+    last_session_date: r.last_session_date || null,
+    total_sessions: Number(r.total_sessions || 0),
   }));
 }
 
 function addPatient(userId, p) {
   const conn = getDb();
   const now = new Date().toISOString().split('T')[0];
-  const stmt = conn.prepare('INSERT INTO patients (userId, name, dni, phone, email, insurance, habilitado, created_via, fechaRegistro) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const timestamp = new Date().toISOString();
+  const stmt = conn.prepare('INSERT INTO patients (userId, name, dni, phone, email, insurance, habilitado, created_via, fechaRegistro, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   
   // Encrypt sensitive fields
   const encName = wrapEncrypt(p.name);
@@ -79,7 +107,7 @@ function addPatient(userId, p) {
   const encPhone = wrapEncrypt(p.phone);
   const encEmail = wrapEncrypt(p.email);
 
-  const info = stmt.run(userId, encName, encDni, encPhone, encEmail, String(p.insurance || ''), (typeof p.habilitado === 'boolean' ? (p.habilitado ? 1 : 0) : 1), String(p.created_via || 'web'), now);
+  const info = stmt.run(userId, encName, encDni, encPhone, encEmail, String(p.insurance || ''), (typeof p.habilitado === 'boolean' ? (p.habilitado ? 1 : 0) : 1), String(p.created_via || 'web'), now, timestamp, timestamp);
   
   return { 
     id: String(info.lastInsertRowid), 
@@ -90,7 +118,11 @@ function addPatient(userId, p) {
     insurance: String(p.insurance || ''), 
     habilitado: typeof p.habilitado === 'boolean' ? p.habilitado : true, 
     created_via: p.created_via || 'web', 
-    fechaRegistro: now 
+    fechaRegistro: now,
+    created_at: timestamp,
+    updated_at: timestamp,
+    last_session_date: null,
+    total_sessions: 0,
   };
 }
 
@@ -108,9 +140,10 @@ function updatePatient(userId, id, changes) {
   
   if (changes.insurance != null) next.insurance = String(changes.insurance);
   if (changes.habilitado != null) next.habilitado = changes.habilitado ? 1 : 0;
+  next.updated_at = new Date().toISOString();
 
-  const upd = conn.prepare('UPDATE patients SET name=?, dni=?, phone=?, email=?, insurance=?, habilitado=? WHERE id=? AND userId=?');
-  upd.run(next.name, next.dni, next.phone, next.email, next.insurance, next.habilitado, id, userId);
+  const upd = conn.prepare('UPDATE patients SET name=?, dni=?, phone=?, email=?, insurance=?, habilitado=?, updated_at=? WHERE id=? AND userId=?');
+  upd.run(next.name, next.dni, next.phone, next.email, next.insurance, next.habilitado, next.updated_at, id, userId);
   
   return { 
     id: String(id), 
@@ -119,7 +152,13 @@ function updatePatient(userId, id, changes) {
     phone: maybeDecrypt(next.phone), 
     email: maybeDecrypt(next.email), 
     insurance: next.insurance || '', 
-    habilitado: next.habilitado === 1 
+    habilitado: next.habilitado === 1,
+    created_via: next.created_via || 'web',
+    fechaRegistro: next.fechaRegistro || null,
+    created_at: next.created_at || timestampFromDate(next.fechaRegistro),
+    updated_at: next.updated_at,
+    last_session_date: null,
+    total_sessions: 0,
   };
 }
 
@@ -134,12 +173,29 @@ function deletePatient(userId, id) {
 
 function listSessions(userId) {
   const conn = getDb();
-  return conn.prepare('SELECT * FROM sessions WHERE userId = ?').all(userId);
+  return conn.prepare(`
+    SELECT s.*, p.name AS patient_name
+    FROM sessions s
+    INNER JOIN patients p ON p.id = s.pacienteId AND p.userId = s.userId
+    WHERE s.userId = ?
+    ORDER BY COALESCE(s.clinical_date, s.fecha) DESC, s.id DESC
+  `).all(userId).map(mapSessionRow);
+}
+
+function getSessionById(userId, id) {
+  const conn = getDb();
+  return mapSessionRow(conn.prepare(`
+    SELECT s.*, p.name AS patient_name
+    FROM sessions s
+    INNER JOIN patients p ON p.id = s.pacienteId AND p.userId = s.userId
+    WHERE s.id = ? AND s.userId = ?
+  `).get(id, userId));
 }
 
 function addSession(userId, s) {
   const conn = getDb();
-  const now = new Date().toISOString().split('T')[0];
+  const timestamp = new Date().toISOString();
+  const today = timestamp.split('T')[0];
   
   // Verify patient belongs to user
   const patient = conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(s.pacienteId, userId);
@@ -149,32 +205,77 @@ function addSession(userId, s) {
     throw error;
   }
 
-  const stmt = conn.prepare('INSERT INTO sessions (userId, pacienteId, notas, tipo, duracion, medication_notes, mood_assessment, requires_followup, created_via, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  const info = stmt.run(userId, String(s.pacienteId), String(s.notas || ''), String(s.tipo || 'individual'), Number(s.duracion || 60), String(s.medication_notes || ''), Number(s.mood_assessment || 4), s.requires_followup ? 1 : 0, String(s.created_via || 'web'), now);
-  
-  return { 
-    id: String(info.lastInsertRowid), 
-    pacienteId: String(s.pacienteId), 
-    notas: String(s.notas || ''), 
-    tipo: String(s.tipo || 'individual'), 
-    duracion: Number(s.duracion || 60), 
-    medication_notes: String(s.medication_notes || ''), 
-    mood_assessment: Number(s.mood_assessment || 4), 
-    requires_followup: !!s.requires_followup, 
-    created_via: String(s.created_via || 'web'), 
-    fecha: now 
-  };
+  const clinicalDate = String(s.clinicalDate || s.fecha || today);
+  const cleanNote = String(s.cleanNote ?? s.notas ?? '');
+  const sessionType = String(s.sessionType || s.tipo || 'individual');
+  const durationMinutes = Number(s.durationMinutes ?? s.duracion ?? 60);
+  const medicationNotes = String(s.medicationNotes ?? s.medication_notes ?? '');
+  const moodAssessment = Number(s.moodAssessment ?? s.mood_assessment ?? 4);
+  const requiresFollowUp = Boolean(s.requiresFollowUp ?? s.requires_followup ?? false);
+  const source = String(s.source || s.created_via || 'web');
+  const inputType = String(s.inputType || (s.rawTranscript ? 'audio' : 'text'));
+  const rawTranscript = s.rawTranscript == null ? null : String(s.rawTranscript);
+  const audioDurationSeconds = s.audioDurationSeconds == null ? null : Number(s.audioDurationSeconds);
+  const careModality = String(s.careModality || 'unspecified');
+  const draftId = s.draftId == null ? null : Number(s.draftId);
+
+  const stmt = conn.prepare(`
+    INSERT INTO sessions (
+      userId, pacienteId, notas, tipo, duracion, medication_notes,
+      mood_assessment, requires_followup, created_via, fecha,
+      clinical_date, clean_note, raw_transcript, input_type,
+      audio_duration_seconds, care_modality, draft_id, status,
+      created_at, updated_at, confirmed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)
+  `);
+  const info = stmt.run(
+    userId, String(s.pacienteId), cleanNote, sessionType, durationMinutes,
+    medicationNotes, moodAssessment, requiresFollowUp ? 1 : 0, source,
+    clinicalDate, clinicalDate, cleanNote, rawTranscript, inputType,
+    audioDurationSeconds, careModality, draftId, timestamp, timestamp, timestamp
+  );
+
+  return getSessionById(userId, info.lastInsertRowid);
 }
 
 function updateSession(userId, id, changes) {
   const conn = getDb();
   const current = conn.prepare('SELECT * FROM sessions WHERE id = ? AND userId = ?').get(id, userId);
   if (!current) return null;
-  
-  const next = { ...current, ...changes };
-  conn.prepare('UPDATE sessions SET pacienteId=?, notas=?, tipo=?, duracion=?, medication_notes=?, mood_assessment=?, requires_followup=? WHERE id=? AND userId=?')
-      .run(String(next.pacienteId), String(next.notas || ''), String(next.tipo || 'individual'), Number(next.duracion || 60), String(next.medication_notes || ''), Number(next.mood_assessment || 4), next.requires_followup ? 1 : 0, id, userId);
-  return { ...next, id: String(id), requires_followup: !!next.requires_followup };
+
+  const patientId = String(changes.pacienteId ?? current.pacienteId);
+  const patient = conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(patientId, userId);
+  if (!patient) {
+    const error = new Error('Patient not found or access denied');
+    error.code = 'PATIENT_NOT_FOUND';
+    throw error;
+  }
+
+  const cleanNote = String(changes.cleanNote ?? changes.notas ?? current.clean_note ?? current.notas ?? '');
+  const sessionType = String(changes.sessionType ?? changes.tipo ?? current.tipo ?? 'individual');
+  const clinicalDate = String(changes.clinicalDate ?? current.clinical_date ?? current.fecha);
+  const durationMinutes = Number(changes.durationMinutes ?? changes.duracion ?? current.duracion ?? 60);
+  const medicationNotes = String(changes.medicationNotes ?? changes.medication_notes ?? current.medication_notes ?? '');
+  const moodAssessment = Number(changes.moodAssessment ?? changes.mood_assessment ?? current.mood_assessment ?? 4);
+  const requiresFollowUp = Boolean(changes.requiresFollowUp ?? changes.requires_followup ?? current.requires_followup);
+  const rawTranscript = changes.rawTranscript === undefined ? current.raw_transcript : changes.rawTranscript;
+  const inputType = String(changes.inputType ?? current.input_type ?? 'text');
+  const audioDurationSeconds = changes.audioDurationSeconds === undefined ? current.audio_duration_seconds : changes.audioDurationSeconds;
+  const careModality = String(changes.careModality ?? current.care_modality ?? 'unspecified');
+  const updatedAt = new Date().toISOString();
+
+  conn.prepare(`
+    UPDATE sessions SET
+      pacienteId=?, notas=?, clean_note=?, tipo=?, fecha=?, clinical_date=?,
+      duracion=?, medication_notes=?, mood_assessment=?, requires_followup=?,
+      raw_transcript=?, input_type=?, audio_duration_seconds=?, care_modality=?, updated_at=?
+    WHERE id=? AND userId=?
+  `).run(
+    patientId, cleanNote, cleanNote, sessionType, clinicalDate, clinicalDate,
+    durationMinutes, medicationNotes, moodAssessment, requiresFollowUp ? 1 : 0,
+    rawTranscript, inputType, audioDurationSeconds, careModality, updatedAt, id, userId
+  );
+  return getSessionById(userId, id);
 }
 
 function deleteSession(userId, id) {

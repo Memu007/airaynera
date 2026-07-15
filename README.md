@@ -16,7 +16,7 @@ Cuenta web
 
 ## Estado del proyecto
 
-El proyecto está en una etapa de consolidación funcional. La web, la persistencia básica y algunos prototipos de WhatsApp ya existen, pero la integración real de WhatsApp y audio todavía no funciona de punta a punta.
+El proyecto está en una etapa de consolidación funcional. El recorrido web registro → paciente → sesión → recarga ya funciona localmente; la integración real de WhatsApp y audio todavía no funciona de punta a punta.
 
 Las prioridades vigentes son:
 
@@ -34,6 +34,7 @@ El detalle y el estado actualizado se encuentran en la [documentación activa](d
 - [Roadmap del MVP](docs/ROADMAP.md)
 - [Handoff actualizado](docs/HANDOFF.md)
 - [Registro de trabajo](docs/WORKLOG.md)
+- [Contratos funcionales del dominio](docs/DOMAIN_CONTRACTS.md)
 
 Al retomar el proyecto, empezar siempre por `docs/HANDOFF.md`.
 

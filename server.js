@@ -137,38 +137,134 @@ try {
   process.exit(1);
 }
 
-// Helper to normalize patients for frontend
+const SESSION_TYPE_ALIASES = {
+  consulta: "individual",
+  individual: "individual",
+  grupal: "group",
+  group: "group",
+  familiar: "family",
+  family: "family",
+  pareja: "couple",
+  couple: "couple",
+  other: "other",
+};
+
+function issueToken(user) {
+  return jwt.sign(
+    {
+      sub: user.id,
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role || "doctor",
+      dni: user.dni || "",
+      specialty: user.specialty || "",
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES }
+  );
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined);
+}
+
+function normalizeSessionInput(req, res, next) {
+  const input = req.body || {};
+  const isCreate = req.method === "POST";
+  const normalized = {};
+  const patientId = firstDefined(input.patientId, input.pacienteId);
+  const requestedType = firstDefined(input.sessionType, input.tipo);
+  const cleanNote = firstDefined(input.cleanNote, input.notes, input.notas, input.summary);
+
+  if (patientId !== undefined) normalized.patientId = patientId;
+  if (input.clinicalDate !== undefined || input.fecha !== undefined) {
+    normalized.clinicalDate = firstDefined(input.clinicalDate, input.fecha);
+  }
+  if (requestedType !== undefined || isCreate) {
+    const type = requestedType || "individual";
+    normalized.sessionType = SESSION_TYPE_ALIASES[type] || type;
+  }
+  if (input.durationMinutes !== undefined || input.duracion !== undefined) {
+    normalized.durationMinutes = firstDefined(input.durationMinutes, input.duracion);
+  }
+  if (input.careModality !== undefined || isCreate) {
+    normalized.careModality = firstDefined(input.careModality, "unspecified");
+  }
+  if (cleanNote !== undefined || isCreate) normalized.cleanNote = cleanNote || "";
+  if (input.rawTranscript !== undefined || input.transcription !== undefined) {
+    normalized.rawTranscript = firstDefined(input.rawTranscript, input.transcription);
+  }
+  if (input.medicationNotes !== undefined || input.medication_notes !== undefined) {
+    normalized.medicationNotes = firstDefined(input.medicationNotes, input.medication_notes);
+  }
+  if (input.moodAssessment !== undefined || input.mood_assessment !== undefined) {
+    normalized.moodAssessment = firstDefined(input.moodAssessment, input.mood_assessment);
+  }
+  if (input.requiresFollowUp !== undefined || input.requires_followup !== undefined) {
+    normalized.requiresFollowUp = firstDefined(input.requiresFollowUp, input.requires_followup);
+  }
+  if (input.audioDurationSeconds !== undefined) {
+    normalized.audioDurationSeconds = input.audioDurationSeconds;
+  }
+  if (input.inputType !== undefined || isCreate) {
+    normalized.inputType = firstDefined(
+      input.inputType,
+      input.rawTranscript || input.transcription ? "audio" : "text"
+    );
+  }
+  req.body = normalized;
+  next();
+}
+
+function toPersistenceSession(session) {
+  return {
+    ...session,
+    pacienteId: session.patientId,
+    source: "web",
+  };
+}
+
+// Helpers that keep the public API canonical while SQLite remains compatible.
 function normalizePatient(p) {
   return {
-    id: parseInt(p.id),
+    id: String(p.id),
     name: p.name,
     email: p.email,
     phone: p.phone,
     dni: p.dni,
     insurance: p.insurance,
     status: p.habilitado ? "active" : "inactive",
-    createdAt: p.fechaRegistro,
-    lastSession: null, // TODO: Calculate from sessions
-    totalSessions: 0, // TODO: Calculate from sessions
-    therapistId: 1, // Default for now
+    source: p.created_via || "web",
+    createdAt: p.created_at || null,
+    updatedAt: p.updated_at || p.created_at || null,
+    lastSessionDate: p.last_session_date || null,
+    totalSessions: Number(p.total_sessions || 0),
   };
 }
 
-// Helper to normalize sessions for frontend
 function normalizeSession(s) {
   return {
-    id: parseInt(s.id),
-    patientId: parseInt(s.pacienteId),
-    patientName: "", // Populated at runtime if needed
-    therapistId: 1,
-    type: s.tipo,
-    scheduledDate: s.fecha, // Note: DB stores YYYY-MM-DD, might need full ISO for calendar
-    status: s.requires_followup ? "pending_review" : "completed",
-    duration: s.duracion,
-    modality: s.created_via === "whatsapp" ? "virtual" : "presencial",
-    notes: s.notas,
-    tags: [],
-    source: s.created_via,
+    id: String(s.id),
+    patientId: String(s.pacienteId),
+    patientName: s.patientName || "Paciente",
+    clinicalDate: s.clinical_date || s.fecha,
+    sessionType: SESSION_TYPE_ALIASES[s.tipo] || s.tipo || "individual",
+    durationMinutes: Number(s.duracion || 0),
+    careModality: s.care_modality || "unspecified",
+    source: s.created_via || "web",
+    inputType: s.input_type || "text",
+    rawTranscript: s.raw_transcript || null,
+    cleanNote: s.clean_note ?? s.notas ?? "",
+    medicationNotes: s.medication_notes || null,
+    moodAssessment: s.mood_assessment == null ? null : Number(s.mood_assessment),
+    requiresFollowUp: Boolean(s.requires_followup),
+    audioDurationSeconds: s.audio_duration_seconds == null ? null : Number(s.audio_duration_seconds),
+    status: s.status || "confirmed",
+    draftId: s.draft_id == null ? null : String(s.draft_id),
+    createdAt: s.created_at || null,
+    updatedAt: s.updated_at || s.created_at || null,
+    confirmedAt: s.confirmed_at || null,
   };
 }
 
@@ -205,7 +301,8 @@ app.post("/api/auth/verify", (req, res) => {
       name: decoded.name || "Usuario",
       email: decoded.email || "",
       role: decoded.role || "doctor",
-      dni: decoded.dni || ""
+      dni: decoded.dni || "",
+      specialty: decoded.specialty || ""
     });
   } catch (err) {
     res.status(401).json({ error: "Invalid or expired token" });
@@ -236,7 +333,8 @@ app.post("/api/auth/register",
   async (req, res) => {
     try {
       const user = await sql.createUser(req.body);
-      res.status(201).json({ success: true, user });
+      const token = issueToken(user);
+      res.status(201).json({ success: true, user, token });
     } catch (err) {
       if (err.message === 'USER_EXISTS') {
         return res.status(409).json({ error: "Ya existe un usuario con ese DNI" });
@@ -267,7 +365,11 @@ app.post('/api/patients',
     handleValidationErrors,
     (req, res) => {
     try {
-        const newPatient = sql.addPatient(req.user.id, req.body);
+        const newPatient = sql.addPatient(req.user.id, {
+          ...req.body,
+          habilitado: req.body.status !== 'inactive',
+          created_via: 'web',
+        });
         res.status(201).json(normalizePatient(newPatient));
     } catch (err) {
         console.error('Error creating patient:', err);
@@ -277,7 +379,9 @@ app.post('/api/patients',
 
 app.patch('/api/patients/:id', authMiddleware, (req, res) => {
     try {
-        const updated = sql.updatePatient(req.user.id, req.params.id, req.body);
+        const changes = { ...req.body };
+        if (changes.status != null) changes.habilitado = changes.status === 'active';
+        const updated = sql.updatePatient(req.user.id, req.params.id, changes);
         if (updated) {
             res.json(normalizePatient(updated));
         } else {
@@ -306,7 +410,16 @@ app.delete('/api/patients/:id', authMiddleware, (req, res) => {
 // Sessions endpoints - Protected
 app.get('/api/sessions', authMiddleware, (req, res) => {
     try {
-        const sessions = sql.listSessions(req.user.id).map(normalizeSession);
+        let sessions = sql.listSessions(req.user.id).map(normalizeSession);
+        if (req.query.patientId) {
+          sessions = sessions.filter((session) => session.patientId === String(req.query.patientId));
+        }
+        if (req.query.from) {
+          sessions = sessions.filter((session) => session.clinicalDate >= req.query.from);
+        }
+        if (req.query.to) {
+          sessions = sessions.filter((session) => session.clinicalDate <= req.query.to);
+        }
         res.json({ sessions });
     } catch (err) {
         console.error('Error listing sessions:', err);
@@ -316,14 +429,16 @@ app.get('/api/sessions', authMiddleware, (req, res) => {
 
 app.post('/api/sessions', 
     authMiddleware,
-    body('pacienteId').notEmpty().withMessage('pacienteId es requerido'),
-    body('tipo').optional().isString().isIn(['individual', 'grupal', 'familiar', 'pareja']),
-    body('duracion').optional().isInt({ min: 1, max: 480 }).withMessage('Duración debe ser 1-480 minutos'),
-    body('notas').optional().isString().isLength({ max: 10000 }),
+    normalizeSessionInput,
+    body('patientId').notEmpty().withMessage('patientId es requerido'),
+    body('sessionType').optional().isString().isIn(['individual', 'group', 'family', 'couple', 'other']),
+    body('durationMinutes').optional().isInt({ min: 1, max: 480 }).withMessage('Duración debe ser 1-480 minutos'),
+    body('cleanNote').optional().isString().isLength({ max: 10000 }),
+    body('moodAssessment').optional().isInt({ min: 1, max: 5 }),
     handleValidationErrors,
     (req, res) => {
     try {
-        const newSession = sql.addSession(req.user.id, req.body);
+        const newSession = sql.addSession(req.user.id, toPersistenceSession(req.body));
         res.status(201).json(normalizeSession(newSession));
     } catch (err) {
         if (err.code === 'PATIENT_NOT_FOUND') {
@@ -334,9 +449,11 @@ app.post('/api/sessions',
     }
 });
 
-app.patch('/api/sessions/:id', authMiddleware, (req, res) => {
+app.patch('/api/sessions/:id', authMiddleware, normalizeSessionInput, (req, res) => {
     try {
-        const updated = sql.updateSession(req.user.id, req.params.id, req.body);
+        const changes = { ...req.body };
+        if (changes.patientId !== undefined) changes.pacienteId = changes.patientId;
+        const updated = sql.updateSession(req.user.id, req.params.id, changes);
         if (updated) {
             res.json(normalizeSession(updated));
         } else {
@@ -437,19 +554,7 @@ app.post("/api/login",
   }
 
   if (user) {
-    // Generar JWT real
-    const token = jwt.sign(
-      { 
-        sub: user.id,
-        userId: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        dni: user.dni || dni
-      },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES }
-    );
+    const token = issueToken(user);
     
     res.json({
       success: true,

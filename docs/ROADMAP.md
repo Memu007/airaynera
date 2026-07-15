@@ -2,7 +2,9 @@
 
 Última actualización: 2026-07-14.
 
-Estado general: planificación terminada; implementación del nuevo MVP todavía no iniciada.
+Estado general: vertical web principal aprobado localmente; borradores y vinculación WhatsApp pendientes.
+
+Alcance actual: priorizar funcionamiento. Seguridad avanzada, cumplimiento formal y estética se retomarán después de validar la idea.
 
 ## Secuencia de entrega
 
@@ -52,6 +54,8 @@ Criterio de salida:
 
 > Una base vacía se crea, las migraciones se aplican y las pruebas mínimas de contrato pasan en local y CI.
 
+Estado: núcleo cumplido. Migraciones `001` y `002`, contratos y pruebas locales aprobados; falta el doble de WhatsApp/transcripción.
+
 ## Etapa 1 — Web funcional
 
 Objetivo: que la web sea una fuente de verdad confiable antes de conectar WhatsApp.
@@ -75,6 +79,8 @@ Criterio de salida:
 5. La ficha, el historial y los indicadores continúan correctos.
 
 Tag sugerido: `mvp-v0.1-web-core`.
+
+Estado: el criterio principal registro → paciente → sesión → recarga fue aprobado localmente el 2026-07-14. Falta edición visible de sesiones y la interfaz de borradores antes de etiquetar la etapa.
 
 ## Etapa 2 — Vinculación web–WhatsApp
 

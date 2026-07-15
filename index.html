@@ -4540,6 +4540,30 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           processPayment();
         });
         $("#patientSearch").on("keyup", filterPatients);
+
+        const savedToken = localStorage.getItem("authToken");
+        if (savedToken) {
+          $.ajax({
+            url: "/api/auth/verify",
+            method: "POST",
+            headers: { Authorization: `Bearer ${savedToken}` },
+            success: function (user) {
+              currentUser = {
+                name: user.name || "Profesional",
+                dni: user.dni || "",
+                email: user.email || "",
+                specialty: user.specialty || "",
+                isNewUser: false,
+              };
+              appData = { patients: [], sessions: [] };
+              isDemoMode = false;
+              showDashboard();
+            },
+            error: function () {
+              localStorage.removeItem("authToken");
+            },
+          });
+        }
       });
 
       function doLogin() {
@@ -4635,9 +4659,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const name = $("#regName").val().trim();
         const specialty = $("#regSpecialty").val();
         const dni = $("#regDni").val().trim();
-        const pin = $("#regPin").val().trim();
+        const email = $("#regEmail").val().trim();
+        const pin = $("#password").val().trim();
 
-        if (!name || !specialty || !dni || !pin) {
+        if (!name || !specialty || !dni || !email || !pin) {
           alert("Por favor, completá todos los campos de registro.");
           return;
         }
@@ -4650,13 +4675,15 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           url: "/api/auth/register",
           method: "POST",
           contentType: "application/json",
-          data: JSON.stringify({ dni, pin, name, specialty }),
+          data: JSON.stringify({ dni, pin, name, specialty, email }),
           success: function(response) {
             btn.html(originalText).prop('disabled', false);
-            if (response.success) {
+            if (response.success && response.token) {
+              localStorage.setItem("authToken", response.token);
               currentUser = {
                 name: response.user.name,
                 dni: response.user.dni,
+                email: response.user.email,
                 specialty: response.user.specialty,
                 isNewUser: true
               };
@@ -4747,10 +4774,8 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         // Actualizar breadcrumbs
         updateBreadcrumbs();
 
-        loadDashboardData();
         loadPatientsData();
         loadSessionsData();
-        loadCharts();
 
         // Inicializar perfil del usuario
         if (currentUser) {
@@ -5392,18 +5417,38 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       }
 
       // DASHBOARD DATA & RENDERING
+      function parseClinicalDate(value) {
+        return value ? new Date(`${value}T12:00:00`) : new Date(0);
+      }
+
+      function localDateKey(date = new Date()) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+
+      function refreshDashboardViews() {
+        loadDashboardData();
+        loadCharts();
+      }
+
+      function updateDashboardStats() {
+        loadDashboardData();
+      }
+
       function loadDashboardData() {
         $("#totalPatients").text(appData.patients.length);
         $("#totalSessions").text(appData.sessions.length);
 
-        const today = new Date().toDateString();
+        const today = localDateKey();
         const sessionsTodayList = appData.sessions.filter(
-          (s) => new Date(s.created_at).toDateString() === today
+          (s) => s.clinicalDate === today
         );
         $("#sessionsToday").text(sessionsTodayList.length);
 
         const followupsNeeded = appData.sessions.filter(
-          (s) => s.requires_followup
+          (s) => s.requiresFollowUp
         ).length;
         $("#followupsNeeded").text(followupsNeeded);
 
@@ -5421,16 +5466,16 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         }
 
         const recentSessions = [...appData.sessions]
-          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .sort((a, b) => b.clinicalDate.localeCompare(a.clinicalDate))
           .slice(0, 5);
         const html = recentSessions
           .map((session) => {
             const moodEmojis = { 1: "😢", 2: "😕", 3: "😐", 4: "🙂", 5: "😊" };
             const badgeClass =
-              session.created_via === "whatsapp"
+              session.source === "whatsapp"
                 ? "badge-whatsapp"
                 : "badge-web";
-            const followupBadge = session.requires_followup
+            const followupBadge = session.requiresFollowUp
               ? `<span class="badge badge-followup">Seguimiento</span>`
               : `<span class="badge badge-stable">Estable</span>`;
 
@@ -5439,32 +5484,32 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                   session.id
                 }')">
                     <div class="patient-avatar mr-3 patient-avatar-small">
-                        ${session.patient_name[0]}
+                        ${session.patientName[0]}
                     </div>
                     <div class="flex-grow-1">
                         <div class="d-flex align-items-center justify-content-between">
                             <div>
                                 <h6 class="mb-0 font-weight-bold patient-name-heading">${
-                                  session.patient_name
+                                  session.patientName
                                 }</h6>
                                 <div class="session-meta mt-1">
-                                    <span><i class="fas fa-calendar-alt mr-1"></i> ${new Date(
-                                      session.created_at
+                                    <span><i class="fas fa-calendar-alt mr-1"></i> ${parseClinicalDate(
+                                      session.clinicalDate
                                     ).toLocaleDateString("es-AR")}</span>
                                     <span class="mx-2">|</span>
                                     <span>${
-                                      moodEmojis[session.mood_assessment]
-                                    } ${session.mood_assessment}/5</span>
+                                      moodEmojis[session.moodAssessment]
+                                    } ${session.moodAssessment}/5</span>
                                 </div>
                             </div>
                             <div class="text-right">
                                <span class="badge ${badgeClass}">${
-              session.created_via === "whatsapp" ? "WhatsApp" : "Web"
+              session.source === "whatsapp" ? "WhatsApp" : "Web"
             }</span>
                                ${followupBadge}
                             </div>
                         </div>
-                        <p class="session-summary text-clamp-3">${session.summary}</p>
+                        <p class="session-summary text-clamp-3">${session.cleanNote}</p>
                     </div>
                 </div>`;
           })
@@ -5480,7 +5525,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
         appData.patients.forEach((p) => {
           if (typeof p.status === "undefined") {
-            p.status = "activo";
+            p.status = "active";
           }
         });
 
@@ -5490,7 +5535,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             p.name.toLowerCase().includes(filter) ||
             p.dni.includes(filter) ||
             (p.phone && p.phone.includes(filter));
-          const matchesStatus = showInactive ? true : p.status === "activo";
+          const matchesStatus = showInactive ? true : p.status === "active";
           return matchesFilter && matchesStatus;
         });
 
@@ -5504,14 +5549,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const html = filteredPatients
           .map((patient) => {
             const statusBadge =
-              patient.status === "activo"
+              patient.status === "active"
                 ? `<span class="badge badge-success">Activo</span>`
                 : `<span class="badge badge-secondary">Inactivo</span>`;
 
             return `
                 <div class="col-xl-4 col-lg-6 mb-4">
                     <div class="card patient-card stats-card h-100 ${
-                      patient.status === "inactivo" ? "patient-inactive" : ""
+                      patient.status === "inactive" ? "patient-inactive" : ""
                     }" onclick="showPatientDetail('${patient.id}')">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start">
@@ -5597,19 +5642,29 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           return;
         }
 
-        const newStatus = action === "activar" ? "activo" : "inactivo";
-        appData.patients[patientIndex].status = newStatus;
+        const token = localStorage.getItem("authToken");
+        const newStatus = action === "activar" ? "active" : "inactive";
 
-        $("#statusChangeConfirmationModal").modal("hide");
-
-        notificaciones.exito(
-          "Estado Actualizado",
-          `El paciente ha sido ${
-            action === "activar" ? "activado" : "desactivado"
-          } correctamente.`
-        );
-
-        renderPatientsTable($("#patientSearch").val().toLowerCase());
+        $.ajax({
+          url: `/api/patients/${patientId}`,
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+          contentType: "application/json",
+          data: JSON.stringify({ status: newStatus }),
+          success: function (patient) {
+            appData.patients[patientIndex] = patient;
+            $("#statusChangeConfirmationModal").modal("hide");
+            notificaciones.exito(
+              "Estado Actualizado",
+              `El paciente ha sido ${action === "activar" ? "activado" : "desactivado"} correctamente.`
+            );
+            renderPatientsTable($("#patientSearch").val().toLowerCase());
+          },
+          error: function (xhr) {
+            const msg = xhr.responseJSON?.error || "No se pudo actualizar el estado";
+            notificaciones.error("Error", msg);
+          },
+        });
       }
 
       // SESSIONS DATA
@@ -5626,7 +5681,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         }
 
         const html = [...sessionsArray]
-          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .sort((a, b) => b.clinicalDate.localeCompare(a.clinicalDate))
           .map((session) => {
             const moodEmojis = { 1: "😢", 2: "😕", 3: "😐", 4: "🙂", 5: "😊" };
 
@@ -5636,13 +5691,13 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
               if (moodScore >= 4) return "success";
               return "info";
             };
-            const colorClass = getMoodColorClass(session.mood_assessment);
+            const colorClass = getMoodColorClass(session.moodAssessment);
 
             const badgeClass =
-              session.created_via === "whatsapp"
+              session.source === "whatsapp"
                 ? "badge-whatsapp"
                 : "badge-web";
-            const followupBadge = session.requires_followup
+            const followupBadge = session.requiresFollowUp
               ? '<span class="badge badge-followup">Requiere seguimiento</span>'
               : '<span class="badge badge-stable">Evolución normal</span>';
             return `
@@ -5653,14 +5708,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                         <div class="card-body d-flex flex-column">
                             <div class="d-flex align-items-center mb-3">
                                 <div class="patient-avatar mr-3">${
-                                  session.patient_name[0]
+                                  session.patientName[0]
                                 }</div>
                                 <div class="flex-grow-1">
                                     <h5 class="card-title mb-0 font-weight-bold patient-name-heading">${
-                                      session.patient_name
+                                      session.patientName
                                     }</h5>
-                                    <small class="text-muted">${new Date(
-                                      session.created_at
+                                    <small class="text-muted">${parseClinicalDate(
+                                      session.clinicalDate
                                     ).toLocaleDateString("es-AR", {
                                       year: "numeric",
                                       month: "long",
@@ -5668,15 +5723,15 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                                     })}</small>
                                 </div>
                                 <span class="badge ${badgeClass}">${
-              session.created_via === "whatsapp" ? "Wpp" : "Web"
+              session.source === "whatsapp" ? "Wpp" : "Web"
             }</span>
                             </div>
-                            <p class="card-text text-muted mb-3 flex-grow-1 text-clamp-3">${session.summary}</p>
+                            <p class="card-text text-muted mb-3 flex-grow-1 text-clamp-3">${session.cleanNote}</p>
                             <div class="d-flex align-items-center justify-content-between mt-auto">
                                 <div class="text-muted small">
                                     <i class="fas fa-smile mr-1"></i> Estado: ${
-                                      moodEmojis[session.mood_assessment]
-                                    } ${session.mood_assessment}/5
+                                      moodEmojis[session.moodAssessment]
+                                    } ${session.moodAssessment}/5
                                 </div>
                                 ${followupBadge}
                             </div>
@@ -5697,7 +5752,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
         if (selectedPatientId && selectedPatientId !== "all") {
           filteredSessions = filteredSessions.filter(
-            (s) => s.patient_id === selectedPatientId
+            (s) => s.patientId === selectedPatientId
           );
         }
 
@@ -5705,7 +5760,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           const startDate = new Date(startDateVal + "T00:00:00");
           if (!isNaN(startDate.getTime())) {
             filteredSessions = filteredSessions.filter(
-              (session) => new Date(session.created_at) >= startDate
+              (session) => parseClinicalDate(session.clinicalDate) >= startDate
             );
           }
         }
@@ -5713,14 +5768,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           const endDate = new Date(endDateVal + "T23:59:59");
           if (!isNaN(endDate.getTime())) {
             filteredSessions = filteredSessions.filter(
-              (session) => new Date(session.created_at) <= endDate
+              (session) => parseClinicalDate(session.clinicalDate) <= endDate
             );
           }
         }
 
         const patientName =
           selectedPatientId && selectedPatientId !== "all"
-            ? appData.patients.find((p) => p.id === selectedPatientId).name
+            ? appData.patients.find((p) => p.id === selectedPatientId)?.name || "Paciente"
             : "Todos los pacientes";
         renderSessions(
           filteredSessions,
@@ -5730,24 +5785,40 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       }
 
       function loadSessionsData() {
-        const patientFilterOptions =
-          '<option value="all">Todos los pacientes</option>' +
-          appData.patients
-            .map((p) => `<option value="${p.id}">${p.name}</option>`)
-            .join("");
-        $("#sessionPatientFilter").html(patientFilterOptions);
-        renderSessions(
-          appData.sessions,
-          "Historial de Sesiones",
-          "Todas tus sesiones médicas"
-        );
+        const token = localStorage.getItem("authToken");
+        if (!token) return;
+
+        $.ajax({
+          url: "/api/sessions",
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          success: function (response) {
+            appData.sessions = response.sessions || [];
+            const patientFilterOptions =
+              '<option value="all">Todos los pacientes</option>' +
+              appData.patients
+                .map((p) => `<option value="${p.id}">${p.name}</option>`)
+                .join("");
+            $("#sessionPatientFilter").html(patientFilterOptions);
+            renderSessions(
+              appData.sessions,
+              "Historial de Sesiones",
+              "Todas tus sesiones clínicas"
+            );
+            refreshDashboardViews();
+          },
+          error: function (xhr) {
+            console.error("Error loading sessions:", xhr);
+            showNotification("Error al cargar sesiones", "error");
+          },
+        });
       }
 
       function viewPatientSessions(patientId) {
         const patient = appData.patients.find((p) => p.id === patientId);
         if (!patient) return;
         const patientSessions = appData.sessions.filter(
-          (s) => s.patient_id === patientId
+          (s) => s.patientId === patientId
         );
         $("#patientDetailModal").modal("hide");
         showSection("sessions");
@@ -5757,7 +5828,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
       function showFollowupSessions() {
         const followupSessions = appData.sessions.filter(
-          (s) => s.requires_followup
+          (s) => s.requiresFollowUp
         );
         showSection("sessions");
         renderSessions(
@@ -5775,20 +5846,20 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
         if (selectedPatientId !== "all") {
           sessionsToExport = sessionsToExport.filter(
-            (s) => s.patient_id === selectedPatientId
+            (s) => s.patientId === selectedPatientId
           );
         }
 
         if (startDateVal) {
           const startDate = new Date(startDateVal + "T00:00:00");
           sessionsToExport = sessionsToExport.filter(
-            (s) => new Date(s.created_at) >= startDate
+            (s) => parseClinicalDate(s.clinicalDate) >= startDate
           );
         }
         if (endDateVal) {
           const endDate = new Date(endDateVal + "T23:59:59");
           sessionsToExport = sessionsToExport.filter(
-            (s) => new Date(s.created_at) <= endDate
+            (s) => parseClinicalDate(s.clinicalDate) <= endDate
           );
         }
 
@@ -5801,13 +5872,13 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         }
 
         const dataToExport = sessionsToExport.map((s) => ({
-          Paciente: s.patient_name,
-          Resumen: s.summary,
-          "Notas de Medicación": s.medication_notes,
-          "Estado Anímico": s.mood_assessment,
-          "Requiere Seguimiento": s.requires_followup ? "Sí" : "No",
-          Fecha: new Date(s.created_at),
-          "Registrado Vía": s.created_via,
+          Paciente: s.patientName,
+          Resumen: s.cleanNote,
+          "Notas de Medicación": s.medicationNotes,
+          "Estado Anímico": s.moodAssessment,
+          "Requiere Seguimiento": s.requiresFollowUp ? "Sí" : "No",
+          Fecha: parseClinicalDate(s.clinicalDate),
+          "Registrado Vía": s.source,
         }));
 
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
@@ -5836,8 +5907,8 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         if (topPatientsChartInstance) topPatientsChartInstance.destroy();
 
         // Dashboard Donut
-        const moodData = appData.sessions.reduce((acc, { mood_assessment }) => {
-          acc[mood_assessment] = (acc[mood_assessment] || 0) + 1;
+        const moodData = appData.sessions.reduce((acc, { moodAssessment }) => {
+          acc[moodAssessment] = (acc[moodAssessment] || 0) + 1;
           return acc;
         }, {});
         moodChartInstance = new Chart($("#moodChart"), {
@@ -5903,7 +5974,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const topPatientsEl = $("#topPatientsChart");
         if (topPatientsEl.length) {
           const patientCounts = appData.sessions.reduce((acc, session) => {
-            acc[session.patient_name] = (acc[session.patient_name] || 0) + 1;
+            acc[session.patientName] = (acc[session.patientName] || 0) + 1;
             return acc;
           }, {});
 
@@ -5956,16 +6027,13 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           .map(
             (s) =>
               `<li class="list-group-item d-flex justify-content-between align-items-center"><div><strong>${
-                s.patient_name
-              }</strong><small class="d-block text-muted">${s.summary.substring(
+                s.patientName
+              }</strong><small class="d-block text-muted">${s.cleanNote.substring(
                 0,
                 40
-              )}...</small></div><span class="badge badge-primary badge-pill">${new Date(
-                s.created_at
-              ).toLocaleTimeString("es-AR", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}</span></li>`
+              )}...</small></div><span class="badge badge-primary badge-pill">${parseClinicalDate(
+                s.clinicalDate
+              ).toLocaleDateString("es-AR")}</span></li>`
           )
           .join("");
         listEl.html(html);
@@ -5982,25 +6050,25 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           5: "😊 Muy bueno",
         };
 
-        $("#sessionDetailTitle").text(`Sesión de ${session.patient_name}`);
+        $("#sessionDetailTitle").text(`Sesión de ${session.patientName}`);
 
-        const medicationHTML = session.medication_notes
-          ? `<h6><i class="fas fa-pills mr-2 text-primary"></i>Medicación</h6><p>${session.medication_notes}</p><hr>`
+        const medicationHTML = session.medicationNotes
+          ? `<h6><i class="fas fa-pills mr-2 text-primary"></i>Medicación</h6><p>${session.medicationNotes}</p><hr>`
           : "";
 
         const detailHTML = `
                 <h5><i class="fas fa-clipboard-list mr-2 text-primary"></i>Resumen de la Sesión</h5>
-                <p>${session.summary}</p>
+                <p>${session.cleanNote}</p>
                 <hr>
                 ${medicationHTML}
                 <div class="row">
                     <div class="col-md-6">
                         <h6><i class="fas fa-smile mr-2 text-primary"></i>Estado Anímico</h6>
-                        <p>${moodEmojis[session.mood_assessment]}</p>
+                        <p>${moodEmojis[session.moodAssessment]}</p>
                     </div>
                     <div class="col-md-6">
                         <h6><i class="fas fa-calendar-alt mr-2 text-primary"></i>Fecha y Hora</h6>
-                        <p>${new Date(session.created_at).toLocaleString(
+                        <p>${parseClinicalDate(session.clinicalDate).toLocaleDateString(
                           "es-AR"
                         )}</p>
                     </div>
@@ -6016,10 +6084,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         if (!patient) return;
 
         // Ensure status exists for backward compatibility
-        if (!patient.status) patient.status = "activo";
+        if (!patient.status) patient.status = "active";
 
         const statusBadge =
-          patient.status === "activo"
+          patient.status === "active"
             ? `<span class="badge badge-success">Activo</span>`
             : `<span class="badge badge-secondary">Inactivo</span>`;
 
@@ -6041,7 +6109,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
         // Setup dynamic status button
         const $statusBtn = $("#btnTogglePatientStatus");
-        if (patient.status === "activo") {
+        if (patient.status === "active") {
           $statusBtn
             .text("Desactivar Paciente")
             .removeClass("btn-success")
@@ -6098,7 +6166,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             if (response.patients) {
               appData.patients = response.patients;
               renderPatientsTable();
-              updateDashboardStats();
+              refreshDashboardViews();
               
               // Update dropdowns if they exist
               if ($("#sessionPatient").length) {
@@ -6108,6 +6176,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                     .join("");
                   $("#sessionPatient").html(
                     '<option value="">Seleccionar paciente</option>' + patientOptions
+                  );
+                  $("#sessionPatientFilter").html(
+                    '<option value="all">Todos los pacientes</option>' + patientOptions
                   );
               } else {
                   console.warn("⚠️ #sessionPatient dropdown not found in DOM");
@@ -6194,21 +6265,22 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           headers: { Authorization: `Bearer ${token}` },
           contentType: "application/json",
           data: JSON.stringify({
-            pacienteId: parseInt(patientId),
-            notas: content,
-            mood_assessment: parseInt(mood),
-            medication_notes: medication,
-            requires_followup: parseInt(mood) <= 2 ? 1 : 0,
-            tipo: "consulta",
-            duracion: 30
+            patientId,
+            cleanNote: content,
+            moodAssessment: parseInt(mood),
+            medicationNotes: medication || null,
+            requiresFollowUp: parseInt(mood) <= 2,
+            sessionType: "individual",
+            durationMinutes: 30,
+            clinicalDate: localDateKey(),
+            careModality: "inPerson",
+            inputType: "text"
           }),
           success: function (response) {
             btn.html(originalText).prop('disabled', false);
             $("#newSessionModal").modal("hide");
             $("#newSessionForm")[0].reset();
             loadSessionsData();
-            loadDashboardData();
-            loadCharts();
             notificaciones.exito(
               "Sesión Registrada",
               "La sesión se guardó correctamente en el servidor."

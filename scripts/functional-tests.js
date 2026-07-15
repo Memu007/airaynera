@@ -83,6 +83,24 @@ class FunctionalTests {
     // 2. Login Flow
     console.log('\n2️⃣  Login Flow');
     {
+      const registrationDni = `9${Date.now().toString().slice(-10)}`;
+      const registration = await this.request('POST', '/api/auth/register', {
+        dni: registrationDni,
+        pin: '5678',
+        name: 'Test Professional',
+        specialty: 'psychology'
+      });
+      this.test('Registration returns 201', registration.status === 201);
+      this.test('Registration returns an immediately usable token', !!registration.data?.token);
+
+      const registeredPatients = await this.request(
+        'GET',
+        '/api/patients',
+        null,
+        registration.data?.token
+      );
+      this.test('Registration token can access the API', registeredPatients.status === 200);
+
       // Login con credenciales de demo
       const res = await this.request('POST', '/api/login', { dni: 'test1', pin: '1234' });
       this.test('Login returns 200', res.status === 200);
@@ -138,10 +156,13 @@ class FunctionalTests {
 
       // Update
       const updateRes = await this.request('PATCH', `/api/patients/${patientId}`, {
-        name: 'Updated Patient'
+        name: 'Updated Patient',
+        status: 'inactive'
       }, this.token);
       this.test('Update patient returns 200', updateRes.status === 200);
       this.test('Name was updated', updateRes.data?.name === 'Updated Patient');
+      this.test('Patient status is persisted canonically', updateRes.data?.status === 'inactive');
+      this.test('Patient ids are strings', typeof updateRes.data?.id === 'string');
 
       // Validation
       const invalidRes = await this.request('POST', '/api/patients', {
@@ -153,28 +174,57 @@ class FunctionalTests {
     // 5. CRUD Sessions
     console.log('\n5️⃣  CRUD Sessions');
     let sessionId;
+    let legacySessionId;
     {
       // Create
       const createRes = await this.request('POST', '/api/sessions', {
-        pacienteId: patientId,
-        notas: 'Test session notes',
-        tipo: 'individual',
-        duracion: 45
+        patientId,
+        cleanNote: 'Test session notes',
+        sessionType: 'individual',
+        durationMinutes: 45,
+        clinicalDate: '2026-07-14',
+        moodAssessment: 3,
+        requiresFollowUp: false
       }, this.token);
       this.test('Create session returns 201', createRes.status === 201);
       this.test('Created session has id', !!createRes.data?.id);
+      this.test('Created session uses canonical fields', createRes.data?.cleanNote === 'Test session notes');
+      this.test('Session includes the patient name', createRes.data?.patientName === 'Updated Patient');
+      this.test('Clinical date remains independent from creation time', createRes.data?.clinicalDate === '2026-07-14');
+      this.test('Session ids are strings', typeof createRes.data?.id === 'string');
       sessionId = createRes.data?.id;
 
       // Read (list)
       const listRes = await this.request('GET', '/api/sessions', null, this.token);
       this.test('List sessions returns 200', listRes.status === 200);
       this.test('List returns array', Array.isArray(listRes.data?.sessions));
+      this.test('Saved session survives a reload', listRes.data?.sessions?.some(s => s.id === sessionId));
+
+      const filteredRes = await this.request(
+        'GET',
+        `/api/sessions?patientId=${patientId}&from=2026-07-14&to=2026-07-14`,
+        null,
+        this.token
+      );
+      this.test('Session filters use the clinical date', filteredRes.data?.sessions?.length === 1);
 
       // Update
       const updateRes = await this.request('PATCH', `/api/sessions/${sessionId}`, {
-        notas: 'Updated notes'
+        cleanNote: 'Updated notes'
       }, this.token);
       this.test('Update session returns 200', updateRes.status === 200);
+      this.test('Canonical session note was updated', updateRes.data?.cleanNote === 'Updated notes');
+
+      const legacyRes = await this.request('POST', '/api/sessions', {
+        pacienteId: patientId,
+        notas: 'Legacy compatible note',
+        tipo: 'consulta',
+        duracion: 30
+      }, this.token);
+      legacySessionId = legacyRes.data?.id;
+      this.test('Legacy input remains temporarily compatible', legacyRes.status === 201);
+      this.test('Legacy input returns only canonical session fields',
+        legacyRes.data?.cleanNote === 'Legacy compatible note' && legacyRes.data?.notas === undefined);
 
       // Invalid patient
       const invalidRes = await this.request('POST', '/api/sessions', {
@@ -209,6 +259,8 @@ class FunctionalTests {
       // Delete session
       const delSession = await this.request('DELETE', `/api/sessions/${sessionId}`, null, this.token);
       this.test('Delete session returns 200', delSession.status === 200);
+      const delLegacySession = await this.request('DELETE', `/api/sessions/${legacySessionId}`, null, this.token);
+      this.test('Delete legacy-compatible session returns 200', delLegacySession.status === 200);
 
       // Delete patient
       const delPatient = await this.request('DELETE', `/api/patients/${patientId}`, null, this.token);
@@ -240,7 +292,6 @@ tests.run().catch(err => {
   console.error('Error:', err);
   process.exit(1);
 });
-
 
 
 

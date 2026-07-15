@@ -8,11 +8,10 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 
 - Repositorio: `Memu007/Aira.final`.
 - Rama actual: `agent/01-web-core`.
-- Commit base: `b78d7081810cdea9e2ef37af0dd54409ba7070aa`.
-- El árbol estaba limpio y sincronizado con `origin/main` antes de agregar esta documentación.
-- Etapa de producto: planificación del MVP terminada.
-- Etapa técnica: Etapa 0 en curso; línea base reproducible terminada.
-- Próximo objetivo: contratos canónicos de paciente, sesión y borrador.
+- Base de este bloque: `41892d3` (`record green ci baseline`).
+- Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
+- Etapa técnica: contratos canónicos definidos y vertical web principal funcionando.
+- Próximo objetivo: implementar `SessionDraft` para texto y conectar un doble de WhatsApp al mismo servicio.
 
 ## Dirección del producto acordada
 
@@ -43,11 +42,14 @@ Registro web
 
 ### Web
 
-- El registro no deja correctamente autenticado al usuario para continuar usando todas las APIs.
-- La web no carga las sesiones desde `GET /api/sessions` al iniciar.
-- El formato de pacientes y sesiones difiere entre frontend, API y SQLite.
-- La interfaz envía tipos y nombres de campo que el servidor no acepta o no devuelve.
-- Parte del dashboard y de la configuración modifica solamente estado local.
+- El registro devuelve y guarda un token utilizable inmediatamente.
+- La sesión web se restaura después de recargar mediante `/api/auth/verify`.
+- Pacientes y sesiones se cargan desde la API y usan respuestas canónicas `camelCase`.
+- Crear una sesión desde la web usa el contrato aceptado por el servidor y vuelve a consultar el historial.
+- El nombre del paciente se obtiene mediante la relación persistida, no queda vacío.
+- Fechas clínicas, timestamps, duración clínica y futura duración de audio están separadas.
+- El cambio de estado de paciente dejó de ser local y se persiste mediante la API.
+- Quedan pendientes la edición visible de sesiones y la interfaz de borradores.
 
 ### WhatsApp
 
@@ -70,7 +72,7 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La línea base actual pasa 30 de 30 pruebas funcionales con Node.js 20.
+- La batería actual pasa 45 de 45 pruebas funcionales con Node.js 20.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
 - `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
@@ -99,6 +101,16 @@ Estado remoto del PR técnico #2:
 - Validar primero el recorrido completo con texto y después agregar audio.
 - Conservar transcripción literal y nota limpia por separado.
 - Usar una cola persistente sencilla en SQLite para el piloto.
+- Los contratos vigentes están en `docs/DOMAIN_CONTRACTS.md`.
+- Los identificadores JSON son strings y las respuestas nuevas usan solamente `camelCase`.
+- `clinicalDate` es el día clínico; `createdAt` es el momento de persistencia.
+- `durationMinutes` y `audioDurationSeconds` nunca representan lo mismo.
+
+### Decisión multiagente: contratos del dominio
+
+El 2026-07-14 se compararon tres propuestas independientes. Se eligió la propuesta B porque mantuvo IDs consistentes, separó explícitamente fecha clínica de creación y duración clínica de duración de audio, y llevó web y WhatsApp al mismo modelo de borrador confirmable.
+
+Para reducir riesgo, la implementación se dividió en dos cortes: primero el vertical web persistente; después `SessionDraft` y WhatsApp. SQLite conserva columnas históricas detrás de adaptadores y la API responde en formato canónico.
 
 ### Decisión multiagente: dependencias y CI
 
@@ -125,22 +137,26 @@ Rama prevista: `agent/01-web-core`.
 - [x] Consolidar una única CI funcional confiable.
 - [x] Dejar los cuatro checks remotos del PR en verde.
 - [x] Introducir migraciones versionadas.
-- [ ] Definir contratos canónicos de paciente, sesión y borrador.
+- [x] Definir contratos canónicos de paciente, sesión y borrador.
 - [ ] Crear dobles de prueba para WhatsApp y transcripción.
 
 ### Etapa 1
 
-- [ ] Corregir el recorrido de registro y autenticación.
-- [ ] Corregir creación y carga de pacientes.
-- [ ] Corregir creación, carga, detalle y edición de sesiones.
-- [ ] Hacer persistentes los datos después de recargar.
-- [ ] Corregir filtros e indicadores del dashboard.
+- [x] Corregir el recorrido de registro y autenticación.
+- [x] Corregir creación y carga de pacientes.
+- [x] Corregir creación, carga y detalle de sesiones.
+- [ ] Incorporar edición visible de sesiones.
+- [x] Hacer persistentes los datos después de recargar.
+- [x] Corregir filtros e indicadores principales del dashboard.
 - [ ] Incorporar el modelo inicial de borrador.
-- [ ] Agregar pruebas del recorrido web completo.
+- [x] Preparar la tabla y restricciones del modelo de borrador.
+- [x] Agregar pruebas automatizadas y una prueba visible del recorrido web completo.
 
 ## Criterio para cerrar el próximo bloque
 
 > Un usuario nuevo se registra, crea un paciente, registra una sesión y continúa viéndola correctamente después de recargar la web.
+
+Cumplido localmente el 2026-07-14. La prueba visible terminó con 1 paciente y 1 sesión antes y después de recargar, sin errores de consola.
 
 ## Dependencias que necesitaremos más adelante
 
@@ -182,8 +198,9 @@ No bloquean el vertical de texto.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test` para confirmar la línea base 30/30.
-7. Implementar los contratos canónicos de paciente, sesión y borrador.
+6. Ejecutar `npm test` para confirmar la línea base 45/45.
+7. Implementar el servicio y la API de `SessionDraft` usando `db/migrations/002_canonical_sessions_and_drafts.sql`.
+8. Crear un doble de WhatsApp que produzca el mismo borrador sin escribir directamente en `sessions`.
 
 ## Regla para el próximo handoff
 
