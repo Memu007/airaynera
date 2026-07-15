@@ -95,7 +95,9 @@ Estado remoto del PR técnico #2:
 - Verificación posterior remota: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados sobre `e2e6b93`.
 - Implementación del vertical web: `f193163` (`make web core persistent`).
 - Verificación remota del vertical web: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
-- El PR técnico #2 sigue en borrador y su descripción ya refleja contratos, migración `002`, 45 pruebas y la validación visible.
+- Implementación de borradores: `e9085b8` (`route notes through session drafts`).
+- Verificación remota de borradores: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
+- El PR técnico #2 refleja ahora 66 pruebas, confirmación idempotente y WhatsApp simulado.
 
 ## Decisiones técnicas vigentes
 

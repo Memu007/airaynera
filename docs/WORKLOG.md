@@ -30,6 +30,9 @@ Demostrar que web y WhatsApp pueden producir el mismo borrador y que solamente u
 - WhatsApp simulado deduplica el mensaje y conserva `source=whatsapp` al confirmar.
 - Recorrido visible web aprobado con la nueva ruta: 1 paciente y 1 sesión antes y después de recargar.
 - Consola del navegador: sin errores ni advertencias.
+- Commit funcional publicado: `e9085b8` (`route notes through session drafts`).
+- PR técnico [#2](https://github.com/Memu007/Aira.final/pull/2) actualizado a `Build the persistent web and draft core`.
+- GitHub Actions: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados sobre el vertical de borradores.
 
 ### Siguiente trabajo
 
