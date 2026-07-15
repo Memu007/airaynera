@@ -169,3 +169,8 @@ uploads/
 data/audio-uploads/
 sessions/
 audit-logs/
+
+# Generated audio benchmark artifacts (manifest and scripts remain versioned)
+benchmarks/audio/generated/
+benchmarks/audio/**/*.wav
+!benchmarks/audio/**/*.json

@@ -1,7 +1,8 @@
 const crypto = require('node:crypto');
 const sql = require('./sqlite');
 const sessionDraftService = require('./sessionDraftService');
-const { getAudioProviders, getFixture } = require('./audio/fakeAudioProviders');
+const { getAudioProviders } = require('./audio/audioProviders');
+const { getFixture } = require('./audio/fakeAudioProviders');
 const temporaryAudioStore = require('./audio/temporaryAudioStore');
 const { clinicalDateKey } = require('../utils/clinicalDate');
 
@@ -56,10 +57,10 @@ function markFailed(userId, draftId, expectedStatus, stage, error, options) {
   }, options);
 }
 
-function processDraft(userId, draftId, options = {}) {
+function beginProcessing(userId, draftId, options = {}) {
   let draft = sessionDraftService.getDraft(userId, draftId);
   if (['ready', 'confirmed', 'cancelled'].includes(draft.status)) {
-    return { draft, processed: false };
+    return { draft, processed: false, terminal: true };
   }
   if (draft.inputType !== 'audio') {
     throw domainError('DRAFT_NOT_PROCESSABLE', 'Only audio drafts use the audio pipeline');
@@ -75,7 +76,10 @@ function processDraft(userId, draftId, options = {}) {
     throw domainError('DRAFT_NOT_PROCESSABLE', 'The draft cannot be processed from its current status');
   }
 
-  const providers = getAudioProviders();
+  const providers = getAudioProviders({
+    providers: options.providers,
+    forceFake: String(draft.mediaReference || '').startsWith('fixture://'),
+  });
   const resumeStructuring = draft.status === 'failed'
     && draft.failedStage === 'structuring'
     && Boolean(draft.rawTranscript);
@@ -89,6 +93,77 @@ function processDraft(userId, draftId, options = {}) {
   }, options);
   if (!draft) throw domainError('PROCESSING_ALREADY_CLAIMED', 'Another process claimed this draft');
 
+  return { draft, providers, resumeStructuring, terminal: false };
+}
+
+function transcriptionInput(draft, storedMedia, options) {
+  return {
+    mediaReference: draft.mediaReference,
+    mediaPath: storedMedia?.path || null,
+    mimeType: draft.mediaMimeType,
+    languageHint: 'es-AR',
+    attempt: draft.processingAttempts,
+    durationHintSeconds: draft.audioDurationSeconds,
+    signal: options.signal,
+  };
+}
+
+function persistTranscription(userId, draftId, draft, transcription, options) {
+  if (!String(transcription?.text || '').trim()) {
+    throw domainError('EMPTY_TRANSCRIPT', 'No speech was found in the audio');
+  }
+  const updated = transitionDraft(userId, draftId, ['transcribing'], {
+    status: 'structuring',
+    rawTranscript: String(transcription.text).trim(),
+    audioDurationSeconds: transcription.durationSeconds ?? draft.audioDurationSeconds,
+  }, options);
+  if (!updated) throw domainError('DRAFT_NOT_PROCESSABLE', 'The draft changed while transcribing');
+  return updated;
+}
+
+function cleanerInput(draft, options) {
+  return {
+    rawTranscript: draft.rawTranscript,
+    mediaReference: draft.mediaReference,
+    language: 'es-AR',
+    attempt: draft.processingAttempts,
+    signal: options.signal,
+  };
+}
+
+function persistStructuredNote(userId, draftId, structured, options) {
+  if (!String(structured?.cleanNote || '').trim()) {
+    throw domainError('EMPTY_CLEAN_NOTE', 'The note cleaner returned an empty note');
+  }
+  const draft = transitionDraft(userId, draftId, ['structuring'], {
+    status: 'ready',
+    cleanNote: String(structured.cleanNote).trim(),
+    clearFailure: true,
+    failedStage: null,
+    processingFinishedAt: new Date().toISOString(),
+  }, options);
+  if (!draft) throw domainError('DRAFT_NOT_PROCESSABLE', 'The draft changed while preparing the note');
+  return { draft, processed: true, failed: false };
+}
+
+function failedResult(userId, draftId, expectedStatus, stage, error, options) {
+  return {
+    draft: markFailed(userId, draftId, expectedStatus, stage, error, options),
+    processed: true,
+    failed: true,
+  };
+}
+
+function isThenable(value) {
+  return value && typeof value.then === 'function';
+}
+
+function processDraft(userId, draftId, options = {}) {
+  const processing = beginProcessing(userId, draftId, options);
+  if (processing.terminal) return { draft: processing.draft, processed: false };
+  let { draft } = processing;
+  const { providers, resumeStructuring } = processing;
+
   if (!resumeStructuring) {
     try {
       const storedMedia = temporaryAudioStore.isUploadReference(draft.mediaReference)
@@ -97,51 +172,63 @@ function processDraft(userId, draftId, options = {}) {
             sha256: draft.mediaSha256,
           })
         : null;
-      const transcription = providers.transcriber.transcribe({
-        mediaReference: draft.mediaReference,
-        mediaPath: storedMedia?.path || null,
-        mimeType: draft.mediaMimeType,
-        languageHint: 'es-AR',
-        attempt: draft.processingAttempts,
-        durationHintSeconds: draft.audioDurationSeconds,
-      });
-      if (!String(transcription.text || '').trim()) {
-        throw domainError('EMPTY_TRANSCRIPT', 'No speech was found in the simulated audio');
+      const transcription = providers.transcriber.transcribe(
+        transcriptionInput(draft, storedMedia, options)
+      );
+      if (isThenable(transcription)) {
+        throw domainError(
+          'AUDIO_PROVIDER_ASYNC_REQUIRED',
+          'Uploaded audio providers must run through the asynchronous worker path'
+        );
       }
-      draft = transitionDraft(userId, draftId, ['transcribing'], {
-        status: 'structuring',
-        rawTranscript: String(transcription.text).trim(),
-        audioDurationSeconds: transcription.durationSeconds,
-      }, options);
-      if (!draft) throw domainError('DRAFT_NOT_PROCESSABLE', 'The draft changed while transcribing');
+      draft = persistTranscription(userId, draftId, draft, transcription, options);
     } catch (error) {
-      draft = markFailed(userId, draftId, 'transcribing', 'transcribing', error, options);
-      return { draft, processed: true, failed: true };
+      return failedResult(userId, draftId, 'transcribing', 'transcribing', error, options);
     }
   }
 
   try {
-    const structured = providers.noteCleaner.clean({
-      rawTranscript: draft.rawTranscript,
-      mediaReference: draft.mediaReference,
-      language: 'es-AR',
-      attempt: draft.processingAttempts,
-    });
-    if (!String(structured.cleanNote || '').trim()) {
-      throw domainError('EMPTY_CLEAN_NOTE', 'The simulated cleaner returned an empty note');
+    const structured = providers.noteCleaner.clean(cleanerInput(draft, options));
+    if (isThenable(structured)) {
+      throw domainError(
+        'AUDIO_PROVIDER_ASYNC_REQUIRED',
+        'Asynchronous note cleaners must run through the worker path'
+      );
     }
-    draft = transitionDraft(userId, draftId, ['structuring'], {
-      status: 'ready',
-      cleanNote: String(structured.cleanNote).trim(),
-      clearFailure: true,
-      failedStage: null,
-      processingFinishedAt: new Date().toISOString(),
-    }, options);
-    if (!draft) throw domainError('DRAFT_NOT_PROCESSABLE', 'The draft changed while preparing the note');
-    return { draft, processed: true, failed: false };
+    return persistStructuredNote(userId, draftId, structured, options);
   } catch (error) {
-    draft = markFailed(userId, draftId, 'structuring', 'structuring', error, options);
-    return { draft, processed: true, failed: true };
+    return failedResult(userId, draftId, 'structuring', 'structuring', error, options);
+  }
+}
+
+async function processDraftAsync(userId, draftId, options = {}) {
+  const processing = beginProcessing(userId, draftId, options);
+  if (processing.terminal) return { draft: processing.draft, processed: false };
+  let { draft } = processing;
+  const { providers, resumeStructuring } = processing;
+
+  if (!resumeStructuring) {
+    try {
+      const storedMedia = temporaryAudioStore.isUploadReference(draft.mediaReference)
+        ? await temporaryAudioStore.verifyStoredMediaAsync(draft.mediaReference, {
+            sizeBytes: draft.mediaSizeBytes,
+            sha256: draft.mediaSha256,
+          }, { signal: options.signal })
+        : null;
+      const transcription = await providers.transcriber.transcribe(
+        transcriptionInput(draft, storedMedia, options)
+      );
+      draft = persistTranscription(userId, draftId, draft, transcription, options);
+    } catch (error) {
+      return failedResult(userId, draftId, 'transcribing', 'transcribing', error, options);
+    }
+  }
+
+  try {
+    const structured = await providers.noteCleaner.clean(cleanerInput(draft, options));
+    return persistStructuredNote(userId, draftId, structured, options);
+  } catch (error) {
+    return failedResult(userId, draftId, 'structuring', 'structuring', error, options);
   }
 }
 
@@ -313,5 +400,6 @@ module.exports = {
   ingestUpload,
   getProcessing,
   processDraft,
+  processDraftAsync,
   retry,
 };

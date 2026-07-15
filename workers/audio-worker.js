@@ -35,8 +35,10 @@ function publicWorkerError(error) {
 class AudioWorker {
   constructor(options = {}) {
     this.workerId = options.workerId || `audio-worker-${process.pid}-${crypto.randomUUID()}`;
+    this.providers = options.providers;
     this.stopping = false;
     this.sweepCounter = 0;
+    this.currentAbortController = null;
   }
 
   cleanupMediaForUser(userId, draft) {
@@ -73,23 +75,39 @@ class AudioWorker {
       return null;
     }
 
+    const abortController = new AbortController();
+    this.currentAbortController = abortController;
+    let leaseLost = false;
     const heartbeat = setInterval(() => {
-      sql.renewAudioProcessingJob(
-        job.id,
-        this.workerId,
-        job.leaseToken,
-        currentLeaseMs
-      );
+      try {
+        const renewed = sql.renewAudioProcessingJob(
+          job.id,
+          this.workerId,
+          job.leaseToken,
+          currentLeaseMs
+        );
+        if (!renewed) {
+          leaseLost = true;
+          abortController.abort();
+        }
+      } catch (_) {
+        leaseLost = true;
+        abortController.abort();
+      }
     }, Math.max(10, Math.min(1000, Math.floor(currentLeaseMs / 3))));
     heartbeat.unref?.();
 
     try {
-      const result = await Promise.resolve(audioDraftPipeline.processDraft(
+      const result = await audioDraftPipeline.processDraftAsync(
         job.userId,
         job.draftId,
-        { jobLeaseToken: job.leaseToken }
-      ));
-      if (!result.draft) return { job, leaseLost: true };
+        {
+          jobLeaseToken: job.leaseToken,
+          providers: this.providers,
+          signal: abortController.signal,
+        }
+      );
+      if (leaseLost || !result.draft) return { job, draft: result.draft, leaseLost: true };
 
       const finished = sql.finishAudioProcessingJob(
         job.id,
@@ -106,12 +124,14 @@ class AudioWorker {
       if (finished) this.cleanupMediaForUser(job.userId, result.draft);
       return { job, draft: result.draft, failed: Boolean(result.failed), leaseLost: !finished };
     } catch (error) {
-      sql.renewAudioProcessingJob(
+      if (leaseLost) return { job, error, leaseLost: true };
+      const renewed = sql.renewAudioProcessingJob(
         job.id,
         this.workerId,
         job.leaseToken,
         currentLeaseMs
       );
+      if (!renewed) return { job, error, leaseLost: true };
       let draft = null;
       try {
         draft = audioDraftPipeline.failDraftFromWorker(
@@ -133,6 +153,7 @@ class AudioWorker {
       return { job, draft, error, leaseLost: !finished };
     } finally {
       clearInterval(heartbeat);
+      if (this.currentAbortController === abortController) this.currentAbortController = null;
     }
   }
 
@@ -146,6 +167,7 @@ class AudioWorker {
 
   stop() {
     this.stopping = true;
+    this.currentAbortController?.abort();
   }
 }
 

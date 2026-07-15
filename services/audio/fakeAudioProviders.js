@@ -109,18 +109,10 @@ const fakeNoteCleaner = Object.freeze({
   },
 });
 
-function getAudioProviders() {
-  const transcriberName = process.env.AUDIO_TRANSCRIBER || 'fake';
-  const cleanerName = process.env.NOTE_CLEANER || 'fake';
-  if (transcriberName !== 'fake' || cleanerName !== 'fake') {
-    throw providerError('AUDIO_PROVIDER_NOT_CONFIGURED', 'Only fake audio providers are available in this milestone');
-  }
-  return { transcriber: fakeTranscriber, noteCleaner: fakeNoteCleaner };
-}
-
 module.exports = {
   cleanConservatively,
-  getAudioProviders,
+  fakeNoteCleaner,
+  fakeTranscriber,
   getFixture,
   listFixtures,
 };

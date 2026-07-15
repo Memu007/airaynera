@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "language": "es",
+  "synthetic": true,
+  "purpose": "integration-smoke-only",
+  "notice": "Todos los casos y nombres son artificiales. Este corpus corto valida integración y no elige proveedor ni representa habla rioplatense real.",
+  "variants": [
+    { "id": "paulina-lenta", "voice": "Paulina", "locale": "es-MX", "rate": 155 },
+    { "id": "paulina-normal", "voice": "Paulina", "locale": "es-MX", "rate": 190 },
+    { "id": "monica-lenta", "voice": "Mónica", "locale": "es-ES", "rate": 155 },
+    { "id": "monica-normal", "voice": "Mónica", "locale": "es-ES", "rate": 190 }
+  ],
+  "cases": [
+    {
+      "id": "negacion-riesgo",
+      "reference": "Paciente ficticia Ana Prisma refiere ansiedad leve. Niega ideación suicida y no presenta alucinaciones.",
+      "criticalSpans": [
+        { "id": "niega-ideacion-suicida", "kind": "negation", "accepted": ["niega ideación suicida"], "forbidden": ["presenta ideación suicida", "refiere ideación suicida"] },
+        { "id": "no-alucinaciones", "kind": "negation", "accepted": ["no presenta alucinaciones"], "forbidden": ["presenta alucinaciones"] }
+      ]
+    },
+    {
+      "id": "dosis-decimal",
+      "reference": "Paciente ficticio Bruno Delta toma clonazepam cero coma cinco miligramos por la noche y sertralina cincuenta miligramos por la mañana.",
+      "criticalSpans": [
+        { "id": "clonazepam-dosis", "kind": "dose", "accepted": ["clonazepam cero coma cinco miligramos", "clonazepam 0,5 miligramos", "clonazepam 0.5 miligramos"] },
+        { "id": "sertralina-dosis", "kind": "dose", "accepted": ["sertralina cincuenta miligramos", "sertralina 50 miligramos"] }
+      ]
+    },
+    {
+      "id": "frecuencia-sintomas",
+      "reference": "Paciente ficticia Carla Nube tuvo tres crisis de pánico esta semana, de diez minutos cada una, sin pérdida de conocimiento.",
+      "criticalSpans": [
+        { "id": "tres-crisis", "kind": "quantity", "accepted": ["tres crisis de pánico", "3 crisis de pánico"] },
+        { "id": "sin-perdida", "kind": "negation", "accepted": ["sin pérdida de conocimiento"], "forbidden": ["con pérdida de conocimiento", "perdió el conocimiento"] }
+      ]
+    },
+    {
+      "id": "suenio-horarios",
+      "reference": "Paciente ficticio Diego Faro se duerme a las dos de la mañana y se despierta a las seis. No consume cafeína después del mediodía.",
+      "criticalSpans": [
+        { "id": "horario-suenio", "kind": "time", "accepted": ["dos de la mañana", "2 de la mañana"] },
+        { "id": "no-cafeina", "kind": "negation", "accepted": ["no consume cafeína después del mediodía"], "forbidden": ["consume cafeína después del mediodía"] }
+      ]
+    },
+    {
+      "id": "alergia-medicacion",
+      "reference": "Paciente ficticia Eva Lumen informa alergia a la penicilina. No tuvo reacciones con ibuprofeno.",
+      "criticalSpans": [
+        { "id": "alergia-penicilina", "kind": "allergy", "accepted": ["alergia a la penicilina"] },
+        { "id": "no-reaccion-ibuprofeno", "kind": "negation", "accepted": ["no tuvo reacciones con ibuprofeno"], "forbidden": ["tuvo reacciones con ibuprofeno"] }
+      ]
+    },
+    {
+      "id": "presion-arterial",
+      "reference": "Paciente ficticio Fabio Quarzo registró presión arterial de ciento veinte sobre ochenta. Niega dolor de pecho y falta de aire.",
+      "criticalSpans": [
+        { "id": "presion", "kind": "measurement", "accepted": ["ciento veinte sobre ochenta", "120 sobre 80"] },
+        { "id": "niega-dolor-pecho", "kind": "negation", "accepted": ["niega dolor de pecho y falta de aire"], "forbidden": ["presenta dolor de pecho", "refiere dolor de pecho"] }
+      ]
+    },
+    {
+      "id": "escala-animo",
+      "reference": "Paciente ficticia Gala Vector puntúa su ánimo en cuatro sobre diez. Refiere cansancio, pero no abandono del tratamiento.",
+      "criticalSpans": [
+        { "id": "animo-cuatro", "kind": "score", "accepted": ["cuatro sobre diez", "4 sobre 10"] },
+        { "id": "no-abandono", "kind": "negation", "accepted": ["no abandono del tratamiento"], "forbidden": ["abandono del tratamiento", "abandonó el tratamiento"] }
+      ]
+    },
+    {
+      "id": "duracion-tratamiento",
+      "reference": "Paciente ficticio Hugo Órbita comenzó terapia hace ocho semanas. Asistió a siete encuentros y faltó a uno.",
+      "criticalSpans": [
+        { "id": "ocho-semanas", "kind": "duration", "accepted": ["ocho semanas", "8 semanas"] },
+        { "id": "siete-encuentros", "kind": "quantity", "accepted": ["siete encuentros", "7 encuentros"] }
+      ]
+    },
+    {
+      "id": "consumo-sustancias",
+      "reference": "Paciente ficticia Inés Cobalto no consume cocaína ni cannabis. Bebe una copa de vino los sábados.",
+      "criticalSpans": [
+        { "id": "no-consumo", "kind": "negation", "accepted": ["no consume cocaína ni cannabis"], "forbidden": ["consume cocaína", "consume cannabis"] },
+        { "id": "una-copa", "kind": "quantity", "accepted": ["una copa de vino", "1 copa de vino"] }
+      ]
+    },
+    {
+      "id": "seguimiento",
+      "reference": "Paciente ficticio Julián Marea continuará con venlafaxina setenta y cinco miligramos. Próximo control el veintidós de agosto.",
+      "criticalSpans": [
+        { "id": "venlafaxina-dosis", "kind": "dose", "accepted": ["venlafaxina setenta y cinco miligramos", "venlafaxina 75 miligramos"] },
+        { "id": "fecha-control", "kind": "date", "accepted": ["veintidós de agosto", "22 de agosto"] }
+      ]
+    }
+  ]
+}

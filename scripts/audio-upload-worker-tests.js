@@ -40,7 +40,7 @@ async function main() {
   process.env.AUDIO_UPLOAD_DIR = path.join(tempDir, 'audio-uploads');
   process.env.AUDIO_TRANSCRIBER = 'fake';
   process.env.NOTE_CLEANER = 'fake';
-  process.env.AUDIO_JOB_LEASE_MS = '20';
+  process.env.AUDIO_JOB_LEASE_MS = '100';
   process.env.DATA_KEY = '0'.repeat(64);
 
   const sql = require('../services/sqlite');

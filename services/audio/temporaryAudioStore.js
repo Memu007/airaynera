@@ -213,6 +213,38 @@ function verifyStoredMedia(reference, expected = {}) {
   return { path: filePath, sizeBytes: stat.size };
 }
 
+async function verifyStoredMediaAsync(reference, expected = {}, options = {}) {
+  const filePath = pathForReference(reference);
+  let stat;
+  try {
+    stat = await fsp.stat(filePath);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw storageError('AUDIO_FILE_MISSING', 'The temporary audio file is no longer available');
+    }
+    throw error;
+  }
+  if (!stat.isFile() || stat.size <= 0) {
+    throw storageError('AUDIO_FILE_MISSING', 'The temporary audio file is not valid');
+  }
+  if (expected.sizeBytes != null && Number(expected.sizeBytes) !== stat.size) {
+    throw storageError('AUDIO_FILE_CHANGED', 'The temporary audio file size changed');
+  }
+  if (expected.sha256) {
+    const hash = crypto.createHash('sha256');
+    for await (const chunk of fs.createReadStream(filePath)) {
+      if (options.signal?.aborted) {
+        throw storageError('AUDIO_PROCESSING_ABORTED', 'Audio processing lost its worker lease');
+      }
+      hash.update(chunk);
+    }
+    if (hash.digest('hex') !== expected.sha256) {
+      throw storageError('AUDIO_FILE_CHANGED', 'The temporary audio file content changed');
+    }
+  }
+  return { path: filePath, sizeBytes: stat.size };
+}
+
 function remove(reference) {
   if (!isUploadReference(reference)) return false;
   try {
@@ -259,4 +291,5 @@ module.exports = {
   storeStream,
   uploadDirectory,
   verifyStoredMedia,
+  verifyStoredMediaAsync,
 };
