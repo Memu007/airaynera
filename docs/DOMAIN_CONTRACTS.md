@@ -12,7 +12,7 @@ La web y WhatsApp deben terminar en el mismo flujo:
 4. El profesional revisa y confirma.
 5. Recién entonces aparece una sesión en la ficha del paciente.
 
-El recorrido de texto está implementado en web y WhatsApp simulado. La web ya acepta archivos de audio reales, los almacena temporalmente y los procesa mediante un worker SQLite usando proveedores falsos. WhatsApp conserva el audio sintético; Meta y los proveedores externos siguen pendientes.
+El recorrido de texto está implementado en web y WhatsApp simulado. La web acepta archivos de audio reales, los almacena temporalmente y los procesa mediante un worker SQLite. El worker puede usar fake o Gemini; fake sigue siendo el valor predeterminado. WhatsApp conserva el audio sintético y Meta real sigue pendiente.
 
 ## Reglas canónicas
 
@@ -177,8 +177,12 @@ received → transcribing → structuring → ready → confirmed
 - `rawTranscript`, tipo y duración de audio no son editables mediante los endpoints de revisión ni después de confirmar.
 - `cleanNote` sí se edita antes o después de confirmar.
 - Confirmar y cancelar usan transiciones condicionadas para que un resultado no sobrescriba al otro.
+- El worker renueva el lease mientras espera un proveedor asíncrono y aborta si pierde ownership o recibe shutdown.
+- Toda persistencia del resultado exige el fencing token vigente; una respuesta tardía no puede escribir.
 
-En este hito `AUDIO_TRANSCRIBER=fake` y `NOTE_CLEANER=fake`. Los fixtures y la salida de los proveedores falsos son artificiales y deterministas. Existe subida y almacenamiento temporal de archivos reales desde la web; todavía no existen grabación web, descarga desde Meta ni proveedor real.
+La configuración predeterminada es `AUDIO_TRANSCRIBER=fake` y `NOTE_CLEANER=fake`. `AUDIO_TRANSCRIBER=gemini` selecciona el adaptador real únicamente para uploads y exige `GEMINI_API_KEY`; los fixtures siempre usan fake. La transcripción se conserva en `rawTranscript` y la limpieza continúa separada. Todavía no existen grabación web ni descarga desde Meta.
+
+El adaptador Gemini acepta WAV, MP3/MPEG, AAC, OGG y MP4/M4A. WebM sigue siendo válido para el almacenamiento neutral, pero Gemini lo rechaza hasta agregar normalización de formato. La falla queda persistida; el audio debe convertirse y cargarse nuevamente antes de reintentar con Gemini.
 
 ## Vinculación web–WhatsApp implementada
 

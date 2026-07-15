@@ -9,10 +9,10 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
-- Último hito funcional: `6ebe43b` (`benchmark controlled audio worker throughput`).
+- Último hito funcional: `74a6ba3` (`add gemini audio worker integration`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: la web pide y persiste explícitamente fecha, tipo, duración, modalidad, ánimo opcional y seguimiento decidido por el profesional. La carga real conserva el borrador al cerrar, exige confirmación para descartarlo y limita el polling. La expiración backend usa compare-and-set antes de cancelar el job o borrar el medio; un paciente inactivo conserva su historia pero no admite sesiones ni borradores nuevos. El worker aprobó tres corridas de 40 WAV controlados, aunque la transcripción continúa siendo simulada. La batería funcional aprobó 129/129.
-- Próximo objetivo: preparar un corpus hablado con referencias humanas, habilitar proveedores asíncronos y ejecutar Groq/Gemini/OpenAI sobre los mismos recortes antes de elegir uno. Meta real se incorpora después y solamente cuando existan credenciales.
+- Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline ya acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite; sigue desactivado por defecto y no se hizo una llamada real porque este entorno no tiene clave. El smoke sintético de 40 WAV quedó generado y validado offline. La batería funcional aprobó 129/129.
+- Próximo objetivo: configurar `GEMINI_API_KEY` localmente, ejecutar el smoke integrado y conservar el reporte. Después corresponde preparar el corpus humano decisorio y comparar los mismos bytes con otros proveedores antes de aprobar uso clínico. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -78,7 +78,7 @@ Registro web
 - El deploy de prueba declara `WHATSAPP_ADAPTER=fake`; debe reemplazarse por Meta antes de producción real.
 - Un audio fallido queda asociado a la conversación y puede reintentarse por etapa o cancelarse.
 - La respuesta de audio listo muestra la nota preparada antes de guardar.
-- No existe todavía un webhook real de Meta, envío real de respuestas, descarga de audio ni proveedor real de transcripción.
+- No existe todavía un webhook real de Meta, envío real de respuestas ni descarga de audio. Gemini está implementado para uploads web, pero sigue desactivado y sin smoke real ejecutado.
 - Los endpoints heredados que escribían directamente en `sessions` ahora devuelven `410`.
 - El reconocimiento y envío n8n restantes siguen siendo prototipos y no forman parte del vertical nuevo.
 
@@ -93,10 +93,12 @@ Registro web
 - `db/migrations/005_audio_pipeline.sql` agrega referencia al medio, huella, intentos, etapa fallida y timestamps de procesamiento a `session_drafts`.
 - `db/migrations/006_audio_processing_jobs.sql` agrega metadata del archivo temporal y la cola durable `audio_processing_jobs`.
 - `services/audioDraftPipeline.js` es el punto común para web y WhatsApp.
+- `services/audio/audioProviders.js` selecciona proveedores sin acoplar el pipeline; fixtures siempre fuerzan fake.
 - `services/audio/fakeAudioProviders.js` contiene fixtures artificiales y limpieza conservadora; no contiene audios ni datos clínicos.
+- `services/audio/geminiAudioTranscriber.js` implementa Files API + Interactions API v1, salida estructurada, `store:false`, espera `ACTIVE`, cleanup remoto y cancelación por lease/shutdown.
 - `services/audio/temporaryAudioStore.js` recibe un stream binario, valida tamaño, firma y MIME, escribe primero un archivo parcial y entrega una referencia opaca `upload://...`.
 - `POST /api/audio-drafts/upload` responde sin esperar la transcripción; el límite predeterminado es 25 MB y la retención máxima es 24 horas.
-- `workers/audio-worker.js` reclama jobs con lease y fencing token, recupera trabajo abandonado y limpia el archivo después de persistir la transcripción o alcanzar un estado terminal.
+- `workers/audio-worker.js` reclama jobs con lease y fencing token, recupera trabajo abandonado, ejecuta el pipeline asíncrono, aborta el proveedor al perder el lease o apagar y limpia el archivo después de persistir la transcripción o alcanzar un estado terminal.
 - El barrido de expiración sólo cancela el job y elimina el medio si logró marcar atómicamente el borrador vencido; si otra instancia ya persistió la transcripción, el trabajo continúa.
 - `npm start` supervisa servidor y worker; `npm run dev` usa el mismo supervisor con autoreload. En Render, base y archivos temporales comparten el disco persistente montado en `/app/data`.
 - Estados: `received → transcribing → structuring → ready/failed`; confirmar y cancelar siguen usando el servicio canónico.
@@ -104,7 +106,8 @@ Registro web
 - `received`, jobs fallidos y leases vencidos son recuperables después de reiniciar; un worker con token obsoleto no puede sobrescribir al reemplazo.
 - La fecha clínica por defecto usa `APP_TIME_ZONE=America/Argentina/Buenos_Aires`.
 - `rawTranscript`, `inputType` y `audioDurationSeconds` son inmutables en la revisión y después de confirmar.
-- El comparativo de Groq, Gemini y OpenAI está en `docs/AUDIO_PROVIDER_BENCHMARK.md`. Groq Whisper Large v3 Turbo queda como baseline de costo, no como proveedor aprobado todavía.
+- La integración Gemini, el smoke sintético y el benchmark humano pendiente están separados en `docs/AUDIO_PROVIDER_BENCHMARK.md`; ningún proveedor está aprobado todavía para audio clínico.
+- `npm run corpus:audio:generate` produce 40 WAV TTS y un manifiesto con hashes fuera de Git; `npm run smoke:gemini` valida o ejecuta el recorrido integrado con reporte obligatorio.
 - `npm run benchmark:audio-worker` genera 40 WAV deterministas de 2 a 10 minutos y atraviesa HTTP, almacenamiento temporal, job SQLite, worker y cleanup sin conservar los archivos.
 - El resultado operativo está en `docs/AUDIO_WORKER_BENCHMARK.md`: tres corridas independientes, 120/120 listos, cero fallos, cero sesiones prematuras y cero residuos. No mide WER ni calidad clínica porque el fake no interpreta los bytes.
 
@@ -115,6 +118,7 @@ Registro web
 - La batería integral actual aprobó 129 de 129 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación, audio sintético y worker de uploads.
 - `scripts/ui-contract-tests.js` verifica los campos clínicos explícitos y que seguimiento no se derive del ánimo.
 - La suite del worker cubre límite streamed, expiración integral, carrera después del snapshot y recuperación desde un segundo proceso real.
+- `scripts/gemini-provider-tests.js` cubre contrato HTTP sin red, estado `ACTIVE`, JSON estructurado, retries seguros, abort, shutdown, heartbeat y fencing contra un resultado asíncrono obsoleto.
 - `scripts/runtime-supervisor-smoke.js` levanta el proceso de producción, verifica health, carga real, procesamiento hasta `ready` y apagado limpio.
 - El benchmark de volumen procesó 103,5 MB y 226 minutos representados por corrida con concurrencia cinco; el peor acuse fue 365 ms y el peor p95 extremo a extremo fue 1719,4 ms.
 - La CI ejecuta la batería integral, el supervisor real, sintaxis de Node/scripts embebidos y el contrato UI.
@@ -199,7 +203,15 @@ El 2026-07-15 se compararon tres propuestas independientes. Se eligió una entra
 
 Dos rondas competitivas encontraron y corrigieron fallos que no aparecían siempre en el happy path: persistencia de SQLite en Render, cancelación y cleanup atómicos, error terminal del worker, fencing obsoleto, recuperación de respuesta perdida, retry con polling, arranque del supervisor y contención `SQLITE_BUSY`. Después de las correcciones, los tres revisores declararon el corte publicable.
 
-El worker usa SQLite deliberadamente para este volumen del MVP. No se incorpora Redis ni un proveedor real hasta medir el corpus; la interfaz actual permite reemplazar el fake sin mover la llamada de red al proceso web.
+El worker usa SQLite deliberadamente para este volumen del MVP. No se incorpora Redis. Gemini ya está detrás de la interfaz, pero `fake` sigue siendo el valor predeterminado hasta ejecutar el smoke real y el benchmark humano.
+
+### Decisión multiagente: primer proveedor Gemini
+
+El 2026-07-15 tres agentes compararon API, arquitectura del worker y diseño de corpus. Se eligió Gemini 3.1 Flash-Lite como primer adaptador por disponibilidad de Free Tier para datos artificiales, usando REST nativo, Files API e Interactions API v1 con `store:false`. Los fixtures siguen síncronos y el archivo real usa exclusivamente el worker asíncrono.
+
+Tres rondas competitivas detectaron y corrigieron: polling del archivo hasta `ACTIVE`, POST no idempotentes reintentados a ciegas, backoff que sobrevivía al shutdown, cleanup remoto, abort de `SIGTERM`, fencing de resultados tardíos, reporte sin hash exacto y un scorer que podía aceptar una contradicción. La revisión final no dejó bloqueantes de código.
+
+El corpus TTS quedó clasificado explícitamente como smoke de integración: diez textos por cuatro variantes, corto y con voces `es-MX/es-ES`. No reemplaza el corpus humano ni aprueba calidad clínica. El Free Tier sólo debe recibir datos artificiales.
 
 ### Decisión multiagente: dependencias y CI
 
@@ -235,6 +247,9 @@ Rama prevista: `agent/01-web-core`.
 - [x] Persistir etapas, reintentos y recuperación tras reinicio.
 - [x] Aceptar un archivo real desde la web y almacenarlo temporalmente.
 - [x] Ejecutar el benchmark operativo del worker con 40 WAV controlados.
+- [x] Habilitar proveedores asíncronos y agregar el adaptador Gemini detrás del worker.
+- [x] Generar y validar offline el smoke sintético de 40 WAV.
+- [ ] Ejecutar el smoke real Gemini con clave local y conservar el reporte.
 - [ ] Ejecutar el benchmark Groq/Gemini/OpenAI.
 - [x] Separar el procesamiento de archivos reales en un worker SQLite antes de conectar un proveedor o WhatsApp real.
 
@@ -316,9 +331,10 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 6. Ejecutar `npm test`, `npm run test:runtime-supervisor`, `npm run build` y `npm run lint` antes de cada publicación; la batería actual aprueba 129/129.
 7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
 8. Publicar el siguiente hito verificado en `airaynera/main` y registrar el resultado aquí y en `docs/WORKLOG.md`.
-9. Preparar 30 a 50 recortes hablados creados para la prueba con referencias humanas y spans críticos.
-10. Habilitar adaptadores asíncronos, ejecutar Groq/Gemini/OpenAI con ese corpus y elegir por calidad, costo y latencia.
-11. Conectar Meta solamente después y con credenciales disponibles.
+9. Generar el corpus sintético fijo, configurar `GEMINI_API_KEY` fuera de Git y ejecutar `npm run smoke:gemini` con reporte obligatorio.
+10. Preparar 30 a 50 recortes humanos creados para la prueba con referencias revisadas y spans críticos.
+11. Ejecutar Gemini/Groq/OpenAI con exactamente esos bytes y elegir por calidad, costo y latencia.
+12. Conectar Meta solamente después y con credenciales disponibles.
 
 ## Regla para el próximo handoff
 

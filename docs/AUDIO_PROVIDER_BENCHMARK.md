@@ -1,63 +1,111 @@
-# Decisión y benchmark de proveedores de audio
+# Integración y benchmark de proveedores de audio
 
-Última revisión de precios: 2026-07-14.
+Última revisión: 2026-07-15.
 
 ## Decisión actual
 
-El producto no queda acoplado todavía a Gemini, Groq ni OpenAI. El hito funcional usa dos proveedores falsos y deterministas detrás de interfaces intercambiables:
+Gemini es el primer proveedor real integrado porque existe una cuenta gratuita disponible para validar el recorrido sin contratar otro servicio. Esto no lo aprueba todavía para audio clínico ni descarta Groq u OpenAI.
+
+El valor predeterminado sigue siendo:
 
 ```text
-audio → transcripción literal → limpieza conservadora → borrador revisable
+AUDIO_TRANSCRIBER=fake
+NOTE_CLEANER=fake
 ```
 
-Para el primer ensayo con audio real, la referencia de costo será **Groq Whisper Large v3 Turbo**. Gemini será el candidato de proveedor único y OpenAI el candidato de calidad. La elección final sale de un benchmark de 30 a 50 recortes creados para la prueba o correctamente anonimizados, no solamente del precio publicado.
+Sólo al configurar `AUDIO_TRANSCRIBER=gemini` y `GEMINI_API_KEY` un archivo real usa Gemini. Los fixtures `fixture://` continúan forzando el proveedor falso para que web, WhatsApp simulado y CI sean deterministas.
 
-La capacidad del recorrido `upload → almacenamiento → SQLite → worker → cleanup` ya fue medida por separado con 40 WAV controlados y tres corridas aprobadas. Ese resultado está en [AUDIO_WORKER_BENCHMARK.md](AUDIO_WORKER_BENCHMARK.md) y no debe confundirse con calidad de transcripción.
+## Adaptador Gemini implementado
 
-## Costos publicados
+`services/audio/geminiAudioTranscriber.js` usa REST nativo y no agrega un SDK:
 
-| Alternativa | Precio publicado | Aproximación por 5 minutos | Observación |
-|---|---:|---:|---|
-| Groq `whisper-large-v3-turbo` | USD 0,04 por hora | USD 0,0033 | ASR dedicado y la referencia publicada más barata de este grupo. Facturación mínima de 10 segundos. |
-| Groq `whisper-large-v3` | USD 0,111 por hora | USD 0,0093 | Más caro que Turbo; se conserva como candidato si mejora errores críticos. |
-| Gemini 3.1 Flash-Lite | USD 0,50 por millón de tokens de audio de entrada; USD 1,50 por millón de tokens de texto de salida | Desde USD 0,0048 de entrada de audio, más salida | Google documenta 32 tokens por segundo de audio. Es una estimación de entrada, no un costo final de transcripción y limpieza. |
-| OpenAI `gpt-4o-mini-transcribe` | Aproximadamente USD 0,003 por minuto | Aproximadamente USD 0,015 | Candidato a comparar por fidelidad, con costo superior a Groq Turbo. |
+- modelo configurable, con `gemini-3.1-flash-lite` como valor inicial;
+- Files API para subir el audio y borrado remoto en `finally`;
+- espera explícita hasta que el archivo remoto queda `ACTIVE`;
+- Interactions API estable `v1`, salida JSON `{ "transcript": "..." }` y `store: false`;
+- conservación literal de negaciones, números, dosis, nombres y fragmentos dudosos mediante el prompt;
+- timeout, backoff cancelable y retries solamente donde la operación es segura;
+- `upload, finalize` e `interactions.create` no se repiten a ciegas si se pierde la respuesta;
+- la pérdida de lease o el apagado del worker abortan upload, espera, backoff o inferencia;
+- un resultado tardío con fencing token obsoleto no puede modificar el borrador;
+- el cleanup remoto tiene un intento independiente de hasta un segundo; si falla queda un warning y Files API conserva su expiración automática.
 
-Fuentes oficiales:
+El pipeline tiene una ruta asíncrona usada por `workers/audio-worker.js`. La ruta síncrona se conserva únicamente para fixtures y rechaza proveedores que devuelvan una promesa.
 
-- [Groq Speech to Text](https://console.groq.com/docs/speech-to-text) y [precios de Groq](https://groq.com/pricing).
-- [Precios de Gemini API](https://ai.google.dev/gemini-api/docs/pricing), [audio en Gemini API](https://ai.google.dev/gemini-api/docs/audio) y [Gemini 3.1 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite).
-- [Precios de OpenAI API](https://developers.openai.com/api/docs/pricing) y [`gpt-4o-mini-transcribe`](https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe).
+Formatos habilitados en este adaptador: WAV, MP3/MPEG, AAC, OGG y MP4/M4A. AIRA todavía acepta WebM en la entrada general, pero Gemini no: con este proveedor un WebM termina como fallo visible y reintentable sólo después de convertir o reemplazar el archivo. La normalización automática de formatos queda pendiente.
 
-Los precios cambian. Deben verificarse nuevamente el día en que se active un proveedor real.
+Fuentes oficiales de la implementación:
 
-## Qué se medirá
+- [Gemini 3.1 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite).
+- [Interactions API v1](https://ai.google.dev/api/interactions-api-v1) y [guía de Interactions](https://ai.google.dev/gemini-api/docs/interactions-overview).
+- [Files API](https://ai.google.dev/gemini-api/docs/files) y [audio en Gemini](https://ai.google.dev/gemini-api/docs/audio).
+- [Troubleshooting y retries](https://ai.google.dev/gemini-api/docs/troubleshooting).
 
-Cada recorte tendrá una referencia humana. Para cada proveedor se registrará:
+## Smoke sintético reproducible
 
-- omisiones o cambios en negaciones;
-- errores en nombres, números, horarios y dosis;
-- palabras inventadas;
-- tiempo de corrección del profesional;
-- latencia total y fallos;
-- costo real informado por el proveedor;
-- diferencia entre transcripción literal y nota preparada.
+`benchmarks/audio/synthetic-smoke-v1/manifest.json` define diez textos completamente artificiales y cuatro variantes de voz/velocidad. El generador produce 40 WAV PCM mono de 16 kHz, registra SHA-256, tamaño, duración, referencia y spans críticos, y deja los binarios fuera de Git.
 
-No alcanza con medir WER general: un número o una negación incorrectos pesan más que un error de puntuación.
+Las voces Paulina (`es-MX`) y Mónica (`es-ES`) no representan habla rioplatense real. Los audios duran pocos segundos y no tienen ruido ni compresión. Este corpus prueba que Gemini puede atravesar:
 
-## Gate de elección
+```text
+WAV → almacenamiento temporal → draft/job SQLite → worker → Files API
+→ Interactions API → rawTranscript → cleanNote → cleanup local/remoto
+```
 
-1. Ningún proveedor se conecta al flujo principal sin pasar la misma suite de contrato que el proveedor falso.
-2. La transcripción literal siempre se conserva.
-3. La limpieza no agrega diagnósticos, recomendaciones ni datos ausentes.
-4. La persona revisa la nota limpia antes de guardar.
-5. El proveedor elegido debe tener el menor costo entre los que no superen el umbral acordado de errores críticos y tiempo de corrección.
+No sirve para elegir proveedor, estimar tiempo de corrección profesional ni aprobar fidelidad clínica.
 
-## Próxima implementación
+Generación persistente de los mismos bytes para una corrida:
 
-1. Preparar y versionar 30 a 50 recortes hablados creados para la prueba con referencias humanas y entidades críticas marcadas.
-2. Hacer asíncrona la interfaz de proveedores sin mover la llamada fuera del worker ni bloquear el heartbeat del lease.
-3. Implementar el adaptador Groq como baseline, sin cambiar `SessionDraft`.
-4. Ejecutar exactamente el mismo corpus con Gemini y OpenAI.
-5. Elegir proveedor y política de fallback a partir de resultados medidos.
-6. Recién después conectar la descarga de medios desde Meta.
+```bash
+npm run corpus:audio:generate -- --output=/tmp/aira-gemini-smoke-v1
+```
+
+Validación offline de hashes, WAV, referencias y scorer:
+
+```bash
+npm run smoke:gemini -- \
+  --validate-only \
+  --corpus-manifest=/tmp/aira-gemini-smoke-v1/generated-manifest.json
+```
+
+Corrida real opt-in, siempre con árbol Git limpio y reporte obligatorio:
+
+```bash
+GEMINI_API_KEY=... npm run smoke:gemini -- \
+  --corpus-manifest=/tmp/aira-gemini-smoke-v1/generated-manifest.json \
+  --report=benchmarks/audio/results/gemini-smoke-20260715.json
+```
+
+El reporte conserva commit, hash del manifiesto, hash del prompt, modelo, hashes de audio, referencia e hipótesis artificiales, request ID, usage, latencias, WER/CER y spans. La corrida es secuencial y espera cuatro segundos entre casos por defecto; puede ajustarse con `--delay-ms`.
+
+## Estado verificado
+
+- Contrato HTTP simulado de Gemini, polling `ACTIVE`, cleanup, cancelación, retries y respuesta estructurada: aprobado.
+- Provider registry, fixture síncrono, worker asíncrono, heartbeat, shutdown y fencing tardío: aprobado.
+- Scorer offline, incluido un caso adversarial que contiene afirmación y negación contradictorias: aprobado.
+- Generación y validación local de 40 WAV con servicios de voz de macOS: aprobada el 2026-07-15.
+- Smoke real contra Gemini: **no ejecutado** porque este entorno no tiene `GEMINI_API_KEY` ni `GOOGLE_API_KEY` configurada.
+
+No se registrará un resultado fake como si fuera una corrida Gemini.
+
+## Free Tier y datos reales
+
+El Free Tier puede usarse solamente con este corpus artificial. Google informa que el contenido del Free Tier puede usarse para mejorar sus productos, mientras que para el Paid Tier indica lo contrario. Los límites reales dependen del proyecto y deben revisarse en AI Studio.
+
+Fuentes: [pricing de Gemini](https://ai.google.dev/gemini-api/docs/pricing) y [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+
+No se debe enviar audio de pacientes al Free Tier. La habilitación con datos clínicos reales requiere Paid Tier y las revisiones de privacidad, retención y contrato que el producto decidió diferir.
+
+## Benchmark decisorio pendiente
+
+La elección de proveedor continúa requiriendo un corpus humano separado:
+
+- 30 a 50 audios creados para evaluación, sin datos de pacientes;
+- referencias revisadas por una persona;
+- exactamente los mismos bytes y hashes para Gemini, Groq y OpenAI;
+- notas de 2 a 10 minutos, voces y condiciones representativas;
+- WER/CER, omisiones, invenciones, negaciones, números, dosis y nombres;
+- latencia, fallos, usage/costo y tiempo de corrección profesional;
+- revisión explícita de cada contradicción o error crítico.
+
+El proveedor elegido será el de menor costo entre los que superen el gate clínico acordado. Hasta entonces `AUDIO_TRANSCRIBER=fake` sigue siendo la configuración segura y reproducible del proyecto.

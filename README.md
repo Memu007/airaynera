@@ -16,12 +16,12 @@ Cuenta web
 
 ## Estado del proyecto
 
-El proyecto está en una etapa de consolidación funcional. El recorrido web registro → paciente → borrador → sesión → recarga ya funciona localmente. La web también puede vincular un teléfono y simular el recorrido `MENÚ → paciente → nota → GUARDAR/CANCELAR`; la cuenta y el paciente salen del estado persistido, no del contenido. La web recibe archivos de audio reales, los almacena temporalmente y un worker separado prepara el mismo borrador confirmable con proveedores falsos. Este recorrido operativo aprobó tres corridas de 40 WAV controlados. Todavía no se usa el transporte de Meta ni un proveedor externo de transcripción.
+El proyecto está en una etapa de consolidación funcional. El recorrido web registro → paciente → borrador → sesión → recarga ya funciona localmente. La web también puede vincular un teléfono y simular el recorrido `MENÚ → paciente → nota → GUARDAR/CANCELAR`; la cuenta y el paciente salen del estado persistido, no del contenido. La web recibe archivos de audio reales, los almacena temporalmente y un worker separado prepara el mismo borrador confirmable. Fake sigue siendo el proveedor predeterminado; Gemini 3.1 Flash-Lite ya está integrado como opción y espera una corrida real con clave local. Todavía no se usa el transporte de Meta.
 
 Las prioridades vigentes son:
 
-1. Preparar 30 a 50 recortes hablados creados para la prueba, con referencias humanas.
-2. Adaptar el pipeline a proveedores asíncronos y comparar Groq, Gemini y OpenAI con el mismo corpus.
+1. Ejecutar el smoke integrado Gemini con el corpus artificial fijo y conservar el reporte.
+2. Preparar 30 a 50 recortes humanos creados para la prueba y comparar los mismos bytes entre proveedores.
 3. Conectar el webhook y la descarga de medios de Meta cuando existan credenciales.
 4. Probar el producto con profesionales y medir tiempo de corrección, latencia y costo.
 
@@ -65,6 +65,8 @@ npm run dev
 `npm run dev` levanta servidor y worker de audio mediante el mismo supervisor usado en producción, y reinicia ambos cuando cambia el código activo del backend. `npm start` hace lo mismo sin autoreload.
 
 `npm run benchmark:audio-worker` ejecuta el benchmark reproducible de 40 WAV controlados contra un runtime y almacenamiento temporales.
+
+`npm run corpus:audio:generate` crea el smoke hablado artificial en macOS. `npm run smoke:gemini -- --validate-only` lo valida sin usar red ni cuota; la corrida real requiere clave, manifiesto fijo y reporte según [AUDIO_PROVIDER_BENCHMARK.md](docs/AUDIO_PROVIDER_BENCHMARK.md).
 
 Sin configurar `PORT`, el servidor usa el puerto `8080`. El archivo `.env.example` propone el puerto `3000` para desarrollo.
 

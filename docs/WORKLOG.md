@@ -2,6 +2,53 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-15 — Gemini detrás del worker asíncrono
+
+### Objetivo
+
+Integrar Gemini como primer proveedor real sin bloquear la web, sin romper fixtures y sin presentar un corpus sintético como validación clínica.
+
+### Trabajo realizado
+
+- Se agregó un registry de proveedores: `fake` sigue siendo el valor predeterminado y `fixture://` nunca depende de una clave externa.
+- El pipeline comparte persistencia y transiciones entre ruta síncrona y asíncrona; los uploads reales se verifican por stream y se procesan sólo desde el worker.
+- `geminiAudioTranscriber` usa Files API e Interactions API v1 con Gemini 3.1 Flash-Lite, `store:false`, JSON estructurado y prompt literal.
+- El adaptador espera el estado remoto `ACTIVE`, elimina el File en `finally`, acota timeouts y separa retries seguros de POST sin idempotencia.
+- Heartbeat, backoff, upload e inferencia escuchan el abort del lease; `stop()` cancela el proveedor activo.
+- Un fencing token obsoleto impide que un resultado asíncrono tardío persista raw, clean o el estado del job.
+- Se agregó un smoke artificial de 40 WAV TTS con manifiesto, hashes, referencias y spans; los binarios y secretos quedan fuera de Git.
+- La corrida real exige árbol Git limpio, manifiesto de bytes fijo y reporte. El reporte conserva commit, hash de corpus/prompt, referencia e hipótesis artificiales, request ID, usage y latencias.
+- El smoke se diferencia del benchmark humano decisorio: las voces `es-MX/es-ES`, la corta duración y la ausencia de ruido no representan el uso clínico.
+
+### Revisión multiagente
+
+- Tres agentes revisaron por separado contrato Gemini, worker/leases y corpus/métricas.
+- Encontraron polling `ACTIVE` ausente, retries ambiguos, shutdown con timers vivos, cleanup remoto, falta de fencing integrado, reporte no auditable y spans que podían aprobar una contradicción.
+- Se corrigieron todos esos puntos y una tercera ronda no dejó bloqueantes de código.
+
+### Verificaciones
+
+- `npm test`: aprobado, incluida la batería funcional 129/129.
+- `npm run test:gemini-provider`: aprobado con HTTP simulado, cancelación, heartbeat, shutdown y fencing tardío.
+- `npm run test:audio-upload-worker`: aprobado con lease de prueba estable.
+- `npm run test:runtime-supervisor`: aprobado.
+- `npm run lint`, `npm run check:syntax` y `git diff --check`: aprobados.
+- `npm run benchmark:audio-worker`: 40/40 `ready`, cero residuos y todos los gates aprobados después de introducir el pipeline asíncrono.
+- `npm run smoke:gemini -- --validate-only`: 40/40 WAV generados y validados offline en macOS.
+- Smoke real Gemini: no ejecutado; `GEMINI_API_KEY` y `GOOGLE_API_KEY` no estaban configuradas en este entorno.
+- Commit funcional: `74a6ba3` (`add gemini audio worker integration`).
+
+### Decisión de uso
+
+El Free Tier se usa solamente con contenido artificial. No se envía audio de pacientes hasta contar con Paid Tier y las revisiones de privacidad/contrato diferidas por producto. El proveedor predeterminado continúa siendo `fake`.
+
+### Próximo paso
+
+1. Generar un corpus fijo con `npm run corpus:audio:generate`.
+2. Configurar la clave localmente, sin pegarla en chats ni versionarla.
+3. Ejecutar `npm run smoke:gemini` con `--corpus-manifest` y `--report`.
+4. Preparar el corpus humano decisorio y comparar los mismos bytes antes de aprobar proveedor.
+
 ## 2026-07-15 — Benchmark controlado del worker de audio
 
 ### Objetivo
