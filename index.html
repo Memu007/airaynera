@@ -698,41 +698,6 @@
         overflow-y: auto;
       }
 
-      /* Botón Menú Mobile */
-      .menu-toggle-btn {
-        position: fixed;
-        bottom: var(--aira-space-lg);
-        right: var(--aira-space-lg);
-        width: 50px;
-        height: 50px;
-        border-radius: 50%;
-        background: var(--aira-gradient);
-        color: var(--aira-white);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        box-shadow: var(--aira-shadow-lg);
-        z-index: 1050;
-        border: none;
-        cursor: pointer;
-      }
-
-      @media (max-width: 767px) {
-        .menu-toggle-btn {
-          display: flex;
-        }
-
-        .sidebar.collapsed {
-          transform: translateX(-100%);
-          transition: transform 0.3s ease;
-        }
-
-        .sidebar {
-          transform: translateX(0);
-          transition: transform 0.3s ease;
-        }
-      }
-
       .sidebar .nav-link {
         color: rgba(255, 255, 255, 0.8);
         padding: 0.85rem 1.5rem;
@@ -1107,6 +1072,7 @@
       @media (max-width: 768px) {
         .sidebar {
           margin-left: -260px;
+          transition: margin-left 0.3s ease;
         }
 
         .main-panel {
@@ -1882,33 +1848,30 @@
           <div class="row align-items-center min-vh-100">
             <div class="col-lg-6">
               <h1 class="display-4 font-weight-bold mb-3">
-                AIRA: Tu asistente de WhatsApp que reduce 5 horas semanales de
-                trabajo administrativo
+                AIRA: notas clínicas revisables desde texto o audio
               </h1>
               <p class="lead mb-2">
                 <span class="text-primary font-weight-bold"
-                  >Profesionales de salud mental ahorran un 40% de tiempo en
-                  documentación</span
+                  >Un MVP para registrar, revisar y guardar notas posteriores a la sesión.</span
                 >
               </p>
               <p class="text-muted mb-4">
-                El primer asistente clínico que vive en
-                <span class="text-primary">WhatsApp</span>. Para psicólogos y
-                psiquiatras que quieren digitalizar su práctica sin
-                complicaciones.
+                La web ya permite trabajar con texto y archivos de audio reales.
+                El proveedor real de transcripción y la conexión oficial con WhatsApp
+                están en desarrollo.
               </p>
               <div class="mb-4">
                 <div class="d-flex align-items-center mb-2">
                   <span class="text-success mr-2">✅</span>
-                  <span>Todo desde WhatsApp - sin apps adicionales</span>
+                  <span>Pacientes, borradores y sesiones persistentes en la web</span>
                 </div>
                 <div class="d-flex align-items-center mb-2">
-                  <span class="text-success mr-2">✅</span>
-                  <span>Encriptación médica y cumplimiento GDPR</span>
+                  <span class="text-warning mr-2">🧪</span>
+                  <span>Transcripción simulada para validar el recorrido</span>
                 </div>
                 <div class="d-flex align-items-center mb-2">
-                  <span class="text-success mr-2">✅</span>
-                  <span>IA integrada para resúmenes automáticos</span>
+                  <span class="text-muted mr-2">🛠️</span>
+                  <span>WhatsApp oficial y proveedor real: en desarrollo</span>
                 </div>
               </div>
               <div class="mt-4">
@@ -1918,7 +1881,7 @@
                     style="font-size: 1.2rem"
                     onclick="showRegisterModal()"
                   >
-                    <i class="fas fa-rocket mr-2"></i> Comenzar Gratis
+                    <i class="fas fa-rocket mr-2"></i> Crear cuenta de prueba
                   </button>
                   <button
                     class="btn btn-outline-primary btn-lg py-3 px-4 shadow-sm ml-md-3 mt-3 mt-md-0"
@@ -1927,10 +1890,7 @@
                     <i class="fas fa-play-circle mr-2"></i> Ver Demo
                   </button>
                 </div>
-                <p class="text-success mt-2">
-                  <i class="fas fa-check-circle"></i> Prueba 14 días sin
-                  compromiso
-                </p>
+                <p class="text-muted mt-2">Sin cobros ni suscripciones en este corte.</p>
               </div>
             </div>
             <div class="col-lg-6 text-center d-none d-lg-block">
@@ -1970,17 +1930,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body text-center">
                   <div class="feature-icon mb-2">💬</div>
-                  <span class="badge badge-success mb-2"
-                    >Sin curva de aprendizaje</span
-                  >
-                  <h5 class="card-title">WhatsApp Nativo</h5>
+                  <span class="badge badge-success mb-2">Disponible</span>
+                  <h5 class="card-title">Flujo web funcional</h5>
                   <p class="card-text text-muted">
-                    No necesitás aprender nuevas apps. Todo funciona desde tu
-                    WhatsApp habitual.
+                    Creá pacientes y registrá notas de texto o audio desde el panel.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Empezá a usar en
-                    menos de 2 minutos
+                    <i class="fas fa-check-circle mr-1"></i> Guardado mediante borradores revisables
                   </p>
                 </div>
               </div>
@@ -1989,17 +1945,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body text-center">
                   <div class="feature-icon mb-2">🔒</div>
-                  <span class="badge badge-success mb-2"
-                    >Cumple estándares médicos</span
-                  >
-                  <h5 class="card-title">Seguridad Médica</h5>
+                  <span class="badge badge-success mb-2">Disponible</span>
+                  <h5 class="card-title">Procesamiento recuperable</h5>
                   <p class="card-text text-muted">
-                    Encriptación AES-256 y cumplimiento GDPR. Tus datos y los de
-                    tus pacientes están seguros.
+                    Los archivos se guardan temporalmente y un worker prepara la nota.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Respaldo legal y
-                    técnico garantizado
+                    <i class="fas fa-check-circle mr-1"></i> Estados, reintentos y cancelación visibles
                   </p>
                 </div>
               </div>
@@ -2008,17 +1960,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body text-center">
                   <div class="feature-icon mb-2">🤖</div>
-                  <span class="badge badge-success mb-2"
-                    >Ahorra 1 hora por sesión</span
-                  >
-                  <h5 class="card-title">IA Integrada</h5>
+                  <span class="badge badge-secondary mb-2">En desarrollo</span>
+                  <h5 class="card-title">Proveedor real y WhatsApp</h5>
                   <p class="card-text text-muted">
-                    Resúmenes automáticos de sesiones y análisis de estado
-                    anímico con inteligencia artificial.
+                    La conexión oficial y la transcripción real se incorporarán después del benchmark.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Identifica patrones
-                    que podrías pasar por alto
+                    <i class="fas fa-tools mr-1"></i> La revisión profesional seguirá siendo obligatoria
                   </p>
                 </div>
               </div>
@@ -2042,12 +1990,10 @@
                   <span class="badge badge-primary mb-2">Paso 1</span>
                   <h5 class="card-title">Te registrás</h5>
                   <p class="card-text text-muted">
-                    Completás un formulario simple con tu DNI y datos
-                    profesionales en menos de 1 minuto.
+                    Completás un formulario con tu DNI y datos profesionales.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Sin papeles ni
-                    burocracia
+                    <i class="fas fa-check-circle mr-1"></i> Acceso directo al panel
                   </p>
                 </div>
               </div>
@@ -2057,14 +2003,12 @@
                 <div class="card-body text-center">
                   <div class="feature-icon mb-2">💬</div>
                   <span class="badge badge-primary mb-2">Paso 2</span>
-                  <h5 class="card-title">Hablás con el bot</h5>
+                  <h5 class="card-title">Elegís paciente y origen</h5>
                   <p class="card-text text-muted">
-                    Enviás un mensaje a nuestro WhatsApp y comenzás a usar el
-                    sistema inmediatamente.
+                    Escribís una nota o subís un audio desde la web; el paciente siempre se selecciona explícitamente.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Respuestas
-                    instantáneas 24/7
+                    <i class="fas fa-tools mr-1"></i> Canal oficial de WhatsApp en desarrollo
                   </p>
                 </div>
               </div>
@@ -2074,10 +2018,9 @@
                 <div class="card-body text-center">
                   <div class="feature-icon mb-2">💼</div>
                   <span class="badge badge-primary mb-2">Paso 3</span>
-                  <h5 class="card-title">Gestionás tu práctica</h5>
+                  <h5 class="card-title">Revisás y guardás</h5>
                   <p class="card-text text-muted">
-                    Registrás pacientes, documentás sesiones y accedés a tu
-                    panel web desde cualquier dispositivo.
+                    Corregís la nota preparada y decidís si requiere seguimiento antes de confirmar.
                   </p>
                   <p class="text-primary small">
                     <i class="fas fa-check-circle mr-1"></i> Todo integrado en
@@ -2109,9 +2052,8 @@
               </p>
               <p class="text-muted">
                 Nuestra filosofía es simple: la tecnología debe ser accesible y
-                adaptarse al profesional, no al revés. Por eso AIRA funciona
-                donde ya estás cómodo: en WhatsApp, sin complicaciones ni curvas
-                de aprendizaje.
+                adaptarse al profesional. El flujo web se valida primero; el canal
+                oficial de WhatsApp se incorporará cuando esté listo para pruebas reales.
               </p>
             </div>
             <div class="col-lg-6 text-center">
@@ -2140,7 +2082,7 @@
         <div class="container">
           <div class="text-center mb-4">
             <h4 class="text-primary mb-2">
-              <strong>+350 profesionales</strong> ya confían en AIRA
+              <strong>Piloto de profesionales en preparación</strong>
             </h4>
             <div class="d-flex justify-content-center align-items-center">
               <img
@@ -2150,7 +2092,7 @@
                 height="30"
                 class="mx-2"
               />
-              <span class="badge badge-success py-2 px-3">4.8/5 ★★★★★</span>
+              <span class="badge badge-secondary py-2 px-3">Métricas en desarrollo</span>
             </div>
           </div>
 
@@ -2172,18 +2114,16 @@
                       LP
                     </div>
                     <div>
-                      <h5 class="mb-0">Dra. Laura Pérez</h5>
+                      <h5 class="mb-0">Testimonios</h5>
                       <p class="text-muted small mb-0">
-                        Psicóloga Clínica, 8 años exp.
+                        Pendientes del piloto
                       </p>
                     </div>
                   </div>
                   <p class="card-text">
-                    "AIRA me ahorra 6 horas semanales en papeleo. Puedo
-                    documentar sesiones mientras camino a casa y tener todo
-                    organizado sin esfuerzo extra."
+                    Esta sección se completará con experiencias verificadas de profesionales que participen del piloto.
                   </p>
-                  <div class="text-warning">★★★★★</div>
+                  <div class="text-muted small">Sin resultados publicados todavía</div>
                 </div>
               </div>
             </div>
@@ -2204,18 +2144,16 @@
                       MR
                     </div>
                     <div>
-                      <h5 class="mb-0">Dr. Martín Rodríguez</h5>
+                      <h5 class="mb-0">Ahorro de tiempo</h5>
                       <p class="text-muted small mb-0">
-                        Psiquiatra, Hospital Central
+                        Medición pendiente
                       </p>
                     </div>
                   </div>
                   <p class="card-text">
-                    "Lo que más valoro es poder acceder a todos los historiales
-                    desde cualquier dispositivo. Además, los resúmenes
-                    automáticos me ayudan a preparar informes rápidamente."
+                    El ahorro real se medirá durante el piloto; AIRA no publica cifras sin evidencia.
                   </p>
-                  <div class="text-warning">★★★★★</div>
+                  <div class="text-muted small">Métrica en desarrollo</div>
                 </div>
               </div>
             </div>
@@ -2236,20 +2174,16 @@
                       CG
                     </div>
                     <div>
-                      <h5 class="mb-0">Lic. Carolina Gómez</h5>
+                      <h5 class="mb-0">Calidad de notas</h5>
                       <p class="text-muted small mb-0">
-                        Terapeuta, Práctica Privada
+                        Benchmark pendiente
                       </p>
                     </div>
                   </div>
                   <p class="card-text">
-                    "Al principio tenía dudas sobre usar WhatsApp
-                    profesionalmente, pero AIRA lo hace seguro y eficiente. Mis
-                    pacientes notan que estoy más presente en las sesiones."
+                    La calidad se comparará con audios creados o anonimizados antes de elegir un proveedor real.
                   </p>
-                  <div class="text-warning">
-                    ★★★★<span class="text-muted">★</span>
-                  </div>
+                  <div class="text-muted small">Resultado en desarrollo</div>
                 </div>
               </div>
             </div>
@@ -2271,17 +2205,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="feature-icon mb-2">📋</div>
-                  <span class="badge badge-success mb-2"
-                    >Ahorra 30 min por paciente nuevo</span
-                  >
+                  <span class="badge badge-success mb-2">Disponible en web</span>
                   <h5 class="card-title">Registro de Pacientes</h5>
                   <p class="card-text text-muted">
-                    Crea perfiles completos para tus pacientes con datos
-                    demográficos, historial y notas personalizadas.
+                    Creá fichas de pacientes y consultá su historial de notas.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> "Agregá un paciente
-                    nuevo" desde WhatsApp
+                    <i class="fas fa-tools mr-1"></i> Alta por WhatsApp en desarrollo
                   </p>
                 </div>
               </div>
@@ -2290,17 +2220,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="feature-icon mb-2">📝</div>
-                  <span class="badge badge-success mb-2"
-                    >Recuperá 2 horas semanales</span
-                  >
+                  <span class="badge badge-success mb-2">Disponible en web</span>
                   <h5 class="card-title">Documentación de Sesiones</h5>
                   <p class="card-text text-muted">
-                    Dictá notas de sesión, observaciones y planes de tratamiento
-                    directamente a WhatsApp mientras están frescas.
+                    Escribí una nota o subí un audio real, revisá el borrador y confirmalo.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> "Nueva sesión para
-                    [paciente]" y listo
+                    <i class="fas fa-info-circle mr-1"></i> Transcripción simulada en este corte
                   </p>
                 </div>
               </div>
@@ -2309,17 +2235,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="feature-icon mb-2">🔄</div>
-                  <span class="badge badge-success mb-2"
-                    >Trabajá desde cualquier lugar</span
-                  >
-                  <h5 class="card-title">Sincronización Automática</h5>
+                  <span class="badge badge-success mb-2">Disponible</span>
+                  <h5 class="card-title">Persistencia del flujo</h5>
                   <p class="card-text text-muted">
-                    Toda la información se sincroniza al instante con tu panel
-                    web para acceso seguro desde cualquier dispositivo.
+                    Pacientes, borradores, trabajos y sesiones se conservan en el backend de AIRA.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Backup automático
-                    en la nube incluido
+                    <i class="fas fa-check-circle mr-1"></i> Reintentos recuperables del worker
                   </p>
                 </div>
               </div>
@@ -2328,17 +2250,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="feature-icon mb-2">📊</div>
-                  <span class="badge badge-success mb-2"
-                    >Identificá patrones clave</span
-                  >
+                  <span class="badge badge-success mb-2">Disponible</span>
                   <h5 class="card-title">Análisis de Progreso</h5>
                   <p class="card-text text-muted">
-                    Visualizá el progreso de tus pacientes con gráficos y
-                    análisis de tendencias a lo largo del tiempo.
+                    Visualizá promedios mensuales construidos sólo con evaluaciones registradas.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Compara resultados
-                    entre sesiones
+                    <i class="fas fa-check-circle mr-1"></i> Estado vacío cuando no hay datos
                   </p>
                 </div>
               </div>
@@ -2347,17 +2265,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="feature-icon mb-2">📱</div>
-                  <span class="badge badge-success mb-2"
-                    >Reducí ausencias en un 70%</span
-                  >
+                  <span class="badge badge-secondary mb-2">En desarrollo</span>
                   <h5 class="card-title">Recordatorios</h5>
                   <p class="card-text text-muted">
-                    Configurá recordatorios automáticos para citas y
-                    seguimientos que se envían directamente a tu WhatsApp.
+                    Los recordatorios de citas y seguimientos todavía no forman parte del flujo funcional.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> "Recordatorio para
-                    [paciente] mañana 15hs"
+                    <i class="fas fa-tools mr-1"></i> Sin automatizaciones activas
                   </p>
                 </div>
               </div>
@@ -2366,17 +2280,13 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="feature-icon mb-2">📄</div>
-                  <span class="badge badge-success mb-2"
-                    >Impresioná a tus colegas</span
-                  >
-                  <h5 class="card-title">Exportación de Informes</h5>
+                  <span class="badge badge-success mb-2">Excel disponible</span>
+                  <h5 class="card-title">Exportación de sesiones</h5>
                   <p class="card-text text-muted">
-                    Generá y exportá informes profesionales en PDF o Excel para
-                    compartir con colegas o instituciones.
+                    Exportá el listado de sesiones filtradas a una planilla Excel.
                   </p>
                   <p class="text-primary small">
-                    <i class="fas fa-check-circle mr-1"></i> Informes
-                    personalizados con tu logo
+                    <i class="fas fa-tools mr-1"></i> PDF e informes personalizados en desarrollo
                   </p>
                 </div>
               </div>
@@ -2418,11 +2328,8 @@
                     data-parent="#faqAccordion"
                   >
                     <div class="card-body text-muted">
-                      AIRA no almacena información sensible en WhatsApp. Usamos
-                      el chat solo como interfaz y todos los datos se
-                      transfieren encriptados a nuestros servidores seguros con
-                      certificación médica. Cumplimos con GDPR y estándares
-                      internacionales de protección de datos de salud.
+                      La integración oficial con WhatsApp está en desarrollo. El MVP actual
+                      usa un adaptador de prueba y no se presenta todavía como un producto certificado.
                     </div>
                   </div>
                 </div>
@@ -2449,11 +2356,8 @@
                     data-parent="#faqAccordion"
                   >
                     <div class="card-body text-muted">
-                      AIRA ofrece un plan gratuito con funcionalidades básicas
-                      para que puedas probar el sistema. Nuestros planes pagos
-                      comienzan desde $2500 ARS mensuales con todas las
-                      funcionalidades desbloqueadas. Visita nuestra sección de
-                      precios para más detalles.
+                      Los planes y medios de pago todavía no están definidos. Crear una
+                      cuenta de prueba no solicita tarjeta ni activa una suscripción.
                     </div>
                   </div>
                 </div>
@@ -2480,10 +2384,8 @@
                     data-parent="#faqAccordion"
                   >
                     <div class="card-body text-muted">
-                      No, esa es la belleza de AIRA. Solo necesitás WhatsApp que
-                      ya tenés instalado y un navegador web para acceder al
-                      panel. No hay apps adicionales que ocupen espacio en tu
-                      dispositivo.
+                      El recorrido funcional actual usa un navegador web. La conexión con
+                      WhatsApp oficial se agregará en un hito posterior.
                     </div>
                   </div>
                 </div>
@@ -2510,11 +2412,9 @@
                     data-parent="#faqAccordion"
                   >
                     <div class="card-body text-muted">
-                      Nuestra IA analiza tus notas de sesión y genera
-                      automáticamente resúmenes estructurados, identificando
-                      temas clave, estado emocional y recomendaciones. Está
-                      entrenada específicamente para terminología psicológica y
-                      psiquiátrica, mejorando con cada uso.
+                      En este corte la transcripción y preparación son simuladas para validar
+                      el flujo. El proveedor real se elegirá mediante benchmark y toda nota
+                      deberá ser revisada por el profesional antes de guardarse.
                     </div>
                   </div>
                 </div>
@@ -2531,16 +2431,16 @@
             ¿Listo para digitalizar tu práctica?
           </h2>
           <p class="lead mb-4">
-            Únete a más de 500 profesionales que ya usan AIRA
+            Probá el recorrido web actual y ayudanos a preparar el piloto
           </p>
           <button
             class="btn btn-light btn-lg px-5"
             onclick="showRegisterModal()"
           >
-            Comenzar Gratis Ahora
+            Crear cuenta de prueba
           </button>
           <div class="mt-3">
-            <small>✨ Sin costo inicial • Cancela cuando quieras</small>
+            <small>Sin tarjeta ni suscripción en este corte.</small>
           </div>
         </div>
       </section>
@@ -2552,8 +2452,7 @@
             <div class="col-md-4 mb-4 mb-md-0">
               <h5 class="mb-3">AIRA</h5>
               <p class="text-muted">
-                Panel inteligente para profesionales de salud mental que
-                funciona con WhatsApp.
+                Panel en desarrollo para registrar y revisar notas clínicas.
               </p>
             </div>
             <div class="col-md-4 mb-4 mb-md-0">
@@ -2576,20 +2475,14 @@
               <h5 class="mb-3">Contacto</h5>
               <ul class="list-unstyled">
                 <li class="mb-2 text-muted">
-                  <i class="fas fa-envelope mr-2"></i>info@aira.com.ar
-                </li>
-                <li class="mb-2 text-muted">
-                  <i class="fas fa-phone mr-2"></i>+54 11 5555-1234
-                </li>
-                <li class="mb-2 text-muted">
-                  <i class="fab fa-whatsapp mr-2"></i>+54 9 11 1234-5678
+                  <i class="fas fa-tools mr-2"></i>Canal del piloto en desarrollo
                 </li>
               </ul>
             </div>
           </div>
           <div class="border-top pt-3 mt-3 text-center">
             <div class="text-muted footer-credits">
-              <small> 2024 AIRA. Todos los derechos reservados.</small>
+              <small>2026 AIRA. MVP en validación.</small>
             </div>
           </div>
         </div>
@@ -2699,7 +2592,7 @@
     <!-- MAIN DASHBOARD -->
     <div id="dashboardScreen" class="d-none">
       <!-- Sidebar -->
-      <nav class="sidebar">
+      <nav class="sidebar" id="dashboardSidebar">
         <div class="brand-logo">
           <div class="d-flex align-items-center">
             <img
@@ -2761,6 +2654,8 @@
               id="sidebarToggle"
               title="Mostrar menú"
               aria-label="Mostrar menú"
+              aria-controls="dashboardSidebar"
+              aria-expanded="false"
             >
               <i class="fas fa-bars"></i>
             </button>
@@ -2788,15 +2683,6 @@
             </div>
           </div>
         </nav>
-
-        <!-- Botón Menú Mobile -->
-        <button
-          id="mobileMenuToggle"
-          class="menu-toggle-btn"
-          aria-label="Mostrar menú"
-        >
-          <i class="fas fa-bars"></i>
-        </button>
 
         <!-- Sistema de notificaciones -->
         <div id="nuevo-notificaciones" aria-live="polite"></div>
@@ -2841,6 +2727,8 @@
                 <div
                   class="card stats-card primary clickable"
                   onclick="showSection('patients')"
+                  role="button"
+                  tabindex="0"
                 >
                   <div class="card-body">
                     <div class="d-flex align-items-center">
@@ -2862,6 +2750,8 @@
                 <div
                   class="card stats-card success clickable"
                   onclick="showSection('sessions')"
+                  role="button"
+                  tabindex="0"
                 >
                   <div class="card-body">
                     <div class="d-flex align-items-center">
@@ -2883,6 +2773,8 @@
                 <div
                   class="card stats-card warning clickable"
                   onclick="showTodaysSessionsModal()"
+                  role="button"
+                  tabindex="0"
                 >
                   <div class="card-body">
                     <div class="d-flex align-items-center">
@@ -2904,6 +2796,8 @@
                 <div
                   class="card stats-card info clickable"
                   onclick="showFollowupSessions()"
+                  role="button"
+                  tabindex="0"
                 >
                   <div class="card-body">
                     <div class="d-flex align-items-center">
@@ -2939,6 +2833,8 @@
                         <div
                           class="quick-action-card"
                           onclick="showNewPatientModal()"
+                          role="button"
+                          tabindex="0"
                         >
                           <div class="quick-action-icon primary">
                             <i class="fas fa-user-plus"></i>
@@ -2953,6 +2849,8 @@
                         <div
                           class="quick-action-card"
                           onclick="showNewSessionModal()"
+                          role="button"
+                          tabindex="0"
                         >
                           <div class="quick-action-icon info">
                             <i class="fas fa-clipboard-list"></i>
@@ -2968,6 +2866,8 @@
                         <div
                           class="quick-action-card"
                           onclick="showSection('analytics')"
+                          role="button"
+                          tabindex="0"
                         >
                           <div class="quick-action-icon success">
                             <i class="fas fa-chart-line"></i>
@@ -2980,6 +2880,8 @@
                         <div
                           class="quick-action-card"
                           onclick="showLinkPhoneModal()"
+                          role="button"
+                          tabindex="0"
                         >
                           <div class="quick-action-icon whatsapp">
                             <i class="fas fa-mobile-alt"></i>
@@ -3190,6 +3092,11 @@
                     </h5>
                   </div>
                   <div class="card-body">
+                    <div id="moodEvolutionEmpty" class="empty-state d-none py-4" role="status">
+                      <div class="empty-state-icon">📊</div>
+                      <h5>Sin evaluaciones anímicas</h5>
+                      <p>La evolución aparecerá cuando registres sesiones con estado anímico.</p>
+                    </div>
                     <canvas id="moodEvolutionChart" height="300"></canvas>
                   </div>
                 </div>
@@ -3218,10 +3125,10 @@
                 <h1 class="h3 font-weight-bold text-dark mb-1">
                   Mi Perfil Profesional
                 </h1>
-                <p class="text-muted mb-0">Gestiona tu información personal</p>
+                <p class="text-muted mb-0">Consulta la información de tu cuenta</p>
               </div>
               <div class="col-md-4">
-                <div class="profile-completeness float-md-right p-2 rounded">
+                <div class="profile-completeness float-md-right p-2 rounded d-none">
                   <div class="d-flex align-items-center">
                     <small class="text-muted mr-2">Completitud:</small>
                     <div
@@ -3232,7 +3139,7 @@
                         id="profile-completeness-bar"
                         class="progress-bar bg-primary"
                         role="progressbar"
-                        aria-valuenow="75"
+                      aria-valuenow="0"
                         aria-valuemin="0"
                         aria-valuemax="100"
                         aria-label="Porcentaje de completitud del perfil"
@@ -3242,11 +3149,14 @@
                     <span
                       class="badge badge-primary ml-2"
                       id="profile-completeness-percentage"
-                      >75%</span
+                      >0%</span
                     >
                   </div>
                 </div>
               </div>
+            </div>
+            <div class="alert alert-info" role="status">
+              <strong>Edición de perfil en desarrollo.</strong> En este corte los datos se muestran sólo como referencia y no se pueden modificar desde la web.
             </div>
 
             <div class="row">
@@ -3268,7 +3178,6 @@
                           class="form-control"
                           id="nombre"
                           name="nombre"
-                          value="Dr. Juan Pérez"
                           placeholder="Nombre completo"
                           required
                         />
@@ -3280,7 +3189,6 @@
                           class="form-control"
                           id="especialidad"
                           name="especialidad"
-                          value="Psiquiatría"
                           placeholder="Tu especialidad"
                         />
                       </div>
@@ -3293,7 +3201,6 @@
                           class="form-control"
                           id="perfilEmail"
                           name="email"
-                          value="juan.perez@ejemplo.com"
                           placeholder="Email"
                           required
                         />
@@ -3305,7 +3212,6 @@
                           class="form-control"
                           id="telefono"
                           name="telefono"
-                          value="+54 11 2233-4455"
                           placeholder="Tu número de teléfono"
                         />
                       </div>
@@ -3319,7 +3225,6 @@
                           class="form-control"
                           id="direccion"
                           name="direccion"
-                          value="Av. Corrientes 1234, CABA"
                           placeholder="Dirección de tu consultorio"
                           required
                         />
@@ -3327,9 +3232,10 @@
                       <button
                         type="button"
                         id="btn-guardar-datos-personales"
-                        class="btn btn-primary"
+                        class="btn btn-secondary"
+                        disabled
                       >
-                        Guardar cambios
+                        Edición en desarrollo
                       </button>
                     </form>
                   </div>
@@ -3351,9 +3257,7 @@
                         name="descripcion"
                         rows="3"
                         placeholder="Breve descripción de tu experiencia profesional"
-                      >
-Especialista en salud mental con 10 años de experiencia en tratamiento de trastornos de ansiedad.</textarea
-                      >
+                      ></textarea>
                     </div>
                   </div>
                 </div>
@@ -3371,7 +3275,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                           type="text"
                           class="form-control"
                           id="usuario"
-                          value="dr.pabula"
+                          value=""
                           readonly
                         />
                         <small class="form-text text-muted"
@@ -3386,8 +3290,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                             type="button"
                             id="btn-cambiar-password"
                             class="btn btn-outline-secondary btn-sm ml-2"
+                            disabled
                           >
-                            Cambiar
+                            En desarrollo
                           </button>
                         </div>
                       </div>
@@ -3463,9 +3368,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                       <button
                         type="button"
                         id="btn-guardar-config-cuenta"
-                        class="btn btn-primary"
+                        class="btn btn-secondary"
+                        disabled
                       >
-                        Guardar cambios
+                        Configuración en desarrollo
                       </button>
                     </form>
                   </div>
@@ -3830,7 +3736,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           <form id="newPatientForm">
             <div class="modal-body">
               <div class="form-group">
-                <label for="newPatientName">Nombre Completo</label>
+                <label for="newPatientName">Nombre Completo <span class="text-danger" aria-hidden="true">*</span></label>
                 <input
                   type="text"
                   class="form-control"
@@ -3840,7 +3746,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 />
               </div>
               <div class="form-group">
-                <label for="newPatientDNI">DNI</label>
+                <label for="newPatientDNI">DNI <span class="text-danger" aria-hidden="true">*</span></label>
                 <input
                   type="text"
                   class="form-control"
@@ -3850,7 +3756,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 />
               </div>
               <div class="form-group">
-                <label for="newPatientInsurance">Obra Social</label>
+                <label for="newPatientInsurance">Obra Social <span class="text-danger" aria-hidden="true">*</span></label>
                 <input
                   type="text"
                   class="form-control"
@@ -3868,6 +3774,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                   placeholder="Ej: 1122334455"
                 />
               </div>
+              <small class="form-text text-muted"><span class="text-danger" aria-hidden="true">*</span> Campos obligatorios</small>
             </div>
             <div class="modal-footer">
               <button
@@ -3905,7 +3812,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           <form id="newSessionForm">
             <div class="modal-body">
               <div class="form-group">
-                <label for="sessionPatient">Paciente</label>
+                <label for="sessionPatient">Paciente <span class="text-danger" aria-hidden="true">*</span></label>
                 <select
                   class="form-control"
                   id="sessionPatient"
@@ -3927,13 +3834,44 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                   <label class="custom-control-label" for="sessionInputAudio">Audio</label>
                 </div>
               </div>
+              <div class="form-row">
+                <div class="form-group col-md-6">
+                  <label for="sessionClinicalDate">Fecha clínica <span class="text-danger" aria-hidden="true">*</span></label>
+                  <input type="date" class="form-control" id="sessionClinicalDate" required />
+                </div>
+                <div class="form-group col-md-6">
+                  <label for="sessionType">Tipo de sesión <span class="text-danger" aria-hidden="true">*</span></label>
+                  <select class="form-control" id="sessionType" required>
+                    <option value="individual">Individual</option>
+                    <option value="group">Grupal</option>
+                    <option value="family">Familiar</option>
+                    <option value="couple">Pareja</option>
+                    <option value="other">Otra</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-md-6">
+                  <label for="sessionDurationMinutes">Duración clínica (minutos) <span class="text-danger" aria-hidden="true">*</span></label>
+                  <input type="number" class="form-control" id="sessionDurationMinutes" min="1" max="480" step="1" placeholder="Ej: 45" required />
+                </div>
+                <div class="form-group col-md-6">
+                  <label for="sessionCareModality">Modalidad <span class="text-danger" aria-hidden="true">*</span></label>
+                  <select class="form-control" id="sessionCareModality" required>
+                    <option value="unspecified">Sin especificar</option>
+                    <option value="inPerson">Presencial</option>
+                    <option value="video">Videollamada</option>
+                    <option value="phone">Teléfono</option>
+                  </select>
+                </div>
+              </div>
               <div id="webAudioUploadSection" class="border rounded p-3 mb-3 d-none">
                 <label for="webAudioFile">Archivo de audio</label>
                 <input
                   type="file"
                   id="webAudioFile"
                   class="form-control-file mb-2"
-                  accept="audio/*,.webm,.m4a"
+                  accept=".ogg,.opus,.webm,.mp3,.mp4,.m4a,.wav,.aac,audio/ogg,audio/webm,audio/mpeg,audio/mp4,audio/wav,audio/aac"
                 />
                 <button type="button" id="prepareWebAudioBtn" class="btn btn-outline-primary" onclick="prepareWebAudioDraft()">
                   Subir y preparar nota
@@ -3941,8 +3879,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 <button type="button" id="retryWebAudioBtn" class="btn btn-outline-warning d-none" onclick="retryWebAudioDraft()">
                   Reintentar
                 </button>
+                <button type="button" id="resumeWebAudioPollBtn" class="btn btn-outline-primary d-none" onclick="resumeWebAudioPolling()">
+                  Retomar estado
+                </button>
+                <button type="button" id="discardWebAudioDraftBtn" class="btn btn-outline-danger d-none" onclick="confirmDiscardWebAudioDraft()">
+                  Descartar borrador
+                </button>
                 <div id="webAudioStatus" class="small text-muted mt-2" role="status">
-                  El archivo se almacena temporalmente. La transcripción todavía es simulada en este corte.
+                  Formatos: OGG, WebM, MP3, MP4/M4A, WAV o AAC. Máximo 25 MB; usá una nota posterior de aproximadamente 2 a 10 minutos. El archivo se almacena temporalmente y la transcripción todavía es simulada.
                 </div>
                 <div id="webAudioTranscriptSection" class="form-group mt-3 mb-0 d-none">
                   <label for="webAudioRawTranscript">Transcripción original</label>
@@ -3951,7 +3895,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 </div>
               </div>
               <div class="form-group">
-                <label for="sessionContent">Contenido de la Sesión</label>
+                <label for="sessionContent">Contenido de la Sesión <span class="text-danger" aria-hidden="true">*</span></label>
                 <textarea
                   class="form-control"
                   id="sessionContent"
@@ -3972,15 +3916,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 ></textarea>
               </div>
               <div class="form-group">
-                <label for="sessionMood">Estado Anímico del Paciente</label>
+                <label for="sessionMood">Estado Anímico del Paciente (Opcional)</label>
                 <select
                   class="form-control"
                   id="sessionMood"
                   title="Estado de ánimo"
                   aria-label="Estado de ánimo"
-                  required
                 >
-                  <option value="">Seleccionar estado</option>
+                  <option value="">Sin registrar</option>
                   <option value="1">😢 1 - Muy bajo</option>
                   <option value="2">😕 2 - Bajo</option>
                   <option value="3">😐 3 - Neutral</option>
@@ -3988,6 +3931,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                   <option value="5">😊 5 - Muy bueno</option>
                 </select>
               </div>
+              <div class="form-group">
+                <div class="custom-control custom-checkbox">
+                  <input type="checkbox" class="custom-control-input" id="sessionRequiresFollowUp" />
+                  <label class="custom-control-label" for="sessionRequiresFollowUp">Requiere seguimiento</label>
+                </div>
+                <small class="form-text text-muted">Marcá esta opción sólo cuando sea una decisión clínica explícita.</small>
+              </div>
+              <small class="form-text text-muted"><span class="text-danger" aria-hidden="true">*</span> Campos obligatorios</small>
             </div>
             <div class="modal-footer">
               <button
@@ -3995,7 +3946,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 class="btn btn-secondary"
                 data-dismiss="modal"
               >
-                Cancelar
+                Cerrar
               </button>
               <button type="submit" class="btn btn-success">
                 💾 Guardar Sesión
@@ -4034,8 +3985,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           <form id="registerForm">
             <div class="modal-body">
               <p class="text-muted">
-                Completá tus datos para crear tu cuenta. Luego, configurarás tu
-                suscripción.
+                Completá tus datos para crear tu cuenta y empezar a usar el panel.
               </p>
               <div class="row">
                 <div class="col-md-6">
@@ -4047,7 +3997,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                       id="regName"
                       placeholder="Dr. Juan Pérez"
                       required
-                      pattern="[A-Za-z\s.]{3,}"
+                      pattern=".{3,}"
                       minlength="3"
                     />
                     <small class="form-text text-muted"
@@ -4074,7 +4024,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 </div>
               </div>
               <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-12">
                   <div class="form-group">
                     <label for="regDni">DNI o Matrícula</label>
                     <input
@@ -4091,23 +4041,6 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                     >
                   </div>
                 </div>
-                <div class="col-md-6">
-                  <div class="form-group">
-                    <label for="regBirthdate">Fecha de Nacimiento</label>
-                    <input
-                      type="text"
-                      class="form-control"
-                      id="regBirthdate"
-                      placeholder="DD/MM/AAAA"
-                      required
-                      pattern="\d{1,2}/\d{1,2}/\d{4}"
-                      maxlength="10"
-                    />
-                    <small class="form-text text-muted"
-                      >Formato: DD/MM/AAAA</small
-                    >
-                  </div>
-                </div>
               </div>
               <div class="form-group">
                 <label for="regEmail">Email</label>
@@ -4119,19 +4052,19 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                   required
                 />
                 <small class="form-text text-muted"
-                  >Usarás este email para iniciar sesión</small
+                  >Lo usaremos como dato de contacto; el ingreso se realiza con DNI y PIN.</small
                 >
               </div>
               <div class="form-group position-relative">
-                <label for="password">Contraseña</label>
+                <label for="password">PIN de acceso</label>
                 <div class="input-group">
                   <input
                     type="password"
                     class="form-control"
                     id="password"
-                    placeholder="Contraseña"
+                    placeholder="Entre 4 y 20 caracteres"
                     aria-describedby="passwordHelp"
-                    autocomplete="current-password"
+                    autocomplete="new-password"
                     required
                   />
                   <div class="input-group-append">
@@ -4145,7 +4078,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                   </div>
                 </div>
                 <small id="passwordHelp" class="form-text text-muted"
-                  >Mínimo 8 caracteres.</small
+                  >Usarás este PIN junto con tu DNI para ingresar.</small
                 >
                 <div class="password-strength-meter mt-2 d-none">
                   <div class="progress password-progress">
@@ -4181,7 +4114,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 Cancelar
               </button>
               <button type="submit" class="btn btn-primary" id="registerBtn">
-                Continuar al Pago <i class="fas fa-arrow-right ml-1"></i>
+                Crear cuenta <i class="fas fa-arrow-right ml-1"></i>
               </button>
             </div>
           </form>
@@ -4189,80 +4122,16 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       </div>
     </div>
 
-    <!-- PAYMENT SCREEN -->
+    <!-- PAYMENT SCREEN: reservada para un hito futuro -->
     <div id="paymentScreen" class="d-none">
       <div class="auth-form-wrapper">
         <div class="auth-form">
           <div class="text-center mb-4">
             <div class="mb-3 app-icon">💳</div>
-            <h2 class="text-dark font-weight-bold">Configurá tu Suscripción</h2>
-            <p class="text-muted">Último paso para activar tu cuenta AIRA.</p>
+            <h2 class="text-dark font-weight-bold">Suscripciones en desarrollo</h2>
+            <p class="text-muted">AIRA no solicita ni procesa datos de pago en este corte.</p>
           </div>
-          <form id="paymentForm">
-            <div class="form-group">
-              <label for="cardName">Nombre en la Tarjeta</label>
-              <input
-                type="text"
-                class="form-control"
-                id="cardName"
-                placeholder="Juan A. Pérez"
-                required
-              />
-            </div>
-            <div class="form-group">
-              <label for="cardNumber">Número de Tarjeta</label>
-              <input
-                type="text"
-                class="form-control"
-                id="cardNumber"
-                placeholder="•••• •••• •••• ••••"
-                required
-              />
-            </div>
-            <div class="row">
-              <div class="col-7">
-                <div class="form-group">
-                  <label for="cardExpiry">Vencimiento</label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="cardExpiry"
-                    placeholder="MM/AA"
-                    required
-                  />
-                </div>
-              </div>
-              <div class="col-5">
-                <div class="form-group">
-                  <label for="cardCvc">CVC</label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="cardCvc"
-                    placeholder="•••"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-            <div
-              id="paymentErrorMessage"
-              class="alert alert-danger d-none"
-            ></div>
-            <button
-              type="submit"
-              class="btn btn-success btn-block btn-lg"
-              id="paymentBtn"
-            >
-              <span id="paymentText">Pagar y Activar Cuenta</span>
-              <span id="paymentSpinner" class="loading d-none"></span>
-            </button>
-          </form>
-          <div class="text-center mt-4">
-            <small class="text-muted">
-              <i class="fas fa-lock"></i> Transacción segura y encriptada.
-            </small>
-          </div>
+          <button type="button" class="btn btn-primary btn-block" onclick="showDashboard()">Volver al panel</button>
         </div>
       </div>
     </div>
@@ -4535,23 +4404,8 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         $(".sidebar-link, .nav-link, [data-section]").on("click", function () {
           // Pequeño delay para asegurar que la sección se muestre primero
           setTimeout(updateBreadcrumbs, 100);
-        });
-
-        // Inicializar sidebar en mobile
-        if ($(window).width() < 768) {
-          $(".sidebar").addClass("collapsed");
-        }
-
-        // Toggle menú mobile
-        $("#mobileMenuToggle").on("click", function () {
-          $(".sidebar").toggleClass("collapsed");
-          $(this).find("i").toggleClass("fa-bars fa-times");
-
-          // Cambiar aria-label
-          if ($(".sidebar").hasClass("collapsed")) {
-            $(this).attr("aria-label", "Mostrar menú");
-          } else {
-            $(this).attr("aria-label", "Ocultar menú");
+          if ($(window).width() <= 768 && $(this).closest(".sidebar").length) {
+            setMobileSidebarOpen(false);
           }
         });
 
@@ -4588,8 +4442,15 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       let currentWebAudioIdempotencyKey = null;
       let currentWebAudioRequestFingerprint = null;
       let currentWebAudioPollTimer = null;
+      let currentWebAudioPollAttempts = 0;
+      let currentWebAudioPollFailures = 0;
       let currentWebAudioUploadController = null;
       const pendingWebAudioUploadStorageKey = "aira.pendingWebAudioUpload";
+      const maxWebAudioPollAttempts = 240;
+      const maxWebAudioPollFailures = 3;
+      const maxWebAudioUploadBytes = 25 * 1024 * 1024;
+      const webAudioLockedFields = "#sessionPatient, #sessionClinicalDate, #sessionType, #sessionDurationMinutes, #sessionCareModality, #webAudioFile";
+      const webAudioHelpText = "Formatos: OGG, WebM, MP3, MP4/M4A, WAV o AAC. Máximo 25 MB; usá una nota posterior de aproximadamente 2 a 10 minutos. El archivo se almacena temporalmente y la transcripción todavía es simulada.";
 
       // Datos se cargan desde el backend via API
 
@@ -4763,8 +4624,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
               appData = { patients: [], sessions: [] };
               isDemoMode = false;
               $("#registerModal").modal("hide");
-              hideAllScreens();
-              $("#paymentScreen").removeClass("d-none");
+              showDashboard();
             }
           },
           error: function(xhr) {
@@ -4776,51 +4636,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       }
 
       function processPayment() {
-        console.log(" Iniciando proceso de pago...");
-        const btn = $("#paymentBtn");
-        const btnText = $("#paymentText");
-        const spinner = $("#paymentSpinner");
-
-        if (
-          !$("#cardName").val() ||
-          !$("#cardNumber").val() ||
-          !$("#cardExpiry").val() ||
-          !$("#cardCvc").val()
-        ) {
-          console.log(" Datos de tarjeta incompletos");
-          showError(
-            "#paymentErrorMessage",
-            "Por favor, completá todos los datos de la tarjeta."
-          );
-          return;
-        }
-
-        console.log(" Datos de tarjeta válidos, procesando pago...");
-        btnText.addClass("d-none");
-        spinner.removeClass("d-none");
-        btn.prop("disabled", true);
-
-        setTimeout(() => {
-          btn.removeClass("btn-success").addClass("btn-primary");
-          spinner.addClass("d-none");
-          btnText
-            .html('<i class="fas fa-check"></i> ¡Pago Aceptado!')
-            .removeClass("d-none");
-          console.log(" Pago procesado exitosamente");
-
-          setTimeout(() => {
-            console.log(" Redirigiendo al dashboard post-registro...");
-            showDashboard();
-
-            // Mostrar notificación de bienvenida para nuevos usuarios después del registro
-            setTimeout(() => {
-              console.log(
-                "Mostrando notificación de bienvenida para nuevo usuario"
-              );
-              notificaciones.bienvenidaNuevo();
-            }, 1000);
-          }, 1500);
-        }, 2000);
+        notificaciones.info(
+          "Suscripciones en desarrollo",
+          "AIRA no solicita ni procesa pagos en este corte."
+        );
       }
 
       function showDashboard() {
@@ -5164,6 +4983,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           if (currentUser.phone) $("#telefono").val(currentUser.phone);
           if (currentUser.bio) $("#descripcion").val(currentUser.bio);
           if (currentUser.address) $("#direccion").val(currentUser.address);
+          $("#usuario").val(currentUser.dni || "");
 
           // Si es usuario demo y faltan datos, usar placeholders
           if (isDemoMode) {
@@ -5172,6 +4992,8 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             if (!$("#descripcion").val()) $("#descripcion").val("Profesional de salud mental.");
           }
         }
+        $("#datosPersonalesForm :input, #descripcion, #configCuentaForm :input")
+          .prop("disabled", true);
         // Función para validar formato de email
         function isValidEmail(email) {
           const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -5233,8 +5055,8 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
             // Mostrar notificación de éxito
             showNotification(
-              "Datos personales guardados correctamente",
-              "success"
+              "La edición de perfil está en desarrollo; no se guardaron cambios.",
+              "info"
             );
 
             // Actualizar nombre en el panel
@@ -5278,7 +5100,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             $btn.prop("disabled", false);
 
             // Mostrar notificación de éxito
-            showNotification("Configuración guardada correctamente", "success");
+            showNotification("La configuración está en desarrollo; no se guardaron cambios.", "info");
           }, 800);
         });
 
@@ -5412,14 +5234,23 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             // Mostrar notificación de éxito
             setTimeout(() => {
               showNotification(
-                "Contraseña actualizada correctamente",
-                "success"
+                "El cambio de contraseña está en desarrollo; no se guardaron cambios.",
+                "info"
               );
             }, 500);
           }, 800);
         });
 
-        // Inicializar tooltips
+        // Estas operaciones todavía no tienen persistencia de servidor.
+        $("#btn-guardar-datos-personales, #btn-guardar-config-cuenta, #btn-cambiar-password")
+          .off("click")
+          .prop("disabled", true);
+        $("#form-cambiar-password")
+          .off("submit")
+          .on("submit", function (event) {
+            event.preventDefault();
+            showNotification("El cambio de contraseña está en desarrollo", "info");
+          });
 
         // Inicializar tooltips
         $('[data-toggle="tooltip"]').tooltip();
@@ -5546,7 +5377,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const container = $("#recentSessionsList");
         if (appData.sessions.length === 0) {
           container.html(
-            `<div class="empty-state p-3"><div class="empty-state-icon">📝</div><h5>No hay sesiones aún</h5><p>Ajustá tu búsqueda o registrá una nueva sesión.</p><button class="btn btn-primary btn-sm" onclick="showNewSessionModal()">➕ Primera Sesión</button></div>`
+            `<div class="empty-state p-3"><div class="empty-state-icon">📝</div><h5>Todavía no registraste sesiones</h5><p>Creá una nota de texto o audio para empezar el historial clínico.</p><button class="btn btn-primary btn-sm" onclick="showNewSessionModal()">➕ Registrar primera sesión</button></div>`
           );
           return;
         }
@@ -5562,10 +5393,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 : "badge-web";
             const followupBadge = session.requiresFollowUp
               ? `<span class="badge badge-followup">Seguimiento</span>`
-              : `<span class="badge badge-stable">Estable</span>`;
+              : `<span class="badge badge-stable">Sin seguimiento</span>`;
 
             return `
-                <div class="session-activity-item" onclick="showSessionDetail('${
+                <div class="session-activity-item" role="button" tabindex="0" onclick="showSessionDetail('${
                   session.id
                 }')">
                     <div class="patient-avatar mr-3 patient-avatar-small">
@@ -5625,8 +5456,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         });
 
         if (filteredPatients.length === 0) {
+          const emptyTitle = appData.patients.length
+            ? "No se encontraron pacientes"
+            : "Todavía no registraste pacientes";
+          const emptyCopy = appData.patients.length
+            ? "Ajustá la búsqueda o activá el filtro para ver pacientes inactivos."
+            : "Registrá el primer paciente para poder crear notas clínicas.";
           container.html(
-            `<div class="col-12"><div class="empty-state"><div class="empty-state-icon">👥</div><h5>No se encontraron pacientes</h5><p>Ajustá tu búsqueda o el filtro de inactivos. También podés registrar un nuevo paciente.</p><button class="btn btn-primary" onclick="showNewPatientModal()">➕ Registrar Paciente</button></div></div>`
+            `<div class="col-12"><div class="empty-state"><div class="empty-state-icon">👥</div><h5>${emptyTitle}</h5><p>${emptyCopy}</p><button class="btn btn-primary" onclick="showNewPatientModal()">➕ Registrar paciente</button></div></div>`
           );
           return;
         }
@@ -5642,7 +5479,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 <div class="col-xl-4 col-lg-6 mb-4">
                     <div class="card patient-card stats-card h-100 ${
                       patient.status === "inactive" ? "patient-inactive" : ""
-                    }" onclick="showPatientDetail('${patient.id}')">
+                    }" role="button" tabindex="0" onclick="showPatientDetail('${patient.id}')">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div class="d-flex align-items-center mb-3">
@@ -5759,8 +5596,11 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         $("#sessionsSubHeader").text(subTitle);
 
         if (!sessionsArray || sessionsArray.length === 0) {
+          const hasSessions = appData.sessions.length > 0;
           container.html(
-            `<div class="col-12"><div class="empty-state p-4"><div class="empty-state-icon">📋</div><h5>No se encontraron sesiones</h5><p>No hay sesiones que coincidan con los filtros aplicados.</p><button class="btn btn-primary btn-sm" onclick="loadSessionsData()">Ver Todas las Sesiones</button></div></div>`
+            hasSessions
+              ? `<div class="col-12"><div class="empty-state p-4"><div class="empty-state-icon">📋</div><h5>No se encontraron sesiones</h5><p>No hay sesiones que coincidan con los filtros aplicados.</p><button class="btn btn-primary btn-sm" onclick="loadSessionsData()">Ver todas las sesiones</button></div></div>`
+              : `<div class="col-12"><div class="empty-state p-4"><div class="empty-state-icon">📋</div><h5>Todavía no registraste sesiones</h5><p>Creá una nota clínica para empezar el historial.</p><button class="btn btn-primary btn-sm" onclick="showNewSessionModal()">Registrar primera sesión</button></div></div>`
           );
           return;
         }
@@ -5783,10 +5623,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 : "badge-web";
             const followupBadge = session.requiresFollowUp
               ? '<span class="badge badge-followup">Requiere seguimiento</span>'
-              : '<span class="badge badge-stable">Evolución normal</span>';
+              : '<span class="badge badge-stable">Sin seguimiento</span>';
             return `
                 <div class="col-xl-4 col-lg-6 mb-4">
-                    <div class="card session-card stats-card ${colorClass}" onclick="showSessionDetail('${
+                    <div class="card session-card stats-card ${colorClass}" role="button" tabindex="0" onclick="showSessionDetail('${
               session.id
             }')">
                         <div class="card-body d-flex flex-column">
@@ -6036,23 +5876,50 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         // Analytics Charts
         const moodEvolutionEl = $("#moodEvolutionChart");
         if (moodEvolutionEl.length) {
-          moodEvolutionChartInstance = new Chart(moodEvolutionEl, {
-            type: "line",
-            data: {
-              labels: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio"],
-              datasets: [
-                {
-                  label: "Estado de Ánimo Promedio",
-                  data: [2.5, 2.8, 3.1, 3.0, 3.4, 3.7],
-                  borderColor: "#4a9d95",
-                  backgroundColor: "rgba(74, 157, 149, 0.1)",
-                  fill: true,
-                  tension: 0.4,
-                },
-              ],
-            },
-            options: { scales: { y: { beginAtZero: false, max: 5 } } },
-          });
+          const moodByMonth = appData.sessions.reduce((months, session) => {
+            if (!hasMoodAssessment(session.moodAssessment) || !session.clinicalDate) return months;
+            const monthKey = session.clinicalDate.slice(0, 7);
+            if (!months[monthKey]) months[monthKey] = { total: 0, count: 0 };
+            months[monthKey].total += Number(session.moodAssessment);
+            months[monthKey].count += 1;
+            return months;
+          }, {});
+          const monthKeys = Object.keys(moodByMonth).sort().slice(-6);
+          if (monthKeys.length === 0) {
+            moodEvolutionEl.addClass("d-none");
+            $("#moodEvolutionEmpty").removeClass("d-none");
+            moodEvolutionChartInstance = null;
+          } else {
+            moodEvolutionEl.removeClass("d-none");
+            $("#moodEvolutionEmpty").addClass("d-none");
+            const monthFormatter = new Intl.DateTimeFormat("es-AR", {
+              month: "short",
+              year: "numeric",
+              timeZone: "UTC",
+            });
+            moodEvolutionChartInstance = new Chart(moodEvolutionEl, {
+              type: "line",
+              data: {
+                labels: monthKeys.map((monthKey) => monthFormatter.format(new Date(`${monthKey}-01T12:00:00Z`))),
+                datasets: [
+                  {
+                    label: "Estado de Ánimo Promedio",
+                    data: monthKeys.map((monthKey) => {
+                      const month = moodByMonth[monthKey];
+                      return Number((month.total / month.count).toFixed(2));
+                    }),
+                    borderColor: "#4a9d95",
+                    backgroundColor: "rgba(74, 157, 149, 0.1)",
+                    fill: true,
+                    tension: 0.4,
+                  },
+                ],
+              },
+              options: {
+                scales: { y: { min: 1, max: 5, ticks: { stepSize: 1 } } },
+              },
+            });
+          }
         }
 
         const topPatientsEl = $("#topPatientsChart");
@@ -6103,7 +5970,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         listEl.empty();
         if (sessions.length === 0) {
           listEl.html(
-            '<li class="list-group-item text-center text-muted">No hay sesiones programadas para hoy.</li>'
+            '<li class="list-group-item text-center text-muted">No hay notas clínicas registradas para hoy.</li>'
           );
           return;
         }
@@ -6220,33 +6087,84 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         $("#newPatientForm")[0].reset();
         $("#newPatientModal").modal("show");
       }
+
+      function activePatients() {
+        return appData.patients.filter((patient) => patient.status !== "inactive");
+      }
+
+      function renderNewSessionPatientOptions(selectedPatientId = "") {
+        const patients = activePatients();
+        const patientOptions = patients
+          .map((patient) => `<option value="${patient.id}">${patient.name}</option>`)
+          .join("");
+        const emptyOption = patients.length
+          ? '<option value="">Seleccionar paciente activo</option>'
+          : '<option value="">No hay pacientes activos disponibles</option>';
+        $("#sessionPatient").html(emptyOption + patientOptions);
+        if (selectedPatientId && patients.some((patient) => patient.id === selectedPatientId)) {
+          $("#sessionPatient").val(selectedPatientId);
+        }
+        return patients.length;
+      }
+
       function showNewSessionModal(patientId) {
+        if (currentWebAudioDraftId || currentWebAudioUploadController) {
+          if (patientId && patientId !== currentWebAudioDraftPatientId) {
+            notificaciones.advertencia(
+              "Borrador de audio abierto",
+              "Terminá o descartá el borrador actual antes de iniciar una nota para otro paciente."
+            );
+          }
+          $("#sessionInputAudio").prop("checked", true);
+          setSessionInputMode("audio", { discard: false });
+          $("#newSessionModal").modal("show");
+          return;
+        }
         $("#newSessionForm")[0].reset();
         stopWebAudioPolling();
         currentWebAudioDraftId = null;
         currentWebAudioDraftPatientId = null;
         currentWebAudioIdempotencyKey = null;
         currentWebAudioRequestFingerprint = null;
+        currentWebAudioPollAttempts = 0;
+        currentWebAudioPollFailures = 0;
         $("#prepareWebAudioBtn").prop("disabled", false).text("Subir y preparar nota");
-        $("#sessionPatient, #webAudioFile").prop("disabled", false);
+        $(webAudioLockedFields).prop("disabled", false);
         $("#webAudioFile").val("");
+        $("#sessionClinicalDate").val(localDateKey());
+        $("#sessionType").val("individual");
+        $("#sessionCareModality").val("unspecified");
+        $("#webAudioStatus").text(webAudioHelpText);
+        $("#webAudioTranscriptSection, #retryWebAudioBtn, #resumeWebAudioPollBtn, #discardWebAudioDraftBtn").addClass("d-none");
         setSessionInputMode("text", { discard: false });
-        const patientOptions = appData.patients
-          .map((p) => `<option value="${p.id}">${p.name}</option>`)
-          .join("");
-        $("#sessionPatient").html(
-          '<option value="">Seleccionar paciente</option>' + patientOptions
-        );
-
-        if (patientId) {
-          $("#sessionPatient").val(patientId);
+        const activePatientCount = renderNewSessionPatientOptions(patientId);
+        if (patientId && !$("#sessionPatient").val()) {
+          notificaciones.advertencia(
+            "Paciente no disponible",
+            "Ese paciente está inactivo. Activá su ficha antes de registrar una nueva nota."
+          );
+        } else if (!activePatientCount) {
+          notificaciones.info(
+            "Sin pacientes activos",
+            "Registrá o activá un paciente antes de crear una nota."
+          );
         }
         $("#newSessionModal").modal("show");
       }
 
       function setSessionInputMode(mode, options = {}) {
         const audio = mode === "audio";
-        if (!audio && options.discard !== false) discardCurrentWebAudioDraft();
+        const hasPendingAudio = Boolean(currentWebAudioDraftId || currentWebAudioUploadController);
+        if (!audio && options.discard !== false && hasPendingAudio) {
+          const confirmed = window.confirm(
+            "Hay un borrador de audio en curso. ¿Querés descartarlo y cambiar a una nota de texto?"
+          );
+          if (!confirmed) {
+            $("#sessionInputAudio").prop("checked", true);
+            return false;
+          }
+          discardCurrentWebAudioDraft();
+        }
         $("#webAudioUploadSection").toggleClass("d-none", !audio);
         $("#sessionContent").attr(
           "placeholder",
@@ -6255,12 +6173,11 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             : "Describe la sesión, observaciones, tratamiento aplicado..."
         );
         if (!audio) {
-          $("#webAudioTranscriptSection, #retryWebAudioBtn").addClass("d-none");
+          $("#webAudioTranscriptSection, #retryWebAudioBtn, #resumeWebAudioPollBtn, #discardWebAudioDraftBtn").addClass("d-none");
           $("#webAudioRawTranscript").val("");
-          $("#webAudioStatus").text(
-            "El archivo se almacena temporalmente. La transcripción todavía es simulada en este corte."
-          );
+          $("#webAudioStatus").text(webAudioHelpText);
         }
+        return true;
       }
 
       function stopWebAudioPolling() {
@@ -6297,14 +6214,19 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         currentWebAudioDraftPatientId = null;
         currentWebAudioIdempotencyKey = null;
         currentWebAudioRequestFingerprint = null;
+        currentWebAudioPollAttempts = 0;
+        currentWebAudioPollFailures = 0;
         stopWebAudioPolling();
         if (currentWebAudioUploadController) currentWebAudioUploadController.abort();
         currentWebAudioUploadController = null;
-        $("#sessionPatient, #webAudioFile").prop("disabled", false);
+        clearPendingWebAudioUpload(idempotencyKey);
+        $(webAudioLockedFields).prop("disabled", false);
         $("#webAudioFile").val("");
+        $("#sessionContent, #webAudioRawTranscript").val("");
+        $("#webAudioTranscriptSection, #retryWebAudioBtn, #resumeWebAudioPollBtn, #discardWebAudioDraftBtn").addClass("d-none");
+        $("#webAudioStatus").text(webAudioHelpText);
         $("#prepareWebAudioBtn").prop("disabled", false).text("Subir y preparar nota");
         if (!draftId) return;
-        clearPendingWebAudioUpload(idempotencyKey);
         $.ajax({
           url: `/api/session-drafts/${draftId}/cancel`,
           method: "POST",
@@ -6312,11 +6234,19 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         });
       }
 
+      function confirmDiscardWebAudioDraft() {
+        if (!currentWebAudioDraftId && !currentWebAudioUploadController) return;
+        if (!window.confirm("¿Querés descartar este borrador de audio? Esta acción no se puede deshacer.")) return;
+        discardCurrentWebAudioDraft();
+        notificaciones.info("Borrador descartado", "Podés preparar un nuevo audio o cambiar a texto.");
+      }
+
       function renderPreparedWebAudio(draft) {
         currentWebAudioDraftId = draft.id;
         currentWebAudioDraftPatientId = draft.patientId;
-        $("#sessionPatient").val(draft.patientId).prop("disabled", true);
-        $("#webAudioFile").prop("disabled", true);
+        $("#sessionPatient").val(draft.patientId);
+        $(webAudioLockedFields).prop("disabled", true);
+        $("#discardWebAudioDraftBtn").removeClass("d-none");
         $("#webAudioRawTranscript").val(draft.rawTranscript || "");
         $("#webAudioTranscriptSection").toggleClass("d-none", !draft.rawTranscript);
         if (draft.status === "ready") {
@@ -6325,7 +6255,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           $("#webAudioStatus").text(
             "Nota preparada. Revisala y después guardá la sesión."
           );
-          $("#retryWebAudioBtn").addClass("d-none");
+          $("#retryWebAudioBtn, #resumeWebAudioPollBtn").addClass("d-none");
         } else if (draft.status === "failed") {
           stopWebAudioPolling();
           $("#sessionContent").val("");
@@ -6333,10 +6263,11 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             "La preparación falló, pero el borrador quedó guardado para reintentar."
           );
           $("#retryWebAudioBtn").removeClass("d-none");
+          $("#resumeWebAudioPollBtn").addClass("d-none");
         } else if (draft.status === "cancelled") {
           stopWebAudioPolling();
           $("#webAudioStatus").text("El borrador de audio fue cancelado.");
-          $("#retryWebAudioBtn").addClass("d-none");
+          $("#retryWebAudioBtn, #resumeWebAudioPollBtn").addClass("d-none");
         } else {
           const progressText = {
             received: "Archivo recibido. Esperando al worker...",
@@ -6345,13 +6276,37 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           };
           $("#sessionContent").val("");
           $("#webAudioStatus").text(progressText[draft.status] || "Procesando audio...");
-          $("#retryWebAudioBtn").addClass("d-none");
+          $("#retryWebAudioBtn, #resumeWebAudioPollBtn").addClass("d-none");
           pollWebAudioDraft(draft.id);
         }
       }
 
+      function pauseWebAudioPolling(message, allowResume = true) {
+        stopWebAudioPolling();
+        $("#webAudioStatus").text(message);
+        $("#retryWebAudioBtn").addClass("d-none");
+        $("#resumeWebAudioPollBtn").toggleClass("d-none", !allowResume);
+        $("#discardWebAudioDraftBtn").removeClass("d-none");
+      }
+
+      function resumeWebAudioPolling() {
+        if (!currentWebAudioDraftId) return;
+        currentWebAudioPollAttempts = 0;
+        currentWebAudioPollFailures = 0;
+        $("#resumeWebAudioPollBtn").addClass("d-none");
+        $("#webAudioStatus").text("Retomando el estado del borrador...");
+        pollWebAudioDraft(currentWebAudioDraftId);
+      }
+
       function pollWebAudioDraft(draftId) {
         stopWebAudioPolling();
+        if (currentWebAudioPollAttempts >= maxWebAudioPollAttempts) {
+          pauseWebAudioPolling(
+            "La preparación está demorando más de lo esperado. El borrador sigue guardado; podés retomar la consulta de estado."
+          );
+          return;
+        }
+        currentWebAudioPollAttempts += 1;
         currentWebAudioPollTimer = window.setTimeout(function () {
           $.ajax({
             url: `/api/audio-drafts/${draftId}`,
@@ -6359,6 +6314,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
             success: function (response) {
               if (currentWebAudioDraftId !== draftId) return;
+              currentWebAudioPollFailures = 0;
               if (["queued", "running"].includes(response.processing?.status)) {
                 $("#webAudioStatus").text(
                   response.processing.status === "queued"
@@ -6373,16 +6329,42 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                 response.processing?.status === "failed"
                 && !["ready", "confirmed", "cancelled"].includes(response.draft.status)
               ) {
-                renderPreparedWebAudio(response.draft);
+                stopWebAudioPolling();
+                currentWebAudioDraftId = response.draft.id;
+                currentWebAudioDraftPatientId = response.draft.patientId;
+                $(webAudioLockedFields).prop("disabled", true);
+                $("#retryWebAudioBtn, #discardWebAudioDraftBtn").removeClass("d-none");
+                $("#resumeWebAudioPollBtn").addClass("d-none");
                 $("#webAudioStatus").text(
-                  response.processing.failure?.message || "El worker no pudo preparar el audio."
+                  response.processing.failure?.message || "El worker no pudo preparar el audio. El borrador quedó guardado para reintentar."
                 );
                 return;
               }
               renderPreparedWebAudio(response.draft);
             },
-            error: function () {
+            error: function (xhr) {
               if (currentWebAudioDraftId !== draftId) return;
+              if (xhr.status === 401 || xhr.status === 403) {
+                pauseWebAudioPolling(
+                  "Tu sesión venció. El borrador quedó guardado; volvé a ingresar para continuar.",
+                  false
+                );
+                return;
+              }
+              if (xhr.status === 404 || xhr.status === 410) {
+                pauseWebAudioPolling(
+                  "El borrador ya no está disponible. Podés descartarlo y preparar un nuevo audio.",
+                  false
+                );
+                return;
+              }
+              currentWebAudioPollFailures += 1;
+              if (currentWebAudioPollFailures >= maxWebAudioPollFailures) {
+                pauseWebAudioPolling(
+                  "No pude consultar el estado después de varios intentos. El borrador sigue guardado; podés retomar cuando vuelva la conexión."
+                );
+                return;
+              }
               $("#webAudioStatus").text("No pude actualizar el estado. Voy a reintentar...");
               pollWebAudioDraft(draftId);
             },
@@ -6435,6 +6417,24 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           );
           return;
         }
+        const clinicalDate = $("#sessionClinicalDate").val();
+        const sessionType = $("#sessionType").val();
+        const durationMinutes = Number($("#sessionDurationMinutes").val());
+        const careModality = $("#sessionCareModality").val();
+        if (
+          !clinicalDate
+          || !sessionType
+          || !Number.isInteger(durationMinutes)
+          || durationMinutes < 1
+          || durationMinutes > 480
+          || !careModality
+        ) {
+          notificaciones.error(
+            "Datos clínicos incompletos",
+            "Completá fecha, tipo, duración clínica y modalidad antes de preparar el audio."
+          );
+          return;
+        }
         const file = $("#webAudioFile")[0]?.files?.[0];
         if (!file) {
           notificaciones.error(
@@ -6443,8 +6443,11 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           );
           return;
         }
-        if (currentWebAudioDraftId) discardCurrentWebAudioDraft();
-        const requestFingerprint = `${patientId}:${file.name}:${file.size}:${file.lastModified}:${file.type}`;
+        if (file.size > maxWebAudioUploadBytes) {
+          notificaciones.error("Audio demasiado grande", "El archivo supera el máximo de 25 MB.");
+          return;
+        }
+        const requestFingerprint = `${patientId}:${clinicalDate}:${sessionType}:${durationMinutes}:${careModality}:${file.name}:${file.size}:${file.lastModified}:${file.type}`;
         if (!currentWebAudioIdempotencyKey || currentWebAudioRequestFingerprint !== requestFingerprint) {
           const pending = loadPendingWebAudioUpload();
           currentWebAudioIdempotencyKey = pending?.requestFingerprint === requestFingerprint
@@ -6455,9 +6458,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         }
         const button = $("#prepareWebAudioBtn");
         button.prop("disabled", true).text("Subiendo...");
-        $("#sessionPatient, #webAudioFile").prop("disabled", true);
+        $(webAudioLockedFields).prop("disabled", true);
         $("#sessionContent, #webAudioRawTranscript").val("");
-        $("#webAudioTranscriptSection, #retryWebAudioBtn").addClass("d-none");
+        $("#webAudioTranscriptSection, #retryWebAudioBtn, #resumeWebAudioPollBtn").addClass("d-none");
         $("#webAudioStatus").text("Subiendo el archivo al almacenamiento temporal...");
 
         const uploadController = new AbortController();
@@ -6467,9 +6470,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           if (uploadController.signal.aborted || currentWebAudioUploadController !== uploadController) return;
           const params = new URLSearchParams({
             patientId,
-            clinicalDate: localDateKey(),
-            sessionType: "individual",
-            careModality: "inPerson",
+            clinicalDate,
+            sessionType,
+            durationMinutes: String(durationMinutes),
+            careModality,
           });
           if (durationSeconds) params.set("audioDurationSeconds", String(durationSeconds));
           const response = await fetch(`/api/audio-drafts/upload?${params.toString()}`, {
@@ -6489,13 +6493,15 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             throw error;
           }
           clearPendingWebAudioUpload(currentWebAudioIdempotencyKey);
+          currentWebAudioPollAttempts = 0;
+          currentWebAudioPollFailures = 0;
           renderPreparedWebAudio(payload.draft);
         } catch (error) {
           if (error.name !== "AbortError") {
             $("#webAudioStatus").text(error.message || "No se pudo preparar el audio.");
           }
           if (!currentWebAudioDraftId) {
-            $("#sessionPatient, #webAudioFile").prop("disabled", false);
+            $(webAudioLockedFields).prop("disabled", false);
           }
         } finally {
           if (currentWebAudioUploadController === uploadController) {
@@ -6515,8 +6521,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
           success: function (response) {
             if (response.queued) {
+              currentWebAudioPollAttempts = 0;
+              currentWebAudioPollFailures = 0;
               $("#webAudioStatus").text("Reintento en cola. Esperando al worker...");
-              $("#retryWebAudioBtn").addClass("d-none");
+              $("#retryWebAudioBtn, #resumeWebAudioPollBtn").addClass("d-none");
               pollWebAudioDraft(currentWebAudioDraftId);
             } else {
               renderPreparedWebAudio(response.draft);
@@ -6532,10 +6540,6 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           },
         });
       }
-
-      $("#newSessionModal").on("hidden.bs.modal", function () {
-        discardCurrentWebAudioDraft();
-      });
 
       // Cargar datos de pacientes
       function loadPatientsData() {
@@ -6556,15 +6560,15 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
               
               // Update dropdowns if they exist
               if ($("#sessionPatient").length) {
-                  console.log("📝 Updating session patient dropdown with", appData.patients.length, "patients");
-                  const patientOptions = appData.patients
+                  console.log("📝 Updating session patient dropdown with active patients");
+                  const allPatientOptions = appData.patients
                     .map((p) => `<option value="${p.id}">${p.name}</option>`)
                     .join("");
-                  $("#sessionPatient").html(
-                    '<option value="">Seleccionar paciente</option>' + patientOptions
-                  );
+                  if (!currentWebAudioDraftId && !currentWebAudioUploadController) {
+                    renderNewSessionPatientOptions();
+                  }
                   $("#sessionPatientFilter").html(
-                    '<option value="all">Todos los pacientes</option>' + patientOptions
+                    '<option value="all">Todos los pacientes</option>' + allPatientOptions
                   );
               } else {
                   console.warn("⚠️ #sessionPatient dropdown not found in DOM");
@@ -6630,17 +6634,37 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         const patientId = $("#sessionPatient").val();
         const content = $("#sessionContent").val().trim();
         const mood = $("#sessionMood").val();
+        const moodAssessment = mood === "" ? null : Number.parseInt(mood, 10);
         const medication = $("#sessionMedication").val().trim();
+        const clinicalDate = $("#sessionClinicalDate").val();
+        const sessionType = $("#sessionType").val();
+        const durationMinutes = Number($("#sessionDurationMinutes").val());
+        const careModality = $("#sessionCareModality").val();
+        const requiresFollowUp = $("#sessionRequiresFollowUp").is(":checked");
         const token = localStorage.getItem("authToken");
         const inputType = $("input[name='sessionInputType']:checked").val() || "text";
 
-        if (!patientId || !content || !mood || (inputType === "audio" && !currentWebAudioDraftId)) {
+        if (
+          !patientId
+          || !content
+          || !clinicalDate
+          || !sessionType
+          || !Number.isInteger(durationMinutes)
+          || durationMinutes < 1
+          || durationMinutes > 480
+          || !careModality
+          || (inputType === "audio" && !currentWebAudioDraftId)
+        ) {
           notificaciones.error(
             "Campos Incompletos",
             inputType === "audio" && !currentWebAudioDraftId
               ? "Primero prepará el audio y revisá la nota."
-              : "Por favor, seleccioná un paciente, completá el contenido de la sesión y el estado de ánimo."
+              : "Seleccioná un paciente activo y completá contenido, fecha, tipo, duración clínica y modalidad."
           );
+          return;
+        }
+        if (!activePatients().some((patient) => patient.id === patientId)) {
+          notificaciones.error("Paciente inactivo", "Activá al paciente antes de registrar una nueva nota.");
           return;
         }
         if (inputType === "audio" && patientId !== currentWebAudioDraftPatientId) {
@@ -6667,8 +6691,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
               currentWebAudioDraftPatientId = null;
               currentWebAudioIdempotencyKey = null;
               currentWebAudioRequestFingerprint = null;
+              currentWebAudioPollAttempts = 0;
+              currentWebAudioPollFailures = 0;
               stopWebAudioPolling();
-              $("#sessionPatient, #webAudioFile").prop("disabled", false);
+              $(webAudioLockedFields).prop("disabled", false);
               $("#webAudioFile").val("");
               $("#newSessionModal").modal("hide");
               $("#newSessionForm")[0].reset();
@@ -6680,8 +6706,11 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             },
             error: function (xhr) {
               btn.html(originalText).prop('disabled', false);
-              const msg = xhr.responseJSON?.message || "El borrador quedó guardado para reintentar";
-              notificaciones.advertencia("Borrador guardado", msg);
+              const msg = xhr.responseJSON?.message || "No se pudo confirmar todavía.";
+              const recoveryMessage = inputType === "audio"
+                ? `${msg} Podés volver a intentar Guardar; cerrar esta ventana no lo descarta.`
+                : `${msg} El borrador quedó guardado en el servidor, pero la bandeja para retomarlo fuera de esta pantalla aún está en desarrollo.`;
+              notificaciones.advertencia("Borrador conservado", recoveryMessage);
             },
           });
         };
@@ -6694,9 +6723,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             contentType: "application/json",
             data: JSON.stringify({
               cleanNote: content,
-              moodAssessment: parseInt(mood),
+              moodAssessment,
               medicationNotes: medication || null,
-              requiresFollowUp: parseInt(mood) <= 2,
+              requiresFollowUp,
             }),
             success: function (response) {
               confirmPreparedDraft(response.draft.id);
@@ -6720,13 +6749,13 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           data: JSON.stringify({
             patientId,
             cleanNote: content,
-            moodAssessment: parseInt(mood),
+            moodAssessment,
             medicationNotes: medication || null,
-            requiresFollowUp: parseInt(mood) <= 2,
-            sessionType: "individual",
-            durationMinutes: 30,
-            clinicalDate: localDateKey(),
-            careModality: "inPerson",
+            requiresFollowUp,
+            sessionType,
+            durationMinutes,
+            clinicalDate,
+            careModality,
             inputType: "text"
           }),
           success: function (draftResponse) {
@@ -6966,8 +6995,30 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         }, 500);
       }
 
-      // Mobile sidebar toggle
-      $("#sidebarToggle").on("click", () => $(".sidebar").toggleClass("show"));
+      function setMobileSidebarOpen(open) {
+        $(".sidebar").toggleClass("show", open);
+        $("#sidebarToggle")
+          .attr("aria-expanded", String(open))
+          .attr("aria-label", open ? "Ocultar menú" : "Mostrar menú")
+          .attr("title", open ? "Ocultar menú" : "Mostrar menú");
+        $("#sidebarToggle i").toggleClass("fa-bars", !open).toggleClass("fa-times", open);
+      }
+
+      // Un único control para el menú lateral en pantallas pequeñas.
+      $("#sidebarToggle").off("click.airaMenu").on("click.airaMenu", function () {
+        setMobileSidebarOpen(!$(".sidebar").hasClass("show"));
+      });
+
+      $(document).on(
+        "keydown",
+        ".clickable, .quick-action-card, .session-activity-item, .patient-card, .session-card, .message-options .option",
+        function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            this.click();
+          }
+        }
+      );
 
       // Funciones para vincular celular
       function nextWhatsappTestMessageId(prefix) {
@@ -7216,9 +7267,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                     ¿Qué querés hacer hoy?
                 </div>
                 <div class="message-options">
-                    <div class="option" onclick="handleLandingChat(this, 'new_session')">📝 Nueva sesión</div>
-                    <div class="option" onclick="handleLandingChat(this, 'new_patient')">👤 Nuevo paciente</div>
-                    <div class="option" onclick="handleLandingChat(this, 'stats')">📊 Ver estadísticas</div>
+                    <div class="option" role="button" tabindex="0" onclick="handleLandingChat(this, 'new_session')">📝 Nueva sesión</div>
+                    <div class="option" role="button" tabindex="0" onclick="handleLandingChat(this, 'new_patient')">👤 Nuevo paciente</div>
+                    <div class="option" role="button" tabindex="0" onclick="handleLandingChat(this, 'stats')">📊 Ver estadísticas</div>
                 </div>
             `);
       }
@@ -7244,7 +7295,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             break;
           case "stats":
             botResponse =
-              "Generando tus estadísticas... En el último mes, el ánimo promedio de tus pacientes subió un 15%. ¡Buen trabajo!";
+              "Esta es una demostración sin datos clínicos reales. Las métricas se calculan en el panel con las sesiones registradas.";
             break;
         }
 
@@ -7296,6 +7347,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             </button>
           </div>
           <div class="modal-body">
+            <div class="alert alert-info" role="status">El cambio de contraseña está en desarrollo y no se guarda en este corte.</div>
             <form id="form-cambiar-password">
               <div class="form-group">
                 <label for="password-actual"
@@ -7402,9 +7454,10 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             <button
               type="submit"
               form="form-cambiar-password"
-              class="btn btn-primary"
+              class="btn btn-secondary"
+              disabled
             >
-              Guardar cambios
+              En desarrollo
             </button>
           </div>
         </div>
@@ -7412,57 +7465,6 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", function () {
-        // Validación del formato de fecha
-        const dateInput = document.getElementById("regBirthdate");
-
-        // Auto-formato mientras se escribe
-        dateInput.addEventListener("keyup", function (e) {
-          let value = this.value;
-
-          // Eliminar caracteres no numéricos excepto /
-          value = value.replace(/[^0-9/]/g, "");
-
-          // Añadir / automáticamente
-          if (value.length === 2 && !value.includes("/")) {
-            value += "/";
-          } else if (value.length === 5 && value.split("/").length === 2) {
-            value += "/";
-          }
-
-          // Actualizar valor solo si cambió
-          if (this.value !== value) {
-            this.value = value;
-          }
-        });
-
-        // Validar fecha al perder foco
-        dateInput.addEventListener("blur", function () {
-          const datePattern = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-          const match = this.value.match(datePattern);
-
-          if (match) {
-            const day = parseInt(match[1], 10);
-            const month = parseInt(match[2], 10) - 1; // Los meses en JS son 0-11
-            const year = parseInt(match[3], 10);
-
-            // Crear fecha y verificar validez
-            const date = new Date(year, month, day);
-            const isValid =
-              date.getFullYear() === year &&
-              date.getMonth() === month &&
-              date.getDate() === day;
-
-            if (!isValid) {
-              this.classList.add("is-invalid");
-            } else {
-              this.classList.remove("is-invalid");
-              this.classList.add("is-valid");
-            }
-          } else if (this.value) {
-            this.classList.add("is-invalid");
-          }
-        });
-
         // Autocompletar datos de prueba
         document
           .getElementById("autocompletarDatos")
@@ -7471,14 +7473,9 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             document.getElementById("regName").value = "Dra. María López";
             document.getElementById("regSpecialty").value = "Psicólogo/a";
             document.getElementById("regDni").value = "30258741";
-            document.getElementById("regBirthdate").value = "15/06/1985";
             document.getElementById("regEmail").value =
               "maria.lopez@ejemplo.com";
             document.getElementById("password").value = "Prueba2025#";
-
-            // Validar que la fecha sea correcta
-            const event = new Event("blur");
-            document.getElementById("regBirthdate").dispatchEvent(event);
 
             // Agregar clase is-valid a todos los campos
             document
