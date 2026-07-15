@@ -349,6 +349,14 @@ class FunctionalTests {
       this.test('The repeated link event is idempotent',
         repeatedLink.status === 200 && repeatedLink.data?.deduplicated === true);
 
+      const linkIdAsConversation = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-link-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'MENÚ' }
+      });
+      this.test('A link event id cannot be reused as a conversation event',
+        linkIdAsConversation.status === 409);
+
       const ownLink = await this.request('GET', '/api/whatsapp/link', null, this.token);
       const otherLink = await this.request('GET', '/api/whatsapp/link', null, this.token2);
       this.test('The web account sees its persisted phone link',
@@ -364,55 +372,166 @@ class FunctionalTests {
         name: 'Other Account Patient',
         dni: '33333333'
       }, this.token2);
-      const linkedForeignPatient = await this.request('POST', '/api/dev/whatsapp/inbound', {
-        messageId: 'fake-linked-foreign-patient-001',
-        from: '+5491122334455',
-        selectedPatientId: otherPatient.data?.id,
-        message: { type: 'text', text: 'Must not cross account boundaries' }
-      });
-      this.test('A linked phone cannot select another account patient', linkedForeignPatient.status === 404);
-      await this.request('DELETE', `/api/patients/${otherPatient.data?.id}`, null, this.token2);
+      await this.request('PATCH', `/api/patients/${patientId}`, {
+        status: 'active'
+      }, this.token);
 
       const foreignWhatsapp = await this.request('POST', '/api/dev/whatsapp/inbound', {
         messageId: 'fake-foreign-001',
         from: '+5491199999999',
-        selectedPatientId: patientId,
-        message: { type: 'text', text: 'Must not be accepted' }
+        message: { type: 'text', text: 'MENÚ' }
       });
       this.test('An unknown phone cannot use another account patient', foreignWhatsapp.status === 409);
+
+      const menu = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-menu-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'MENÚ' }
+      });
+      this.test('A linked phone opens its persistent menu',
+        menu.status === 200 && menu.data?.conversation?.state === 'menu');
+
+      const repeatedMenu = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-menu-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'MENÚ' }
+      });
+      this.test('Every inbound event is deduplicated',
+        repeatedMenu.status === 200 && repeatedMenu.data?.deduplicated === true);
+
+      const conflictingMenu = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-menu-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'NUEVA NOTA' }
+      });
+      this.test('Reusing a message id with another payload is rejected', conflictingMenu.status === 409);
+
+      const conversationIdAsLink = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-menu-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'VINCULAR 000000' }
+      });
+      this.test('A conversation event id cannot be reused as a link event',
+        conversationIdAsLink.status === 409);
+
+      const newNote = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-new-note-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'NUEVA NOTA' }
+      });
+      this.test('New note lists only patients from the linked account',
+        newNote.data?.conversation?.state === 'choosingPatient' &&
+        newNote.data?.reply?.patients?.some(p => p.id === patientId) &&
+        !newNote.data?.reply?.patients?.some(p => p.id === otherPatient.data?.id));
+
+      const linkedForeignPatient = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-linked-foreign-patient-001',
+        from: '+5491122334455',
+        selectedPatientId: otherPatient.data?.id,
+        message: { type: 'text', text: `PACIENTE ${otherPatient.data?.id}` }
+      });
+      this.test('A linked phone cannot select another account patient',
+        linkedForeignPatient.status === 200 &&
+        linkedForeignPatient.data?.reply?.code === 'PATIENT_NOT_FOUND' &&
+        linkedForeignPatient.data?.conversation?.state === 'choosingPatient');
+
+      const selectPatient = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-select-patient-001',
+        from: '+5491122334455',
+        selectedPatientId: otherPatient.data?.id,
+        message: { type: 'text', text: `PACIENTE ${patientId}` }
+      });
+      this.test('Patient selection is explicit and stored in the conversation',
+        selectPatient.data?.conversation?.state === 'awaitingNote' &&
+        selectPatient.data?.conversation?.selectedPatientId === patientId);
 
       const whatsappDraft = await this.request('POST', '/api/dev/whatsapp/inbound', {
         messageId: 'fake-message-001',
         from: '+5491122334455',
-        selectedPatientId: patientId,
-        clinicalDate: '2026-07-15',
+        selectedPatientId: otherPatient.data?.id,
         message: { type: 'text', text: 'WhatsApp draft note' }
       });
       const whatsappDraftId = whatsappDraft.data?.draft?.id;
       this.test('Fake WhatsApp creates a draft only',
-        whatsappDraft.status === 201 && whatsappDraft.data?.draft?.source === 'whatsapp');
+        whatsappDraft.status === 200 &&
+        whatsappDraft.data?.reply?.code === 'DRAFT_READY' &&
+        whatsappDraft.data?.draft?.source === 'whatsapp');
+      this.test('Webhook selectedPatientId is ignored in favor of conversation state',
+        whatsappDraft.data?.draft?.patientId === patientId);
 
       const whatsappDuplicate = await this.request('POST', '/api/dev/whatsapp/inbound', {
         messageId: 'fake-message-001',
         from: '+5491122334455',
-        selectedPatientId: patientId,
-        clinicalDate: '2026-07-15',
-        message: { type: 'text', text: 'Duplicate body is ignored' }
+        message: { type: 'text', text: 'WhatsApp draft note' }
       });
       this.test('Repeated WhatsApp message is deduplicated',
         whatsappDuplicate.status === 200 &&
         whatsappDuplicate.data?.deduplicated === true &&
         whatsappDuplicate.data?.draft?.id === whatsappDraftId);
 
-      const confirmWhatsapp = await this.request(
-        'POST',
-        `/api/session-drafts/${whatsappDraftId}/confirm`,
-        null,
-        this.token
-      );
+      const menuWithDraft = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-menu-with-draft-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'MENÚ' }
+      });
+      this.test('Menu does not discard a pending draft',
+        menuWithDraft.data?.reply?.code === 'DRAFT_PENDING' &&
+        menuWithDraft.data?.conversation?.state === 'awaitingConfirmation');
+
+      const confirmWhatsapp = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-save-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'GUARDAR' }
+      });
       whatsappSessionId = confirmWhatsapp.data?.session?.id;
-      this.test('WhatsApp draft confirms through the canonical endpoint',
-        confirmWhatsapp.status === 201 && confirmWhatsapp.data?.session?.source === 'whatsapp');
+      this.test('WhatsApp confirms through the canonical draft service',
+        confirmWhatsapp.status === 200 &&
+        confirmWhatsapp.data?.reply?.code === 'SESSION_SAVED' &&
+        confirmWhatsapp.data?.conversation?.state === 'menu');
+
+      const repeatedSave = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-save-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'GUARDAR' }
+      });
+      this.test('Repeated save returns the same session without duplicating it',
+        repeatedSave.data?.deduplicated === true &&
+        repeatedSave.data?.session?.id === whatsappSessionId);
+
+      const sessionsAfterWhatsapp = await this.request('GET', '/api/sessions', null, this.token);
+      const whatsappCopies = sessionsAfterWhatsapp.data?.sessions?.filter(
+        session => session.id === whatsappSessionId
+      );
+      this.test('The WhatsApp-confirmed session appears once in the web API',
+        whatsappCopies?.length === 1 && whatsappCopies[0]?.source === 'whatsapp');
+
+      const cancelStart = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-cancel-start-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'NUEVA NOTA' }
+      });
+      this.test('A second note can start after saving', cancelStart.data?.conversation?.state === 'choosingPatient');
+      await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-cancel-patient-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: `PACIENTE ${patientId}` }
+      });
+      const cancellable = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-cancel-note-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'Draft to cancel from WhatsApp' }
+      });
+      const cancelWhatsapp = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-cancel-action-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: 'CANCELAR' }
+      });
+      this.test('WhatsApp can cancel a draft without creating a session',
+        cancellable.data?.draft?.status === 'ready' &&
+        cancelWhatsapp.data?.draft?.status === 'cancelled' &&
+        cancelWhatsapp.data?.conversation?.state === 'menu');
+
+      await this.request('DELETE', `/api/patients/${otherPatient.data?.id}`, null, this.token2);
 
       const unlink = await this.request('DELETE', '/api/whatsapp/link', null, this.token);
       this.test('The web account can unlink its phone', unlink.data?.link?.status === 'unlinked');
@@ -500,8 +619,6 @@ tests.run().catch(err => {
   console.error('Error:', err);
   process.exit(1);
 });
-
-
 
 
 

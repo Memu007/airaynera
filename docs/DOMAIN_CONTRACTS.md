@@ -135,20 +135,38 @@ DELETE /api/whatsapp/link
 
 Estados: `unlinked | pending | linked | expired`.
 
-El adaptador funcional local recibe texto en `POST /api/dev/whatsapp/inbound`. No recibe JWT ni `userId`: resuelve la cuenta exclusivamente desde `from` y el vínculo persistido. Mantiene `selectedPatientId` explícito hasta incorporar el menú conversacional. Un `messageId` repetido devuelve el mismo borrador y no crea otra fila.
+El adaptador funcional local recibe texto en `POST /api/dev/whatsapp/inbound`. No recibe JWT, `userId` ni `selectedPatientId`: resuelve la cuenta exclusivamente desde `from`, y el paciente exclusivamente desde la conversación persistida. Un `messageId` repetido devuelve la respuesta guardada y no vuelve a avanzar el estado.
 
 ```json
 {
   "messageId": "fake-message-001",
   "from": "+5491122334455",
-  "selectedPatientId": "7",
-  "clinicalDate": "2026-07-15",
   "message": {
     "type": "text",
-    "text": "Se trabajó ansiedad anticipatoria."
+    "text": "MENÚ"
   }
 }
 ```
+
+## Conversación de texto implementada
+
+```text
+menu
+→ choosingPatient
+→ awaitingNote
+→ awaitingConfirmation
+→ menu
+```
+
+Comandos: `MENÚ`, `NUEVA NOTA`, `BUSCAR <nombre>`, `PACIENTE <id>`, texto libre, `GUARDAR` y `CANCELAR`.
+
+- Solamente se listan pacientes activos de la cuenta vinculada.
+- El texto libre crea un `SessionDraft` y cero sesiones.
+- `MENÚ` no descarta un borrador pendiente.
+- `GUARDAR` usa `confirmDraft`; `CANCELAR` usa `cancelDraft`.
+- La conversación y la respuesta de cada evento se guardan en SQLite dentro de la misma transacción.
+- El mismo `messageId` con otro teléfono o contenido devuelve `409 MESSAGE_ID_CONFLICT`.
+- Desvincular elimina el estado conversacional, pero conserva el ledger de eventos.
 
 Los endpoints históricos que escribían sesiones directamente desde WhatsApp devuelven `410`. Meta deberá reemplazar al adaptador falso sin modificar los servicios de vínculo o borradores.
 

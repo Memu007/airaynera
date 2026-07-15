@@ -16,7 +16,7 @@ Cuenta web
 
 ## Estado del proyecto
 
-El proyecto está en una etapa de consolidación funcional. El recorrido web registro → paciente → borrador → sesión → recarga ya funciona localmente. La web también puede generar un código temporal, vincular un teléfono mediante el adaptador simulado y resolver desde ese número la cuenta que crea el borrador. El menú conversacional, el transporte real de Meta y el audio todavía no funcionan de punta a punta.
+El proyecto está en una etapa de consolidación funcional. El recorrido web registro → paciente → borrador → sesión → recarga ya funciona localmente. La web también puede vincular un teléfono y simular el recorrido `MENÚ → paciente → nota → GUARDAR/CANCELAR`; la cuenta y el paciente salen del estado persistido, no del contenido. El transporte real de Meta y el audio todavía no funcionan de punta a punta.
 
 Las prioridades vigentes son:
 

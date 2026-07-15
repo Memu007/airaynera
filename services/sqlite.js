@@ -652,9 +652,18 @@ function expireWhatsappLink(userId, now) {
   return getWhatsappLink(userId);
 }
 
-function consumeWhatsappLinkCode({ messageId, phoneNumber, code, now }) {
+function consumeWhatsappLinkCode({ messageId, phoneNumber, code, payloadHash, now }) {
   const conn = getDb();
   const consume = conn.transaction(() => {
+    const conflictingInbound = conn.prepare(
+      'SELECT message_id FROM whatsapp_inbound_events WHERE message_id = ?'
+    ).get(messageId);
+    if (conflictingInbound) {
+      const error = new Error('messageId was already used by another inbound event');
+      error.code = 'MESSAGE_ID_CONFLICT';
+      throw error;
+    }
+
     const repeatedEvent = conn.prepare(
       'SELECT * FROM whatsapp_link_events WHERE message_id = ?'
     ).get(messageId);
@@ -662,6 +671,11 @@ function consumeWhatsappLinkCode({ messageId, phoneNumber, code, now }) {
       if (repeatedEvent.phone_e164 !== phoneNumber) {
         const error = new Error('The repeated event came from another phone number');
         error.code = 'PHONE_MISMATCH';
+        throw error;
+      }
+      if (repeatedEvent.payload_hash && repeatedEvent.payload_hash !== payloadHash) {
+        const error = new Error('messageId was already used by another link payload');
+        error.code = 'MESSAGE_ID_CONFLICT';
         throw error;
       }
       return { link: JSON.parse(repeatedEvent.response_json), deduplicated: true };
@@ -706,9 +720,9 @@ function consumeWhatsappLinkCode({ messageId, phoneNumber, code, now }) {
     const link = getWhatsappLink(row.user_id);
     conn.prepare(`
       INSERT INTO whatsapp_link_events (
-        message_id, user_id, phone_e164, response_json, created_at
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(messageId, row.user_id, phoneNumber, JSON.stringify(link), now);
+        message_id, user_id, phone_e164, response_json, created_at, payload_hash
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(messageId, row.user_id, phoneNumber, JSON.stringify(link), now, payloadHash);
     return { link, deduplicated: false };
   });
 
@@ -723,13 +737,16 @@ function consumeWhatsappLinkCode({ messageId, phoneNumber, code, now }) {
 
 function unlinkWhatsapp(userId, now) {
   const conn = getDb();
-  conn.prepare(`
-    UPDATE whatsapp_links SET
-      phone_e164=NULL, status='unlinked', link_code=NULL,
-      code_expires_at=NULL, linked_message_id=NULL, linked_at=NULL,
-      last_seen_at=NULL, unlinked_at=?, updated_at=?
-    WHERE user_id=?
-  `).run(now, now, userId);
+  conn.transaction(() => {
+    conn.prepare(`
+      UPDATE whatsapp_links SET
+        phone_e164=NULL, status='unlinked', link_code=NULL,
+        code_expires_at=NULL, linked_message_id=NULL, linked_at=NULL,
+        last_seen_at=NULL, unlinked_at=?, updated_at=?
+      WHERE user_id=?
+    `).run(now, now, userId);
+    conn.prepare('DELETE FROM whatsapp_conversations WHERE user_id=?').run(userId);
+  })();
   return getWhatsappLink(userId);
 }
 
@@ -738,6 +755,123 @@ function touchWhatsappLink(userId, now) {
     UPDATE whatsapp_links SET last_seen_at=?, updated_at=?
     WHERE user_id=? AND status='linked'
   `).run(now, now, userId);
+}
+
+// ===== WHATSAPP CONVERSATION FUNCTIONS =====
+
+function mapWhatsappConversationRow(row) {
+  if (!row) return null;
+  return {
+    userId: String(row.user_id),
+    phoneNumber: row.phone_e164,
+    state: row.state,
+    selectedPatientId: row.selected_patient_id == null
+      ? null
+      : String(row.selected_patient_id),
+    currentDraftId: row.current_draft_id == null
+      ? null
+      : String(row.current_draft_id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function getWhatsappConversation(userId) {
+  return mapWhatsappConversationRow(
+    getDb().prepare('SELECT * FROM whatsapp_conversations WHERE user_id=?').get(userId)
+  );
+}
+
+function ensureWhatsappConversation(userId, phoneNumber, now) {
+  const conn = getDb();
+  const current = getWhatsappConversation(userId);
+  if (!current) {
+    conn.prepare(`
+      INSERT INTO whatsapp_conversations (
+        user_id, phone_e164, state, selected_patient_id,
+        current_draft_id, created_at, updated_at
+      ) VALUES (?, ?, 'menu', NULL, NULL, ?, ?)
+    `).run(userId, phoneNumber, now, now);
+  } else if (current.phoneNumber !== phoneNumber) {
+    conn.prepare(`
+      UPDATE whatsapp_conversations SET
+        phone_e164=?, state='menu', selected_patient_id=NULL,
+        current_draft_id=NULL, updated_at=?
+      WHERE user_id=?
+    `).run(phoneNumber, now, userId);
+  }
+  return getWhatsappConversation(userId);
+}
+
+function updateWhatsappConversation(userId, changes, now) {
+  const conn = getDb();
+  const current = getWhatsappConversation(userId);
+  if (!current) return null;
+  const state = changes.state ?? current.state;
+  const selectedPatientId = changes.selectedPatientId === undefined
+    ? current.selectedPatientId
+    : changes.selectedPatientId;
+  const currentDraftId = changes.currentDraftId === undefined
+    ? current.currentDraftId
+    : changes.currentDraftId;
+
+  conn.prepare(`
+    UPDATE whatsapp_conversations SET
+      state=?, selected_patient_id=?, current_draft_id=?, updated_at=?
+    WHERE user_id=?
+  `).run(state, selectedPatientId, currentDraftId, now, userId);
+  return getWhatsappConversation(userId);
+}
+
+function deleteWhatsappConversation(userId) {
+  const info = getDb().prepare(
+    'DELETE FROM whatsapp_conversations WHERE user_id=?'
+  ).run(userId);
+  return info.changes > 0;
+}
+
+function getWhatsappInboundEvent(messageId) {
+  const row = getDb().prepare(
+    'SELECT * FROM whatsapp_inbound_events WHERE message_id=?'
+  ).get(messageId);
+  if (!row) return null;
+  return {
+    messageId: row.message_id,
+    phoneNumber: row.phone_e164,
+    payloadHash: row.payload_hash,
+    userId: row.user_id == null ? null : String(row.user_id),
+    responseStatus: Number(row.response_status),
+    response: JSON.parse(row.response_json),
+    createdAt: row.created_at,
+  };
+}
+
+function whatsappLinkEventExists(messageId) {
+  return Boolean(
+    getDb().prepare('SELECT message_id FROM whatsapp_link_events WHERE message_id=?').get(messageId)
+  );
+}
+
+function addWhatsappInboundEvent(event) {
+  getDb().prepare(`
+    INSERT INTO whatsapp_inbound_events (
+      message_id, phone_e164, payload_hash, user_id,
+      response_status, response_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    event.messageId,
+    event.phoneNumber,
+    event.payloadHash,
+    event.userId,
+    event.responseStatus,
+    JSON.stringify(event.response),
+    event.createdAt
+  );
+  return getWhatsappInboundEvent(event.messageId);
+}
+
+function withTransaction(work) {
+  return getDb().transaction(work)();
 }
 
 // ===== USER FUNCTIONS =====
@@ -824,6 +958,14 @@ module.exports = {
   consumeWhatsappLinkCode,
   unlinkWhatsapp,
   touchWhatsappLink,
+  getWhatsappConversation,
+  ensureWhatsappConversation,
+  updateWhatsappConversation,
+  deleteWhatsappConversation,
+  getWhatsappInboundEvent,
+  whatsappLinkEventExists,
+  addWhatsappInboundEvent,
+  withTransaction,
   createUser,
   verifyUser,
 };

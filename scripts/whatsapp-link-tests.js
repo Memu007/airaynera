@@ -58,6 +58,14 @@ try {
   expectCode(
     () => service.consumeCommand({
       messageId: 'link-message-1',
+      from: '+5491122334455',
+      text: 'VINCULAR 000000',
+    }, { now: '2026-07-14T12:03:00.000Z' }),
+    'MESSAGE_ID_CONFLICT'
+  );
+  expectCode(
+    () => service.consumeCommand({
+      messageId: 'link-message-1',
       from: '+5491199999999',
       text: pending.command,
     }, { now: '2026-07-14T12:03:00.000Z' }),

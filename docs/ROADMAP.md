@@ -2,7 +2,7 @@
 
 Última actualización: 2026-07-14.
 
-Estado general: vertical web, borradores de texto y vinculación simulada teléfono→cuenta aprobados localmente; menú conversacional y Meta real pendientes.
+Estado general: vertical web y flujo completo de texto por WhatsApp simulado aprobados localmente; Meta real y audio pendientes.
 
 Alcance actual: priorizar funcionamiento. Seguridad avanzada, cumplimiento formal y estética se retomarán después de validar la idea.
 
@@ -54,7 +54,7 @@ Criterio de salida:
 
 > Una base vacía se crea, las migraciones se aplican y las pruebas mínimas de contrato pasan en local y CI.
 
-Estado: núcleo cumplido. Migraciones `001`, `002` y `003`, contratos y doble de WhatsApp aprobados; falta el doble de transcripción.
+Estado: núcleo cumplido. Migraciones `001` a `004`, contratos, doble de WhatsApp y persistencia conversacional aprobados; falta el doble de transcripción.
 
 ## Etapa 1 — Web funcional
 
@@ -119,7 +119,7 @@ Criterio de salida:
 
 > Un usuario vinculado desde la web manda `MENÚ` y recibe una respuesta desde el número real de AIRA.
 
-Estado parcial: código temporal, vencimiento, consumo desde teléfono, persistencia, estado visible, idempotencia y desvinculación están aprobados con el adaptador falso. La identidad de las notas ya se resuelve mediante `phone → userId`, sin aceptar JWT ni `userId` en el evento. Faltan `MENÚ`, webhook de Meta y envío real.
+Estado parcial: código temporal, vencimiento, consumo desde teléfono, persistencia, estado visible, idempotencia, desvinculación y `MENÚ` están aprobados con el adaptador falso. La identidad se resuelve mediante `phone → userId`, sin aceptar JWT ni `userId` en el evento. Faltan webhook de Meta y envío real.
 
 Tag sugerido: `mvp-v0.2-whatsapp-linked`.
 
@@ -176,7 +176,7 @@ Criterio de salida:
 
 Tag sugerido: `mvp-v0.3-text-e2e`.
 
-Estado parcial: una nota de texto desde un teléfono vinculado crea un único borrador para la cuenta correcta y se confirma de forma idempotente. Faltan conversación/menú, confirmación desde WhatsApp y webhook real de Meta.
+Estado parcial: el criterio completo está aprobado con el adaptador falso, incluida persistencia después de reiniciar, deduplicación de cada mensaje, confirmación/cancelación y aparición en la ficha web. Falta reemplazar el transporte por Meta real.
 
 ## Etapa 4 — Audio web y WhatsApp
 

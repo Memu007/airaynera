@@ -129,6 +129,7 @@ app.use(express.static(path.join(__dirname)));
 const sql = require("./services/sqlite");
 const sessionDraftService = require("./services/sessionDraftService");
 const whatsappLinkService = require("./services/whatsappLinkService");
+const whatsappConversationService = require("./services/whatsappConversationService");
 
 // Initialize DB tables
 try {
@@ -253,6 +254,7 @@ function sendWhatsappError(res, error) {
     WHATSAPP_ALREADY_LINKED: 409,
     LINK_CODE_EXPIRED: 410,
     WHATSAPP_NOT_LINKED: 409,
+    MESSAGE_ID_CONFLICT: 409,
   };
   const status = statusByCode[error.code] || 500;
   if (status === 500) console.error('WhatsApp link error:', error);
@@ -648,40 +650,8 @@ app.post('/api/dev/whatsapp/inbound',
         });
       }
 
-      const userId = whatsappLinkService.resolveUserId(from);
-      if (!userId) {
-        const error = new Error('Vinculá este teléfono desde la web de AIRA');
-        error.code = 'WHATSAPP_NOT_LINKED';
-        throw error;
-      }
-      if (!req.body.selectedPatientId) {
-        return res.status(400).json({ error: 'INVALID_WHATSAPP_EVENT', message: 'selectedPatientId is required' });
-      }
-      if (req.body.clinicalDate && !/^\d{4}-\d{2}-\d{2}$/.test(req.body.clinicalDate)) {
-        return res.status(400).json({ error: 'INVALID_WHATSAPP_EVENT', message: 'clinicalDate is invalid' });
-      }
-
-      const result = sessionDraftService.createDraft(userId, {
-        patientId: req.body.selectedPatientId,
-        clinicalDate: req.body.clinicalDate,
-        sessionType: req.body.sessionType || 'individual',
-        durationMinutes: req.body.durationMinutes ?? null,
-        careModality: req.body.careModality || 'unspecified',
-        inputType: 'text',
-        cleanNote: text,
-      }, {
-        source: 'whatsapp',
-        sourceMessageId: messageId,
-      });
-
-      res.status(result.created ? 201 : 200).json({
-        reply: {
-          kind: 'draftReady',
-          actions: ['confirm', 'cancel'],
-        },
-        draft: result.draft,
-        deduplicated: !result.created,
-      });
+      const result = whatsappConversationService.handleInbound({ messageId, from, text });
+      return res.status(result.status).json(result.body);
     } catch (error) {
       if (error.code?.startsWith('DRAFT') || error.code === 'PATIENT_NOT_FOUND' || error.code === 'INVALID_DRAFT') {
         return sendDraftError(res, error);

@@ -2,6 +2,39 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-14 — Menú de texto completo sobre teléfono vinculado
+
+### Objetivo
+
+Demostrar el recorrido `MENÚ → paciente → nota → GUARDAR/CANCELAR → ficha web` sin Meta ni audio, conservando identidad, estado e idempotencia dentro de AIRA.
+
+### Trabajo realizado
+
+- Tres agentes compitieron con propuestas independientes de máquina de estados, transacciones, respuestas y gates.
+- Se eligió un dispatcher transaccional con `MENÚ` no destructivo cuando hay un borrador pendiente.
+- Se agregó `004_whatsapp_conversations.sql` con conversación por cuenta y ledger durable de todos los mensajes entrantes.
+- `POST /api/dev/whatsapp/inbound` dejó de aceptar `selectedPatientId`; el paciente sale únicamente de `PACIENTE <id>` persistido.
+- Se implementaron `MENÚ`, `NUEVA NOTA`, búsqueda simple, lista de pacientes activos, selección, nota libre, `GUARDAR` y `CANCELAR`.
+- Crear la nota produce solamente `SessionDraft`; guardar reutiliza la confirmación canónica e idempotente.
+- Un evento repetido devuelve la respuesta guardada; reutilizar el ID con otro teléfono o texto devuelve conflicto.
+- Desvincular elimina la conversación y evita heredar paciente o borrador al volver a vincular.
+- El modal web incluye un simulador de texto mínimo que llama al mismo adaptador y refresca sesiones al guardar.
+
+### Verificaciones
+
+- `npm test`: migraciones, vínculo, reinicio conversacional y 91/91 pruebas funcionales aprobadas.
+- Una prueba separada termina el proceso, abre SQLite desde otro proceso y continúa desde `awaitingNote`.
+- Cubiertos pacientes ajenos, campos laterales ignorados, cada mensaje duplicado, payload conflictivo, borrador pendiente, guardar, cancelar y desvincular.
+- `npm run build`, sintaxis JavaScript y `git diff --check`: aprobados.
+- Recorrido visible aprobado: crear paciente → vincular → MENÚ → seleccionar → nota → GUARDAR → recargar.
+- Después de recargar: exactamente 1 paciente, 1 sesión y la nota correcta visibles.
+
+### Siguiente trabajo
+
+1. Crear el doble de audio y el contrato `audio → rawTranscript → cleanNote → SessionDraft`.
+2. Evaluar proveedores por costo y calidad con audios creados o anonimizados antes de elegir Gemini, Groq u OpenAI.
+3. Conectar Meta real recién cuando existan sus credenciales, sin cambiar conversación ni borradores.
+
 ## 2026-07-14 — Vinculación cuenta web ↔ teléfono simulado
 
 ### Objetivo

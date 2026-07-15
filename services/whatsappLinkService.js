@@ -89,10 +89,16 @@ function consumeCommand({ messageId, from, text }, options = {}) {
   if (!match) throw domainError('INVALID_LINK_COMMAND', 'Usá VINCULAR seguido del código de 6 dígitos');
 
   const now = options.now ? new Date(options.now) : new Date();
+  const phoneNumber = normalizePhone(from);
+  const hash = crypto
+    .createHash('sha256')
+    .update(JSON.stringify({ phoneNumber, text: String(text || '').trim() }))
+    .digest('hex');
   const result = sql.consumeWhatsappLinkCode({
     messageId: String(messageId || ''),
-    phoneNumber: normalizePhone(from),
+    phoneNumber,
     code: match[1],
+    payloadHash: hash,
     now: now.toISOString(),
   });
 

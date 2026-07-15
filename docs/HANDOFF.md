@@ -10,8 +10,8 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Rama actual: `agent/01-web-core`.
 - Base de la rama: `41892d3` (`record green ci baseline`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: vertical web, `SessionDraft` y vinculación teléfono→cuenta mediante WhatsApp simulado funcionando.
-- Próximo objetivo: implementar `MENÚ → elegir paciente → enviar nota → guardar/cancelar` sobre el teléfono vinculado; Meta real se incorpora cuando existan credenciales.
+- Etapa técnica: vertical web y recorrido completo de texto mediante WhatsApp simulado funcionando.
+- Próximo objetivo: crear el doble de audio y comparar transcripción/costo con audios de prueba; Meta real se incorpora cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -57,7 +57,10 @@ Registro web
 - `db/migrations/003_whatsapp_links.sql` persiste teléfono, estado, código de seis dígitos y vencimiento; `whatsapp_link_events` conserva la deduplicación aunque el vínculo se regenere o elimine.
 - El código vence en diez minutos; regenerar invalida el anterior y repetir el mismo evento de vinculación es idempotente.
 - El flujo funcional está en `POST /api/dev/whatsapp/inbound`: no acepta JWT ni `userId`; resuelve la cuenta exclusivamente desde `from`.
-- El paciente continúa siendo explícito mediante `selectedPatientId` hasta implementar el menú conversacional.
+- El evento tampoco acepta `selectedPatientId`; la conversación exige `PACIENTE <id>` y persiste la selección.
+- `db/migrations/004_whatsapp_conversations.sql` agrega el estado y un ledger de respuestas para todos los mensajes.
+- Están implementados `MENÚ`, `NUEVA NOTA`, `BUSCAR`, selección de paciente, texto libre, `GUARDAR` y `CANCELAR`.
+- La conversación sobrevive reinicios del proceso; `MENÚ` no descarta un borrador pendiente.
 - El adaptador crea solamente `SessionDraft`; confirma mediante el mismo endpoint canónico que la web.
 - Un `messageId` repetido devuelve el mismo borrador y no crea otra fila.
 - Desvincular corta la resolución de identidad y libera el teléfono.
@@ -77,12 +80,13 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La batería actual pasa 78 de 78 pruebas funcionales con Node.js 20, además de las pruebas de migración y del servicio de vínculo.
+- La batería actual pasa 91 de 91 pruebas funcionales con Node.js 20, además de migración, vínculo y reinicio conversacional.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
 - `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
 - SQLite ahora aplica migraciones versionadas desde `db/migrations/`.
 - La migración `003_whatsapp_links.sql` fue probada sobre base nueva, base heredada y segunda ejecución vacía.
+- La migración `004_whatsapp_conversations.sql` y la reapertura del estado desde otro proceso están probadas.
 - La migración inicial es idempotente y fue probada contra una base nueva y una base con datos existentes.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
@@ -131,6 +135,12 @@ El 2026-07-14 se compararon tres propuestas independientes. Se eligió un híbri
 
 Este bloque implementa vínculo, expiración, consumo desde teléfono y notas identificadas por número. El estado conversacional y el menú se dejaron para el siguiente bloque para poder aislar primero la identidad. El evento entrante nunca acepta `userId`; la web obtiene identidad del JWT y WhatsApp del teléfono vinculado.
 
+### Decisión multiagente: menú conversacional
+
+El 2026-07-14 se compararon tres propuestas de máquina de estados. Se eligió el dispatcher transaccional con ledger inmutable, sumando la regla de no descartar silenciosamente un borrador cuando llega `MENÚ`.
+
+La transición, el efecto sobre `SessionDraft`, la conversación y la respuesta deduplicable se escriben en una transacción SQLite. El paciente nunca llega por un campo lateral ni se deduce de la nota.
+
 ### Decisión multiagente: dependencias y CI
 
 El 2026-07-14 se compararon tres propuestas independientes:
@@ -159,6 +169,7 @@ Rama prevista: `agent/01-web-core`.
 - [x] Definir contratos canónicos de paciente, sesión y borrador.
 - [x] Crear un doble de prueba de WhatsApp para texto.
 - [x] Vincular explícitamente una cuenta web con un teléfono en el doble de WhatsApp.
+- [x] Completar el menú de texto y la confirmación/cancelación desde el doble de WhatsApp.
 - [ ] Crear el doble de transcripción para audio.
 
 ### Etapa 1
@@ -182,6 +193,8 @@ Cumplido localmente el 2026-07-14. La prueba visible terminó con 1 paciente y 1
 El 2026-07-14 se repitió el criterio con el formulario conectado a `POST /api/session-drafts` seguido de confirmación: después de recargar continuaron exactamente 1 paciente y 1 sesión, sin errores ni duplicados.
 
 El 2026-07-14 se aprobó además el corte de vinculación: login → generar código → recargar con el vínculo pendiente → recuperar el mismo comando → consumir `VINCULAR` desde el teléfono simulado → mostrar vínculo. El número persistió y quedó visible de forma parcial. La batería subió a 78/78.
+
+El 2026-07-14 se aprobó el menú completo: crear paciente → vincular → `MENÚ` → `PACIENTE <id>` → nota → `MENÚ` conserva borrador → `GUARDAR` → recarga. Quedaron exactamente 1 paciente y 1 sesión con la nota correcta. La batería subió a 91/91 y una prueba separada continuó la conversación después de reiniciar el proceso.
 
 ## Dependencias que necesitaremos más adelante
 
@@ -223,10 +236,10 @@ No bloquean el vertical de texto.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test` para confirmar la línea base 78/78.
-7. Implementar el estado conversacional sobre el vínculo existente.
-8. Validar `MENÚ → paciente → nota → confirmar/cancelar → ficha web` sin JWT en el transporte.
-9. Incorporar Meta y audio recién después de aprobar el menú con texto.
+6. Ejecutar `npm test` para confirmar la línea base 91/91.
+7. Definir el contrato del trabajo de audio sin acoplarlo a un proveedor.
+8. Crear dobles de descarga/transcripción y probar `audio → borrador` con archivos no clínicos.
+9. Comparar proveedores y conectar Meta solamente después de medir costo, calidad y latencia.
 
 ## Regla para el próximo handoff
 

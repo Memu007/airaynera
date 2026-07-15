@@ -3651,6 +3651,25 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
               que luego recibirá la integración oficial de WhatsApp.
             </div>
             <div id="whatsappLinkResult" class="alert alert-success d-none" role="status"></div>
+            <div id="whatsappConversationSimulator" class="border rounded p-3 d-none">
+              <label for="whatsappTestMessage" class="font-weight-bold">Probar el menú de texto</label>
+              <div class="input-group">
+                <input
+                  type="text"
+                  class="form-control"
+                  id="whatsappTestMessage"
+                  placeholder="Escribí MENÚ"
+                  aria-label="Mensaje de WhatsApp simulado"
+                />
+                <div class="input-group-append">
+                  <button type="button" id="sendWhatsappTestMessageBtn" class="btn btn-primary" onclick="sendWhatsappTestMessage()">
+                    Enviar
+                  </button>
+                </div>
+              </div>
+              <small class="form-text text-muted">Probá: MENÚ, NUEVA NOTA, PACIENTE &lt;número&gt;, una nota, y GUARDAR o CANCELAR.</small>
+              <div id="whatsappTestReply" class="alert alert-light mt-3 mb-0 d-none" style="white-space: pre-line"></div>
+            </div>
           </div>
           <div class="modal-footer">
             <button
@@ -4525,6 +4544,8 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       let topPatientsChartInstance = null;
       let whatsappSimulationTimeout;
       let pendingWhatsappLink = null;
+      let linkedWhatsappPhone = null;
+      let whatsappTestMessageCounter = 0;
 
       // Datos se cargan desde el backend via API
 
@@ -6545,10 +6566,17 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       $("#sidebarToggle").on("click", () => $(".sidebar").toggleClass("show"));
 
       // Funciones para vincular celular
+      function nextWhatsappTestMessageId(prefix) {
+        whatsappTestMessageCounter += 1;
+        const randomPart = window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+        return `${prefix}-${Date.now()}-${whatsappTestMessageCounter}-${randomPart}`;
+      }
+
       function showLinkPhoneModal() {
         pendingWhatsappLink = null;
+        linkedWhatsappPhone = null;
         $("#whatsappLinkResult").addClass("d-none").empty();
-        $("#simulatePhoneLinkBtn").addClass("d-none");
+        $("#simulatePhoneLinkBtn, #whatsappConversationSimulator, #whatsappTestReply").addClass("d-none");
         loadWhatsappLinkStatus(true);
         $("#linkPhoneModal").modal("show");
       }
@@ -6565,9 +6593,11 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
         if (!inModal) return;
         const linked = status === "linked";
+        linkedWhatsappPhone = linked ? link.phoneNumber : null;
         $("#phoneNumber").prop("disabled", linked);
         $("#requestPhoneLinkBtn").toggleClass("d-none", linked);
         $("#unlinkPhoneBtn").toggleClass("d-none", !linked);
+        $("#whatsappConversationSimulator").toggleClass("d-none", !linked);
         if (status !== "pending") {
           $("#simulatePhoneLinkBtn").addClass("d-none");
         }
@@ -6593,7 +6623,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
               pendingWhatsappLink = {
                 phoneNumber: response.link.phoneNumber,
                 command: `VINCULAR ${response.link.code}`,
-                messageId: `web-link-${Date.now()}`,
+                messageId: nextWhatsappTestMessageId("web-link"),
               };
               $("#whatsappLinkResult")
                 .removeClass("d-none")
@@ -6632,7 +6662,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             pendingWhatsappLink = {
               phoneNumber: response.link.phoneNumber,
               command: response.command,
-              messageId: `web-link-${Date.now()}`,
+              messageId: nextWhatsappTestMessageId("web-link"),
             };
             renderWhatsappLinkStatus(response.link, true);
             $("#whatsappLinkResult")
@@ -6688,12 +6718,51 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           headers: { Authorization: `Bearer ${token}` },
           success: function (response) {
             pendingWhatsappLink = null;
+            linkedWhatsappPhone = null;
             $("#whatsappLinkResult").addClass("d-none").empty();
+            $("#whatsappConversationSimulator, #whatsappTestReply").addClass("d-none");
+            $("#whatsappTestMessage").val("");
+            $("#whatsappTestReply").text("");
             $("#phoneNumber").val("").prop("disabled", false);
             $("#simulatePhoneLinkBtn, #unlinkPhoneBtn").addClass("d-none");
             $("#requestPhoneLinkBtn").removeClass("d-none");
             renderWhatsappLinkStatus(response.link, true);
             showNotification("WhatsApp desvinculado", "success");
+          },
+        });
+      }
+
+      function sendWhatsappTestMessage() {
+        const text = $("#whatsappTestMessage").val().trim();
+        if (!linkedWhatsappPhone || !text) {
+          showNotification("Escribí un mensaje para probar el menú", "warning");
+          return;
+        }
+
+        $("#sendWhatsappTestMessageBtn").prop("disabled", true);
+        $.ajax({
+          url: "/api/dev/whatsapp/inbound",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({
+            messageId: nextWhatsappTestMessageId("web-chat"),
+            from: linkedWhatsappPhone,
+            message: { type: "text", text },
+          }),
+          success: function (response) {
+            $("#whatsappTestReply")
+              .removeClass("d-none")
+              .text(response.reply?.text || "Mensaje procesado.");
+            $("#whatsappTestMessage").val("").focus();
+            if (response.reply?.code === "SESSION_SAVED") loadSessionsData();
+          },
+          error: function (xhr) {
+            $("#whatsappTestReply")
+              .removeClass("d-none")
+              .text(xhr.responseJSON?.reply?.text || xhr.responseJSON?.message || "No se pudo procesar el mensaje.");
+          },
+          complete: function () {
+            $("#sendWhatsappTestMessageBtn").prop("disabled", false);
           },
         });
       }
