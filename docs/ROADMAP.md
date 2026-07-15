@@ -2,7 +2,7 @@
 
 Última actualización: 2026-07-14.
 
-Estado general: vertical web principal aprobado localmente; borradores y vinculación WhatsApp pendientes.
+Estado general: vertical web y borradores de texto aprobados localmente; vinculación con WhatsApp real pendiente.
 
 Alcance actual: priorizar funcionamiento. Seguridad avanzada, cumplimiento formal y estética se retomarán después de validar la idea.
 
@@ -80,7 +80,7 @@ Criterio de salida:
 
 Tag sugerido: `mvp-v0.1-web-core`.
 
-Estado: el criterio principal registro → paciente → sesión → recarga fue aprobado localmente el 2026-07-14. Falta edición visible de sesiones y la interfaz de borradores antes de etiquetar la etapa.
+Estado: el criterio principal registro → paciente → sesión → recarga fue aprobado localmente. El formulario ya usa borrador y confirmación; falta una pantalla para recuperar/editar borradores pendientes antes de etiquetar la etapa.
 
 ## Etapa 2 — Vinculación web–WhatsApp
 
@@ -173,6 +173,8 @@ Criterio de salida:
 > Una nota de texto enviada desde WhatsApp se confirma una sola vez y aparece en la ficha correcta de la web.
 
 Tag sugerido: `mvp-v0.3-text-e2e`.
+
+Estado parcial: el recorrido de texto está aprobado con un adaptador local autenticado, deduplicación y confirmación idempotente. Falta vinculación de número, conversación/menú y webhook real de Meta.
 
 ## Etapa 4 — Audio web y WhatsApp
 

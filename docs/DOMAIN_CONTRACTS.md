@@ -108,6 +108,35 @@ Estados: `received -> transcribing -> structuring -> ready -> confirmed`. Cualqu
 
 Confirmar un borrador debe ser transaccional e idempotente: repetir la confirmación devuelve la misma sesión, nunca crea otra.
 
+## API de borradores implementada
+
+```text
+GET   /api/session-drafts?status=ready&patientId=7
+GET   /api/session-drafts/:id
+POST  /api/session-drafts
+PATCH /api/session-drafts/:id
+POST  /api/session-drafts/:id/confirm
+POST  /api/session-drafts/:id/cancel
+```
+
+En el vertical de texto, el borrador nace en `ready`. Solamente `ready` puede editarse o confirmarse. Confirmar por primera vez devuelve `201`; repetir la misma confirmación devuelve `200` y la misma sesión.
+
+El adaptador funcional local recibe texto en `POST /api/dev/whatsapp/inbound`. Usa el usuario autenticado y un `selectedPatientId` explícito. Un `messageId` repetido devuelve el mismo borrador y no crea otra fila.
+
+```json
+{
+  "messageId": "fake-message-001",
+  "selectedPatientId": "7",
+  "clinicalDate": "2026-07-15",
+  "message": {
+    "type": "text",
+    "text": "Se trabajó ansiedad anticipatoria."
+  }
+}
+```
+
+Los endpoints históricos que escribían sesiones directamente desde WhatsApp devuelven `410`. Meta deberá reemplazar al adaptador falso sin modificar el servicio de borradores.
+
 ## Compatibilidad temporal de entrada
 
 Durante un hito, el servidor puede aceptar estos aliases, pero siempre responde con el contrato canónico:

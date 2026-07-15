@@ -2,6 +2,41 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-14 — Borradores y WhatsApp simulado con texto
+
+### Objetivo
+
+Demostrar que web y WhatsApp pueden producir el mismo borrador y que solamente una confirmación crea la sesión final.
+
+### Trabajo realizado
+
+- Tres agentes compitieron con propuestas independientes de implementación.
+- Se eligió un servicio canónico de `SessionDraft` con confirmación transaccional y un adaptador falso autenticado.
+- Se agregaron creación, listado, detalle, edición, cancelación y confirmación de borradores.
+- La confirmación copia los campos al modelo Session dentro de una transacción y enlaza ambas filas.
+- Repetir la confirmación devuelve la misma sesión.
+- El formulario web ahora crea un borrador y luego lo confirma; si la segunda operación falla, la nota queda recuperable.
+- `POST /api/dev/whatsapp/inbound` simula una entrada de texto con usuario autenticado y paciente explícito.
+- Repetir un `messageId` devuelve el mismo borrador.
+- Los endpoints heredados de WhatsApp que escribían sesiones directamente quedaron deshabilitados con `410`.
+
+### Verificaciones
+
+- `npm test`: migraciones y 66/66 pruebas funcionales aprobadas.
+- Crear un borrador no incrementa sesiones.
+- Confirmar dos veces crea exactamente una sesión.
+- Cancelar impide confirmar.
+- Otra cuenta no puede leer ni usar el paciente o borrador.
+- WhatsApp simulado deduplica el mensaje y conserva `source=whatsapp` al confirmar.
+- Recorrido visible web aprobado con la nueva ruta: 1 paciente y 1 sesión antes y después de recargar.
+- Consola del navegador: sin errores ni advertencias.
+
+### Siguiente trabajo
+
+1. Implementar la vinculación explícita cuenta web ↔ número de WhatsApp con códigos temporales.
+2. Usar esa vinculación en el adaptador falso y validar el menú de texto.
+3. Reemplazar el transporte falso por Meta cuando estén disponibles las credenciales.
+
 ## 2026-07-14 — Contratos canónicos y vertical web persistente
 
 ### Objetivo

@@ -67,6 +67,45 @@ function mapSessionRow(row) {
   };
 }
 
+function mapSessionDraftRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    patientId: String(row.patient_id),
+    patientName: maybeDecrypt(row.patient_name),
+    clinicalDate: row.clinical_date,
+    sessionType: row.session_type || 'individual',
+    durationMinutes: row.duration_minutes == null ? null : Number(row.duration_minutes),
+    careModality: row.care_modality || 'unspecified',
+    source: row.source,
+    inputType: row.input_type,
+    status: row.status,
+    rawTranscript: row.raw_transcript || null,
+    cleanNote: row.clean_note || '',
+    medicationNotes: row.medication_notes || null,
+    moodAssessment: row.mood_assessment == null ? null : Number(row.mood_assessment),
+    requiresFollowUp: row.requires_follow_up === 1,
+    audioDurationSeconds: row.audio_duration_seconds == null ? null : Number(row.audio_duration_seconds),
+    sourceMessageId: row.source_message_id || null,
+    sessionId: row.session_id == null ? null : String(row.session_id),
+    failure: row.error_code || row.error_message
+      ? { code: row.error_code || 'PROCESSING_FAILED', message: row.error_message || '' }
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    confirmedAt: row.confirmed_at || null,
+  };
+}
+
+function getSessionDraftRow(connection, userId, id) {
+  return connection.prepare(`
+    SELECT d.*, p.name AS patient_name
+    FROM session_drafts d
+    INNER JOIN patients p ON p.id = d.patient_id AND p.userId = d.user_id
+    WHERE d.id = ? AND d.user_id = ?
+  `).get(id, userId);
+}
+
 function listPatients(userId) {
   const conn = getDb();
   const rows = conn.prepare(`
@@ -208,9 +247,15 @@ function addSession(userId, s) {
   const clinicalDate = String(s.clinicalDate || s.fecha || today);
   const cleanNote = String(s.cleanNote ?? s.notas ?? '');
   const sessionType = String(s.sessionType || s.tipo || 'individual');
-  const durationMinutes = Number(s.durationMinutes ?? s.duracion ?? 60);
+  const durationValue = s.durationMinutes !== undefined
+    ? s.durationMinutes
+    : (s.duracion ?? 60);
+  const durationMinutes = durationValue == null ? null : Number(durationValue);
   const medicationNotes = String(s.medicationNotes ?? s.medication_notes ?? '');
-  const moodAssessment = Number(s.moodAssessment ?? s.mood_assessment ?? 4);
+  const moodValue = s.moodAssessment !== undefined
+    ? s.moodAssessment
+    : (s.mood_assessment ?? 4);
+  const moodAssessment = moodValue == null ? null : Number(moodValue);
   const requiresFollowUp = Boolean(s.requiresFollowUp ?? s.requires_followup ?? false);
   const source = String(s.source || s.created_via || 'web');
   const inputType = String(s.inputType || (s.rawTranscript ? 'audio' : 'text'));
@@ -284,6 +329,242 @@ function deleteSession(userId, id) {
   return info.changes > 0;
 }
 
+// ===== SESSION DRAFT FUNCTIONS =====
+
+function patientExists(userId, patientId) {
+  const conn = getDb();
+  return Boolean(
+    conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(patientId, userId)
+  );
+}
+
+function getSessionDraft(userId, id) {
+  return mapSessionDraftRow(getSessionDraftRow(getDb(), userId, id));
+}
+
+function getSessionDraftBySourceMessage(userId, source, sourceMessageId) {
+  if (!sourceMessageId) return null;
+  const conn = getDb();
+  const row = conn.prepare(`
+    SELECT d.*, p.name AS patient_name
+    FROM session_drafts d
+    INNER JOIN patients p ON p.id = d.patient_id AND p.userId = d.user_id
+    WHERE d.user_id = ? AND d.source = ? AND d.source_message_id = ?
+  `).get(userId, source, sourceMessageId);
+  return mapSessionDraftRow(row);
+}
+
+function listSessionDrafts(userId, filters = {}) {
+  const conn = getDb();
+  const clauses = ['d.user_id = ?'];
+  const values = [userId];
+
+  if (filters.status) {
+    clauses.push('d.status = ?');
+    values.push(filters.status);
+  }
+  if (filters.patientId) {
+    clauses.push('d.patient_id = ?');
+    values.push(filters.patientId);
+  }
+
+  return conn.prepare(`
+    SELECT d.*, p.name AS patient_name
+    FROM session_drafts d
+    INNER JOIN patients p ON p.id = d.patient_id AND p.userId = d.user_id
+    WHERE ${clauses.join(' AND ')}
+    ORDER BY d.created_at DESC, d.id DESC
+  `).all(...values).map(mapSessionDraftRow);
+}
+
+function addSessionDraft(userId, draft) {
+  const conn = getDb();
+  const existing = getSessionDraftBySourceMessage(
+    userId,
+    draft.source,
+    draft.sourceMessageId
+  );
+  if (existing) return { draft: existing, created: false };
+
+  if (!patientExists(userId, draft.patientId)) {
+    const error = new Error('Patient not found or access denied');
+    error.code = 'PATIENT_NOT_FOUND';
+    throw error;
+  }
+
+  const now = new Date().toISOString();
+  const info = conn.prepare(`
+    INSERT INTO session_drafts (
+      user_id, patient_id, clinical_date, session_type, duration_minutes,
+      care_modality, source, input_type, status, raw_transcript, clean_note,
+      medication_notes, mood_assessment, requires_follow_up,
+      audio_duration_seconds, source_message_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    userId,
+    draft.patientId,
+    draft.clinicalDate,
+    draft.sessionType,
+    draft.durationMinutes,
+    draft.careModality,
+    draft.source,
+    draft.inputType,
+    draft.status,
+    draft.rawTranscript,
+    draft.cleanNote,
+    draft.medicationNotes,
+    draft.moodAssessment,
+    draft.requiresFollowUp ? 1 : 0,
+    draft.audioDurationSeconds,
+    draft.sourceMessageId,
+    now,
+    now
+  );
+
+  return {
+    draft: getSessionDraft(userId, info.lastInsertRowid),
+    created: true,
+  };
+}
+
+function updateSessionDraft(userId, id, changes) {
+  const conn = getDb();
+  const current = getSessionDraft(userId, id);
+  if (!current) return null;
+
+  const patientId = changes.patientId ?? current.patientId;
+  if (!patientExists(userId, patientId)) {
+    const error = new Error('Patient not found or access denied');
+    error.code = 'PATIENT_NOT_FOUND';
+    throw error;
+  }
+
+  const next = {
+    patientId,
+    clinicalDate: changes.clinicalDate ?? current.clinicalDate,
+    sessionType: changes.sessionType ?? current.sessionType,
+    durationMinutes: changes.durationMinutes === undefined
+      ? current.durationMinutes
+      : changes.durationMinutes,
+    careModality: changes.careModality ?? current.careModality,
+    rawTranscript: changes.rawTranscript === undefined
+      ? current.rawTranscript
+      : changes.rawTranscript,
+    cleanNote: changes.cleanNote ?? current.cleanNote,
+    medicationNotes: changes.medicationNotes === undefined
+      ? current.medicationNotes
+      : changes.medicationNotes,
+    moodAssessment: changes.moodAssessment === undefined
+      ? current.moodAssessment
+      : changes.moodAssessment,
+    requiresFollowUp: changes.requiresFollowUp === undefined
+      ? current.requiresFollowUp
+      : changes.requiresFollowUp,
+    audioDurationSeconds: changes.audioDurationSeconds === undefined
+      ? current.audioDurationSeconds
+      : changes.audioDurationSeconds,
+    updatedAt: new Date().toISOString(),
+  };
+
+  conn.prepare(`
+    UPDATE session_drafts SET
+      patient_id=?, clinical_date=?, session_type=?, duration_minutes=?,
+      care_modality=?, raw_transcript=?, clean_note=?, medication_notes=?,
+      mood_assessment=?, requires_follow_up=?, audio_duration_seconds=?, updated_at=?
+    WHERE id=? AND user_id=?
+  `).run(
+    next.patientId,
+    next.clinicalDate,
+    next.sessionType,
+    next.durationMinutes,
+    next.careModality,
+    next.rawTranscript,
+    next.cleanNote,
+    next.medicationNotes,
+    next.moodAssessment,
+    next.requiresFollowUp ? 1 : 0,
+    next.audioDurationSeconds,
+    next.updatedAt,
+    id,
+    userId
+  );
+
+  return getSessionDraft(userId, id);
+}
+
+function setSessionDraftStatus(userId, id, status) {
+  const conn = getDb();
+  const info = conn.prepare(`
+    UPDATE session_drafts SET status = ?, updated_at = ?
+    WHERE id = ? AND user_id = ?
+  `).run(status, new Date().toISOString(), id, userId);
+  return info.changes ? getSessionDraft(userId, id) : null;
+}
+
+function confirmSessionDraft(userId, id) {
+  const conn = getDb();
+  const confirm = conn.transaction(() => {
+    const draft = getSessionDraft(userId, id);
+    if (!draft) {
+      const error = new Error('Draft not found');
+      error.code = 'DRAFT_NOT_FOUND';
+      throw error;
+    }
+
+    if (draft.status === 'confirmed' && draft.sessionId) {
+      return {
+        draft,
+        session: getSessionById(userId, draft.sessionId),
+        created: false,
+      };
+    }
+
+    if (draft.status !== 'ready') {
+      const error = new Error('Draft is not ready to confirm');
+      error.code = draft.status === 'cancelled' ? 'DRAFT_CANCELLED' : 'DRAFT_NOT_READY';
+      throw error;
+    }
+
+    if (!patientExists(userId, draft.patientId)) {
+      const error = new Error('Patient not found or access denied');
+      error.code = 'PATIENT_NOT_FOUND';
+      throw error;
+    }
+
+    const session = addSession(userId, {
+      pacienteId: draft.patientId,
+      clinicalDate: draft.clinicalDate,
+      sessionType: draft.sessionType,
+      durationMinutes: draft.durationMinutes,
+      careModality: draft.careModality,
+      source: draft.source,
+      inputType: draft.inputType,
+      rawTranscript: draft.rawTranscript,
+      cleanNote: draft.cleanNote,
+      medicationNotes: draft.medicationNotes,
+      moodAssessment: draft.moodAssessment,
+      requiresFollowUp: draft.requiresFollowUp,
+      audioDurationSeconds: draft.audioDurationSeconds,
+      draftId: draft.id,
+    });
+    const now = new Date().toISOString();
+
+    conn.prepare(`
+      UPDATE session_drafts SET
+        status='confirmed', session_id=?, confirmed_at=?, updated_at=?
+      WHERE id=? AND user_id=?
+    `).run(session.id, now, now, id, userId);
+
+    return {
+      draft: getSessionDraft(userId, id),
+      session,
+      created: true,
+    };
+  });
+
+  return confirm();
+}
+
 // ===== USER FUNCTIONS =====
 
 async function createUser(userData) {
@@ -353,6 +634,14 @@ module.exports = {
   addSession,
   updateSession,
   deleteSession,
+  patientExists,
+  getSessionDraft,
+  getSessionDraftBySourceMessage,
+  listSessionDrafts,
+  addSessionDraft,
+  updateSessionDraft,
+  setSessionDraftStatus,
+  confirmSessionDraft,
   createUser,
   verifyUser,
 };

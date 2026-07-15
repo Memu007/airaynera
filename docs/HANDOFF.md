@@ -10,8 +10,8 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Rama actual: `agent/01-web-core`.
 - Base de este bloque: `41892d3` (`record green ci baseline`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: contratos canónicos definidos y vertical web principal funcionando.
-- Próximo objetivo: implementar `SessionDraft` para texto y conectar un doble de WhatsApp al mismo servicio.
+- Etapa técnica: vertical web y vertical de texto con `SessionDraft`/WhatsApp simulado funcionando.
+- Próximo objetivo: modelar la vinculación cuenta web ↔ número de WhatsApp y reemplazar el transporte falso por Meta cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -61,6 +61,10 @@ Registro web
 - El envío de respuestas está simulado.
 - Se guarda antes de confirmar y no hay protección completa contra duplicados.
 - La transcripción se recorta en el flujo actual.
+- El nuevo flujo funcional está en `POST /api/dev/whatsapp/inbound`: usa JWT, paciente explícito, texto y `messageId` deduplicable.
+- El nuevo adaptador crea solamente `SessionDraft`; confirma mediante el mismo endpoint canónico que la web.
+- Los endpoints heredados que escribían directamente en `sessions` ahora devuelven `410`.
+- El reconocimiento y envío n8n restantes siguen siendo prototipos y no forman parte del vertical nuevo.
 
 ### Código archivado
 
@@ -72,7 +76,7 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La batería actual pasa 45 de 45 pruebas funcionales con Node.js 20.
+- La batería actual pasa 66 de 66 pruebas funcionales con Node.js 20.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
 - `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
@@ -141,7 +145,8 @@ Rama prevista: `agent/01-web-core`.
 - [x] Dejar los cuatro checks remotos del PR en verde.
 - [x] Introducir migraciones versionadas.
 - [x] Definir contratos canónicos de paciente, sesión y borrador.
-- [ ] Crear dobles de prueba para WhatsApp y transcripción.
+- [x] Crear un doble de prueba de WhatsApp para texto.
+- [ ] Crear el doble de transcripción para audio.
 
 ### Etapa 1
 
@@ -151,7 +156,7 @@ Rama prevista: `agent/01-web-core`.
 - [ ] Incorporar edición visible de sesiones.
 - [x] Hacer persistentes los datos después de recargar.
 - [x] Corregir filtros e indicadores principales del dashboard.
-- [ ] Incorporar el modelo inicial de borrador.
+- [x] Incorporar el servicio y API inicial de borrador.
 - [x] Preparar la tabla y restricciones del modelo de borrador.
 - [x] Agregar pruebas automatizadas y una prueba visible del recorrido web completo.
 
@@ -160,6 +165,8 @@ Rama prevista: `agent/01-web-core`.
 > Un usuario nuevo se registra, crea un paciente, registra una sesión y continúa viéndola correctamente después de recargar la web.
 
 Cumplido localmente el 2026-07-14. La prueba visible terminó con 1 paciente y 1 sesión antes y después de recargar, sin errores de consola.
+
+El 2026-07-14 se repitió el criterio con el formulario conectado a `POST /api/session-drafts` seguido de confirmación: después de recargar continuaron exactamente 1 paciente y 1 sesión, sin errores ni duplicados.
 
 ## Dependencias que necesitaremos más adelante
 
@@ -201,9 +208,10 @@ No bloquean el vertical de texto.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test` para confirmar la línea base 45/45.
-7. Implementar el servicio y la API de `SessionDraft` usando `db/migrations/002_canonical_sessions_and_drafts.sql`.
-8. Crear un doble de WhatsApp que produzca el mismo borrador sin escribir directamente en `sessions`.
+6. Ejecutar `npm test` para confirmar la línea base 66/66.
+7. Diseñar la vinculación explícita cuenta web ↔ número de WhatsApp sin depender todavía de Meta.
+8. Hacer que el adaptador falso resuelva la cuenta desde esa vinculación.
+9. Incorporar Meta y audio recién después de aprobar la vinculación y el menú con texto.
 
 ## Regla para el próximo handoff
 

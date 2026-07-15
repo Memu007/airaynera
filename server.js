@@ -127,6 +127,7 @@ app.use(express.static(path.join(__dirname)));
 // Mock data para desarrollo
 // Persistence Service (SQLite)
 const sql = require("./services/sqlite");
+const sessionDraftService = require("./services/sessionDraftService");
 
 // Initialize DB tables
 try {
@@ -225,6 +226,22 @@ function toPersistenceSession(session) {
   };
 }
 
+function sendDraftError(res, error) {
+  const statusByCode = {
+    INVALID_DRAFT: 400,
+    PATIENT_NOT_FOUND: 404,
+    DRAFT_NOT_FOUND: 404,
+    DRAFT_NOT_READY: 409,
+    DRAFT_CANCELLED: 409,
+  };
+  const status = statusByCode[error.code] || 500;
+  if (status === 500) console.error('Session draft error:', error);
+  return res.status(status).json({
+    error: error.code || 'DRAFT_ERROR',
+    message: status === 500 ? 'Unable to process session draft' : error.message,
+  });
+}
+
 // Helpers that keep the public API canonical while SQLite remains compatible.
 function normalizePatient(p) {
   return {
@@ -250,7 +267,7 @@ function normalizeSession(s) {
     patientName: s.patientName || "Paciente",
     clinicalDate: s.clinical_date || s.fecha,
     sessionType: SESSION_TYPE_ALIASES[s.tipo] || s.tipo || "individual",
-    durationMinutes: Number(s.duracion || 0),
+    durationMinutes: s.duracion == null ? null : Number(s.duracion),
     careModality: s.care_modality || "unspecified",
     source: s.created_via || "web",
     inputType: s.input_type || "text",
@@ -479,6 +496,127 @@ app.delete('/api/sessions/:id', authMiddleware, (req, res) => {
     }
 });
 
+// Session drafts are the canonical entry point for web and WhatsApp notes.
+app.get('/api/session-drafts', authMiddleware, (req, res) => {
+  try {
+    const drafts = sessionDraftService.listDrafts(req.user.id, {
+      status: req.query.status,
+      patientId: req.query.patientId,
+    });
+    res.json({ drafts });
+  } catch (error) {
+    sendDraftError(res, error);
+  }
+});
+
+app.get('/api/session-drafts/:id', authMiddleware, (req, res) => {
+  try {
+    res.json({ draft: sessionDraftService.getDraft(req.user.id, req.params.id) });
+  } catch (error) {
+    sendDraftError(res, error);
+  }
+});
+
+app.post('/api/session-drafts',
+  authMiddleware,
+  body('patientId').notEmpty().withMessage('patientId es requerido'),
+  body('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  body('sessionType').optional().isIn(['individual', 'group', 'family', 'couple', 'other']),
+  body('durationMinutes').optional({ nullable: true }).isInt({ min: 1, max: 480 }),
+  body('inputType').optional().isIn(['text', 'audio']),
+  body('cleanNote').optional().isString().isLength({ max: 10000 }),
+  body('moodAssessment').optional({ nullable: true }).isInt({ min: 1, max: 5 }),
+  handleValidationErrors,
+  (req, res) => {
+    try {
+      const result = sessionDraftService.createDraft(req.user.id, req.body, { source: 'web' });
+      res.status(result.created ? 201 : 200).json({ draft: result.draft });
+    } catch (error) {
+      sendDraftError(res, error);
+    }
+  }
+);
+
+app.patch('/api/session-drafts/:id', authMiddleware, (req, res) => {
+  try {
+    const draft = sessionDraftService.updateDraft(req.user.id, req.params.id, req.body);
+    res.json({ draft });
+  } catch (error) {
+    sendDraftError(res, error);
+  }
+});
+
+app.post('/api/session-drafts/:id/cancel', authMiddleware, (req, res) => {
+  try {
+    const draft = sessionDraftService.cancelDraft(req.user.id, req.params.id);
+    res.json({ draft });
+  } catch (error) {
+    sendDraftError(res, error);
+  }
+});
+
+app.post('/api/session-drafts/:id/confirm', authMiddleware, (req, res) => {
+  try {
+    const result = sessionDraftService.confirmDraft(req.user.id, req.params.id);
+    res.status(result.created ? 201 : 200).json({
+      draft: result.draft,
+      session: normalizeSession(result.session),
+    });
+  } catch (error) {
+    sendDraftError(res, error);
+  }
+});
+
+// Local functional adapter. A future Meta webhook will resolve the same inputs.
+app.post('/api/dev/whatsapp/inbound',
+  authMiddleware,
+  body('messageId').isString().trim().notEmpty(),
+  body('selectedPatientId').notEmpty(),
+  body('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  body('message.type').equals('text'),
+  body('message.text').isString().trim().isLength({ min: 1, max: 10000 }),
+  handleValidationErrors,
+  (req, res) => {
+    if (process.env.NODE_ENV === 'production' && process.env.WHATSAPP_ADAPTER !== 'fake') {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+
+    try {
+      const result = sessionDraftService.createDraft(req.user.id, {
+        patientId: req.body.selectedPatientId,
+        clinicalDate: req.body.clinicalDate,
+        sessionType: req.body.sessionType || 'individual',
+        durationMinutes: req.body.durationMinutes ?? null,
+        careModality: req.body.careModality || 'unspecified',
+        inputType: 'text',
+        cleanNote: req.body.message.text,
+      }, {
+        source: 'whatsapp',
+        sourceMessageId: req.body.messageId,
+      });
+
+      res.status(result.created ? 201 : 200).json({
+        reply: {
+          kind: 'draftReady',
+          actions: ['confirm', 'cancel'],
+        },
+        draft: result.draft,
+        deduplicated: !result.created,
+      });
+    } catch (error) {
+      sendDraftError(res, error);
+    }
+  }
+);
+
+// Legacy endpoints must not bypass draft confirmation anymore.
+app.post(['/api/whatsapp/create-session', '/api/whatsapp/save-session'], (req, res) => {
+  res.status(410).json({
+    error: 'WHATSAPP_SESSION_WRITE_DISABLED',
+    message: 'WhatsApp must create and confirm a session draft',
+  });
+});
+
 app.post("/api/sessions/:id/recording", authMiddleware, (req, res) => {
   // Simular procesamiento de grabación
   res.json({
@@ -633,73 +771,6 @@ app.post('/api/whatsapp/recognize-patient', n8nAuthMiddleware, async (req, res) 
 
     } catch (error) {
         console.error('❌ [N8N] Error in patient recognition:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Endpoint para crear sesión inicial
-app.post('/api/whatsapp/create-session', n8nAuthMiddleware, async (req, res) => {
-    try {
-        const { patientData, sessionData, transcription, audioInfo } = req.body;
-        const systemUserId = "1"; // Default system user for N8N
-
-        if (!patientData || !sessionData) {
-            return res.status(400).json({ success: false, error: 'Missing patient or session data' });
-        }
-
-        const newSession = sql.addSession(systemUserId, {
-            pacienteId: patientData.id,
-            tipo: sessionData.type || 'individual',
-            duracion: Math.ceil((audioInfo.duration || 60) / 60),
-            notas: transcription.substring(0, 500),
-            created_via: 'whatsapp',
-            mood_assessment: 3,
-            requires_followup: false
-        });
-
-        console.log(`✅ [N8N] Session created: ID ${newSession.id}`);
-
-        res.json({
-            success: true,
-            sessionId: newSession.id,
-            session: normalizeSession(newSession),
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        console.error('❌ [N8N] Error creating session:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Endpoint para guardar sesión completa con análisis de IA
-app.post('/api/whatsapp/save-session', n8nAuthMiddleware, async (req, res) => {
-    try {
-        const { sessionId, aiSummary, finalData } = req.body;
-        const systemUserId = "1"; // Default system user for N8N
-
-        console.log(`💾 [N8N] Saving complete session: ${sessionId}`);
-
-        const updated = sql.updateSession(systemUserId, sessionId, {
-            notas: aiSummary.summary || '',
-            medication_notes: JSON.stringify(aiSummary.recommendations || []),
-            mood_assessment: aiSummary.emotionalState?.intensity || 5,
-            requires_followup: aiSummary.requiresFollowUp || false
-        });
-
-        if (!updated) {
-            return res.status(404).json({ success: false, error: 'Session not found' });
-        }
-
-        res.json({
-            success: true,
-            sessionId: parseInt(sessionId),
-            session: normalizeSession(updated),
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        console.error('❌ [N8N] Error saving session:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

@@ -6260,7 +6260,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
         btn.html('<i class="fas fa-spinner fa-spin"></i> Guardando...').prop('disabled', true);
 
         $.ajax({
-          url: "/api/sessions",
+          url: "/api/session-drafts",
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           contentType: "application/json",
@@ -6276,19 +6276,31 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             careModality: "inPerson",
             inputType: "text"
           }),
-          success: function (response) {
-            btn.html(originalText).prop('disabled', false);
-            $("#newSessionModal").modal("hide");
-            $("#newSessionForm")[0].reset();
-            loadSessionsData();
-            notificaciones.exito(
-              "Sesión Registrada",
-              "La sesión se guardó correctamente en el servidor."
-            );
+          success: function (draftResponse) {
+            $.ajax({
+              url: `/api/session-drafts/${draftResponse.draft.id}/confirm`,
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              success: function () {
+                btn.html(originalText).prop('disabled', false);
+                $("#newSessionModal").modal("hide");
+                $("#newSessionForm")[0].reset();
+                loadSessionsData();
+                notificaciones.exito(
+                  "Sesión Registrada",
+                  "La nota fue confirmada y guardada en la ficha."
+                );
+              },
+              error: function (xhr) {
+                btn.html(originalText).prop('disabled', false);
+                const msg = xhr.responseJSON?.message || "El borrador quedó guardado para reintentar";
+                notificaciones.advertencia("Borrador guardado", msg);
+              },
+            });
           },
           error: function (xhr) {
             btn.html(originalText).prop('disabled', false);
-            const msg = xhr.responseJSON?.error || "Error al guardar sesión";
+            const msg = xhr.responseJSON?.message || xhr.responseJSON?.error || "Error al guardar sesión";
             notificaciones.error("Error", msg);
           }
         });

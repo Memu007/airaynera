@@ -175,6 +175,8 @@ class FunctionalTests {
     console.log('\n5️⃣  CRUD Sessions');
     let sessionId;
     let legacySessionId;
+    let draftSessionId;
+    let whatsappSessionId;
     {
       // Create
       const createRes = await this.request('POST', '/api/sessions', {
@@ -234,8 +236,128 @@ class FunctionalTests {
       this.test('Invalid pacienteId returns 404', invalidRes.status === 404);
     }
 
-    // 6. Data Isolation (Security)
-    console.log('\n6️⃣  Data Isolation');
+    // 6. Session Draft vertical
+    console.log('\n6️⃣  Session Draft vertical');
+    {
+      const sessionsBeforeDraft = await this.request('GET', '/api/sessions', null, this.token);
+
+      const createDraft = await this.request('POST', '/api/session-drafts', {
+        patientId,
+        clinicalDate: '2026-07-15',
+        sessionType: 'individual',
+        durationMinutes: 50,
+        careModality: 'inPerson',
+        inputType: 'text',
+        cleanNote: 'Draft note before review',
+        medicationNotes: null,
+        moodAssessment: 2,
+        requiresFollowUp: true
+      }, this.token);
+      const draftId = createDraft.data?.draft?.id;
+      this.test('Create draft returns 201', createDraft.status === 201);
+      this.test('Text draft starts ready', createDraft.data?.draft?.status === 'ready');
+      this.test('Draft uses canonical string ids', typeof draftId === 'string');
+
+      const sessionsWithUnconfirmedDraft = await this.request('GET', '/api/sessions', null, this.token);
+      this.test('Creating a draft does not create a session',
+        sessionsWithUnconfirmedDraft.data?.sessions?.length === sessionsBeforeDraft.data?.sessions?.length);
+
+      const listDrafts = await this.request('GET', '/api/session-drafts?status=ready', null, this.token);
+      this.test('Ready draft can be listed', listDrafts.data?.drafts?.some(d => d.id === draftId));
+
+      const foreignRead = await this.request('GET', `/api/session-drafts/${draftId}`, null, this.token2);
+      this.test('Other user cannot read a draft', foreignRead.status === 404);
+
+      const updateDraft = await this.request('PATCH', `/api/session-drafts/${draftId}`, {
+        cleanNote: 'Reviewed draft note'
+      }, this.token);
+      this.test('Ready draft can be edited',
+        updateDraft.status === 200 && updateDraft.data?.draft?.cleanNote === 'Reviewed draft note');
+
+      const confirmDraft = await this.request('POST', `/api/session-drafts/${draftId}/confirm`, null, this.token);
+      draftSessionId = confirmDraft.data?.session?.id;
+      this.test('Confirming a draft returns 201', confirmDraft.status === 201);
+      this.test('Confirmation creates a linked session',
+        confirmDraft.data?.session?.draftId === draftId && confirmDraft.data?.draft?.sessionId === draftSessionId);
+      this.test('Confirmed session keeps reviewed content and source',
+        confirmDraft.data?.session?.cleanNote === 'Reviewed draft note' && confirmDraft.data?.session?.source === 'web');
+
+      const confirmAgain = await this.request('POST', `/api/session-drafts/${draftId}/confirm`, null, this.token);
+      this.test('Repeated confirmation is idempotent',
+        confirmAgain.status === 200 && confirmAgain.data?.session?.id === draftSessionId);
+
+      const sessionsAfterConfirm = await this.request('GET', '/api/sessions', null, this.token);
+      const copies = sessionsAfterConfirm.data?.sessions?.filter(s => s.id === draftSessionId).length;
+      this.test('Exactly one session exists for the draft', copies === 1);
+
+      const cancelledDraft = await this.request('POST', '/api/session-drafts', {
+        patientId,
+        inputType: 'text',
+        cleanNote: 'This draft will be cancelled'
+      }, this.token);
+      const cancelledDraftId = cancelledDraft.data?.draft?.id;
+      const cancelRes = await this.request(
+        'POST',
+        `/api/session-drafts/${cancelledDraftId}/cancel`,
+        null,
+        this.token
+      );
+      this.test('Ready draft can be cancelled', cancelRes.data?.draft?.status === 'cancelled');
+      const confirmCancelled = await this.request(
+        'POST',
+        `/api/session-drafts/${cancelledDraftId}/confirm`,
+        null,
+        this.token
+      );
+      this.test('Cancelled draft cannot be confirmed', confirmCancelled.status === 409);
+
+      const foreignWhatsapp = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-foreign-001',
+        selectedPatientId: patientId,
+        message: { type: 'text', text: 'Must not be accepted' }
+      }, this.token2);
+      this.test('Fake WhatsApp cannot use another user patient', foreignWhatsapp.status === 404);
+
+      const whatsappDraft = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-message-001',
+        selectedPatientId: patientId,
+        clinicalDate: '2026-07-15',
+        message: { type: 'text', text: 'WhatsApp draft note' }
+      }, this.token);
+      const whatsappDraftId = whatsappDraft.data?.draft?.id;
+      this.test('Fake WhatsApp creates a draft only',
+        whatsappDraft.status === 201 && whatsappDraft.data?.draft?.source === 'whatsapp');
+
+      const whatsappDuplicate = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-message-001',
+        selectedPatientId: patientId,
+        clinicalDate: '2026-07-15',
+        message: { type: 'text', text: 'Duplicate body is ignored' }
+      }, this.token);
+      this.test('Repeated WhatsApp message is deduplicated',
+        whatsappDuplicate.status === 200 &&
+        whatsappDuplicate.data?.deduplicated === true &&
+        whatsappDuplicate.data?.draft?.id === whatsappDraftId);
+
+      const confirmWhatsapp = await this.request(
+        'POST',
+        `/api/session-drafts/${whatsappDraftId}/confirm`,
+        null,
+        this.token
+      );
+      whatsappSessionId = confirmWhatsapp.data?.session?.id;
+      this.test('WhatsApp draft confirms through the canonical endpoint',
+        confirmWhatsapp.status === 201 && confirmWhatsapp.data?.session?.source === 'whatsapp');
+
+      const legacyWhatsappWrite = await this.request('POST', '/api/whatsapp/create-session', {
+        patientData: { id: patientId },
+        sessionData: { type: 'individual' }
+      });
+      this.test('Legacy WhatsApp direct session writes are disabled', legacyWhatsappWrite.status === 410);
+    }
+
+    // 7. Data Isolation (minimum functional ownership)
+    console.log('\n7️⃣  Data Isolation');
     {
       // User 2 should not see User 1's patients
       const listRes = await this.request('GET', '/api/patients', null, this.token2);
@@ -253,14 +375,18 @@ class FunctionalTests {
       this.test('User 2 cannot delete User 1 patient', deleteRes.status === 404);
     }
 
-    // 7. Cleanup
-    console.log('\n7️⃣  Cleanup');
+    // 8. Cleanup
+    console.log('\n8️⃣  Cleanup');
     {
       // Delete session
       const delSession = await this.request('DELETE', `/api/sessions/${sessionId}`, null, this.token);
       this.test('Delete session returns 200', delSession.status === 200);
       const delLegacySession = await this.request('DELETE', `/api/sessions/${legacySessionId}`, null, this.token);
       this.test('Delete legacy-compatible session returns 200', delLegacySession.status === 200);
+      const delDraftSession = await this.request('DELETE', `/api/sessions/${draftSessionId}`, null, this.token);
+      this.test('Delete draft-confirmed session returns 200', delDraftSession.status === 200);
+      const delWhatsappSession = await this.request('DELETE', `/api/sessions/${whatsappSessionId}`, null, this.token);
+      this.test('Delete WhatsApp-confirmed session returns 200', delWhatsappSession.status === 200);
 
       // Delete patient
       const delPatient = await this.request('DELETE', `/api/patients/${patientId}`, null, this.token);
@@ -292,7 +418,6 @@ tests.run().catch(err => {
   console.error('Error:', err);
   process.exit(1);
 });
-
 
 
 
