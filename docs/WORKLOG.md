@@ -2,6 +2,35 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-15 — Benchmark controlado del worker de audio
+
+### Objetivo
+
+Medir con 30 a 50 archivos el recorrido real de carga, almacenamiento, cola SQLite, worker y limpieza antes de integrar un proveedor externo.
+
+### Trabajo realizado
+
+- Tres agentes contrastaron diseño de corpus, métricas, concurrencia y límites del proveedor falso.
+- Se agregó `npm run benchmark:audio-worker`, que crea un runtime aislado y 40 WAV deterministas de 2 a 10 minutos sin datos reales.
+- Cada ejecución usa 226 minutos representados, 103,5 MB, cinco perfiles de señal y concurrencia HTTP cinco.
+- El runner exige 40 drafts únicos, acuse menor a cinco segundos, p95 menor a dos minutos, metadata conservada, raw/clean presentes, cero sesiones antes de confirmar, health final, ausencia de errores SQLite y cleanup completo.
+- El reporte diferencia explícitamente capacidad operativa de calidad de transcripción: el proveedor falso no escucha los bytes y no permite medir WER, negaciones ni entidades clínicas.
+
+### Verificaciones
+
+- Tres corridas independientes: 120/120 borradores `ready`, cero fallos y cero timeouts.
+- Acuse p95: 308,4 ms, 323,6 ms y 290,8 ms; máximo global 365,0 ms.
+- Extremo a extremo p95: 1719,4 ms, 1715,6 ms y 1699,1 ms; máximo global 1729,2 ms.
+- Cero sesiones prematuras, errores de base o archivos `.part/.audio` residuales.
+- `npm test`: aprobado, incluida la batería funcional 129/129.
+- `npm run test:runtime-supervisor`: aprobado de health a `ready` y apagado limpio.
+- `npm run build`, `npm run lint` y `git diff --check`: aprobados antes de cerrar el hito.
+- Commit funcional: `6ebe43b` (`benchmark controlled audio worker throughput`).
+
+### Próximo paso
+
+Preparar 30 a 50 recortes hablados creados para la prueba con referencias humanas, hacer asíncrona la interfaz del proveedor y comparar Groq, Gemini y OpenAI con exactamente el mismo corpus. Meta continúa después del proveedor y requiere credenciales.
+
 ## 2026-07-15 — Supervisor verificable y contratos activos alineados
 
 ### Objetivo

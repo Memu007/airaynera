@@ -9,10 +9,10 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
-- Último hito funcional: `f1472c4` (`verify supervised runtime and current contracts`).
+- Último hito funcional: `6ebe43b` (`benchmark controlled audio worker throughput`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: la web pide y persiste explícitamente fecha, tipo, duración, modalidad, ánimo opcional y seguimiento decidido por el profesional. La carga real conserva el borrador al cerrar, exige confirmación para descartarlo y limita el polling. La expiración backend usa compare-and-set antes de cancelar el job o borrar el medio; un paciente inactivo conserva su historia pero no admite sesiones ni borradores nuevos. La transcripción continúa siendo simulada. La batería funcional aprobó 129/129.
-- Próximo objetivo: ejecutar el benchmark con recortes creados o anonimizados y conectar el primer proveedor real al worker existente. Meta real se incorpora después y solamente cuando existan credenciales.
+- Etapa técnica: la web pide y persiste explícitamente fecha, tipo, duración, modalidad, ánimo opcional y seguimiento decidido por el profesional. La carga real conserva el borrador al cerrar, exige confirmación para descartarlo y limita el polling. La expiración backend usa compare-and-set antes de cancelar el job o borrar el medio; un paciente inactivo conserva su historia pero no admite sesiones ni borradores nuevos. El worker aprobó tres corridas de 40 WAV controlados, aunque la transcripción continúa siendo simulada. La batería funcional aprobó 129/129.
+- Próximo objetivo: preparar un corpus hablado con referencias humanas, habilitar proveedores asíncronos y ejecutar Groq/Gemini/OpenAI sobre los mismos recortes antes de elegir uno. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -105,6 +105,8 @@ Registro web
 - La fecha clínica por defecto usa `APP_TIME_ZONE=America/Argentina/Buenos_Aires`.
 - `rawTranscript`, `inputType` y `audioDurationSeconds` son inmutables en la revisión y después de confirmar.
 - El comparativo de Groq, Gemini y OpenAI está en `docs/AUDIO_PROVIDER_BENCHMARK.md`. Groq Whisper Large v3 Turbo queda como baseline de costo, no como proveedor aprobado todavía.
+- `npm run benchmark:audio-worker` genera 40 WAV deterministas de 2 a 10 minutos y atraviesa HTTP, almacenamiento temporal, job SQLite, worker y cleanup sin conservar los archivos.
+- El resultado operativo está en `docs/AUDIO_WORKER_BENCHMARK.md`: tres corridas independientes, 120/120 listos, cero fallos, cero sesiones prematuras y cero residuos. No mide WER ni calidad clínica porque el fake no interpreta los bytes.
 
 ### Pruebas y CI
 
@@ -114,6 +116,7 @@ Registro web
 - `scripts/ui-contract-tests.js` verifica los campos clínicos explícitos y que seguimiento no se derive del ánimo.
 - La suite del worker cubre límite streamed, expiración integral, carrera después del snapshot y recuperación desde un segundo proceso real.
 - `scripts/runtime-supervisor-smoke.js` levanta el proceso de producción, verifica health, carga real, procesamiento hasta `ready` y apagado limpio.
+- El benchmark de volumen procesó 103,5 MB y 226 minutos representados por corrida con concurrencia cinco; el peor acuse fue 365 ms y el peor p95 extremo a extremo fue 1719,4 ms.
 - La CI ejecuta la batería integral, el supervisor real, sintaxis de Node/scripts embebidos y el contrato UI.
 - En el hito anterior la prueba funcional se repitió tres veces con polling del worker cada 10 ms; las tres corridas terminaron 126/126 y cubrieron 20 entradas de WhatsApp concurrentes.
 - La suite específica cubre deduplicación binaria, conflicto de clave, MIME inválido, cancelación atómica, lease abandonado, fencing contra escritura obsoleta, fallo inesperado del worker, retry y limpieza del archivo.
@@ -231,6 +234,7 @@ Rama prevista: `agent/01-web-core`.
 - [x] Conectar audio sintético por web y WhatsApp.
 - [x] Persistir etapas, reintentos y recuperación tras reinicio.
 - [x] Aceptar un archivo real desde la web y almacenarlo temporalmente.
+- [x] Ejecutar el benchmark operativo del worker con 40 WAV controlados.
 - [ ] Ejecutar el benchmark Groq/Gemini/OpenAI.
 - [x] Separar el procesamiento de archivos reales en un worker SQLite antes de conectar un proveedor o WhatsApp real.
 
@@ -288,6 +292,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 - Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`, publicado el 2026-07-15.
 - Verificación del hito actual: `npm test` con 129/129, smoke del supervisor, build, contrato UI, sintaxis embebida y `git diff --check` aprobados.
 - Implementación de la auditoría: `4a0a082` (backend/worker), `e533eb9` (flujo web) y `f1472c4` (operación/contratos).
+- Benchmark operativo del worker: `6ebe43b` (`benchmark controlled audio worker throughput`).
 - Corrección de confiabilidad posterior a la auditoría: `4a0a082` (`harden audio expiry and inactive patient flow`).
 - Corrección de integridad y UX web: `e533eb9` (`make clinical web flow explicit and recoverable`).
 - El remoto local `origin` continúa apuntando a `Memu007/Aira.final` para conservar el historial; el remoto `airaynera` es el destino activo de publicación.
@@ -311,8 +316,9 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 6. Ejecutar `npm test`, `npm run test:runtime-supervisor`, `npm run build` y `npm run lint` antes de cada publicación; la batería actual aprueba 129/129.
 7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
 8. Publicar el siguiente hito verificado en `airaynera/main` y registrar el resultado aquí y en `docs/WORKLOG.md`.
-9. Preparar 30 a 50 recortes creados o anonimizados y ejecutar el benchmark Groq/Gemini/OpenAI usando el worker existente.
-10. Elegir el primer proveedor por calidad, costo y latencia; conectar Meta solamente después y con credenciales disponibles.
+9. Preparar 30 a 50 recortes hablados creados para la prueba con referencias humanas y spans críticos.
+10. Habilitar adaptadores asíncronos, ejecutar Groq/Gemini/OpenAI con ese corpus y elegir por calidad, costo y latencia.
+11. Conectar Meta solamente después y con credenciales disponibles.
 
 ## Regla para el próximo handoff
 

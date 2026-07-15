@@ -12,6 +12,8 @@ audio → transcripción literal → limpieza conservadora → borrador revisabl
 
 Para el primer ensayo con audio real, la referencia de costo será **Groq Whisper Large v3 Turbo**. Gemini será el candidato de proveedor único y OpenAI el candidato de calidad. La elección final sale de un benchmark de 30 a 50 recortes creados para la prueba o correctamente anonimizados, no solamente del precio publicado.
 
+La capacidad del recorrido `upload → almacenamiento → SQLite → worker → cleanup` ya fue medida por separado con 40 WAV controlados y tres corridas aprobadas. Ese resultado está en [AUDIO_WORKER_BENCHMARK.md](AUDIO_WORKER_BENCHMARK.md) y no debe confundirse con calidad de transcripción.
+
 ## Costos publicados
 
 | Alternativa | Precio publicado | Aproximación por 5 minutos | Observación |
@@ -53,8 +55,9 @@ No alcanza con medir WER general: un número o una negación incorrectos pesan m
 
 ## Próxima implementación
 
-1. Aceptar un archivo de audio real desde la web y guardarlo de forma temporal fuera de SQLite.
-2. Implementar el adaptador Groq como baseline, sin cambiar `SessionDraft` ni las interfaces.
-3. Ejecutar el mismo corpus con Gemini y OpenAI.
-4. Elegir proveedor y política de fallback a partir de resultados medidos.
-5. Recién después conectar la descarga de medios desde Meta.
+1. Preparar y versionar 30 a 50 recortes hablados creados para la prueba con referencias humanas y entidades críticas marcadas.
+2. Hacer asíncrona la interfaz de proveedores sin mover la llamada fuera del worker ni bloquear el heartbeat del lease.
+3. Implementar el adaptador Groq como baseline, sin cambiar `SessionDraft`.
+4. Ejecutar exactamente el mismo corpus con Gemini y OpenAI.
+5. Elegir proveedor y política de fallback a partir de resultados medidos.
+6. Recién después conectar la descarga de medios desde Meta.

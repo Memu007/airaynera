@@ -223,7 +223,7 @@ Criterios de salida:
 
 Tag sugerido: `mvp-v0.4-audio-e2e`.
 
-Estado parcial: el recorrido `archivo web → almacenamiento temporal → job → worker → raw simulado → clean → revisar → guardar/cancelar → ficha` funciona de punta a punta. También se conserva el recorrido sintético desde WhatsApp. Se probaron idempotencia, fallo por etapa, retry sin retranscribir, recuperación de leases y confirmación única. Faltan el benchmark, un proveedor real, la descarga de archivos desde Meta y el transporte Meta. La comparación vigente está en [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md).
+Estado parcial: el recorrido `archivo web → almacenamiento temporal → job → worker → raw simulado → clean → revisar → guardar/cancelar → ficha` funciona de punta a punta. También se conserva el recorrido sintético desde WhatsApp. Se probaron idempotencia, fallo por etapa, retry sin retranscribir, recuperación de leases y confirmación única. El worker aprobó tres corridas de 40 WAV controlados; faltan el corpus hablado con referencias humanas, el benchmark de proveedores, un proveedor real, la descarga de archivos desde Meta y el transporte Meta. Los resultados operativos están en [AUDIO_WORKER_BENCHMARK.md](AUDIO_WORKER_BENCHMARK.md) y la comparación pendiente en [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md).
 
 ## Etapa 5 — Nota clínica estructurada y edición
 
@@ -274,6 +274,8 @@ Trabajo:
 - Actualización de borradores entre web y WhatsApp.
 - Métricas de costo, latencia y tiempo de corrección.
 - Pruebas con 30 a 50 audios anonimizados o creados para evaluación.
+
+Estado parcial: la capacidad operativa se validó con tres corridas de 40 WAV deterministas de 2 a 10 minutos y proveedores falsos: 120/120 listos, cero sesiones prematuras y cero residuos. La calidad de voz, transcripción y corrección profesional continúa pendiente del corpus hablado.
 
 Criterios iniciales:
 
