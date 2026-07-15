@@ -105,7 +105,9 @@ Estado remoto del PR técnico #2:
 - Verificación remota de borradores: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
 - Implementación de vinculación: `db0d36d` (`link web accounts to whatsapp phones`).
 - Verificación remota de vinculación: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
-- El PR técnico #2 se titula ahora `Build the persistent web, draft, and WhatsApp link core` y refleja 78/78 pruebas.
+- Implementación del menú persistente: `7366868` (`add persistent whatsapp text menu`).
+- Verificación remota del menú: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
+- El PR técnico #2 se titula ahora `Build the persistent web and WhatsApp text core` y refleja 91/91 pruebas.
 
 ## Decisiones técnicas vigentes
 

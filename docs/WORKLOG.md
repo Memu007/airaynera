@@ -28,6 +28,9 @@ Demostrar el recorrido `MENÚ → paciente → nota → GUARDAR/CANCELAR → fic
 - `npm run build`, sintaxis JavaScript y `git diff --check`: aprobados.
 - Recorrido visible aprobado: crear paciente → vincular → MENÚ → seleccionar → nota → GUARDAR → recargar.
 - Después de recargar: exactamente 1 paciente, 1 sesión y la nota correcta visibles.
+- Commit funcional publicado: `7366868` (`add persistent whatsapp text menu`).
+- PR técnico [#2](https://github.com/Memu007/Aira.final/pull/2) actualizado.
+- GitHub Actions: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados sobre el menú persistente.
 
 ### Siguiente trabajo
 
