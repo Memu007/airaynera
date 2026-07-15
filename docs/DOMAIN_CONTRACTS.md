@@ -121,11 +121,26 @@ POST  /api/session-drafts/:id/cancel
 
 En el vertical de texto, el borrador nace en `ready`. Solamente `ready` puede editarse o confirmarse. Confirmar por primera vez devuelve `201`; repetir la misma confirmación devuelve `200` y la misma sesión.
 
-El adaptador funcional local recibe texto en `POST /api/dev/whatsapp/inbound`. Usa el usuario autenticado y un `selectedPatientId` explícito. Un `messageId` repetido devuelve el mismo borrador y no crea otra fila.
+## Vinculación web–WhatsApp implementada
+
+La web autenticada administra el vínculo mediante:
+
+```text
+GET    /api/whatsapp/link
+POST   /api/whatsapp/link
+DELETE /api/whatsapp/link
+```
+
+`POST` recibe `phoneNumber`, genera un código de seis dígitos válido durante diez minutos y deja el vínculo en `pending`. `GET` permite recuperar el mismo pendiente durante su vigencia. El teléfono simulado envía `VINCULAR 482913` al mismo endpoint de entrada. Un código válido cambia el estado a `linked`; el mismo evento repetido devuelve la respuesta original incluso después de regenerar o desvincular.
+
+Estados: `unlinked | pending | linked | expired`.
+
+El adaptador funcional local recibe texto en `POST /api/dev/whatsapp/inbound`. No recibe JWT ni `userId`: resuelve la cuenta exclusivamente desde `from` y el vínculo persistido. Mantiene `selectedPatientId` explícito hasta incorporar el menú conversacional. Un `messageId` repetido devuelve el mismo borrador y no crea otra fila.
 
 ```json
 {
   "messageId": "fake-message-001",
+  "from": "+5491122334455",
   "selectedPatientId": "7",
   "clinicalDate": "2026-07-15",
   "message": {
@@ -135,7 +150,7 @@ El adaptador funcional local recibe texto en `POST /api/dev/whatsapp/inbound`. U
 }
 ```
 
-Los endpoints históricos que escribían sesiones directamente desde WhatsApp devuelven `410`. Meta deberá reemplazar al adaptador falso sin modificar el servicio de borradores.
+Los endpoints históricos que escribían sesiones directamente desde WhatsApp devuelven `410`. Meta deberá reemplazar al adaptador falso sin modificar los servicios de vínculo o borradores.
 
 ## Compatibilidad temporal de entrada
 
@@ -159,4 +174,6 @@ Durante un hito, el servidor puede aceptar estos aliases, pero siempre responde 
 - Una sesión creada sigue visible, con el nombre del paciente, después de recargar.
 - Los filtros usan `clinicalDate`, no `createdAt`.
 - Un paciente de otro usuario no puede asociarse por error.
-- Más adelante: un mensaje de WhatsApp repetido crea un solo borrador y una doble confirmación crea una sola sesión.
+- Un mensaje de WhatsApp repetido crea un solo borrador y una doble confirmación crea una sola sesión.
+- Un teléfono no vinculado no puede crear borradores.
+- Un teléfono vinculado resuelve una sola cuenta y deja de resolverla después de desvincularse.

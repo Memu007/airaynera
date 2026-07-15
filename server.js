@@ -128,6 +128,7 @@ app.use(express.static(path.join(__dirname)));
 // Persistence Service (SQLite)
 const sql = require("./services/sqlite");
 const sessionDraftService = require("./services/sessionDraftService");
+const whatsappLinkService = require("./services/whatsappLinkService");
 
 // Initialize DB tables
 try {
@@ -239,6 +240,25 @@ function sendDraftError(res, error) {
   return res.status(status).json({
     error: error.code || 'DRAFT_ERROR',
     message: status === 500 ? 'Unable to process session draft' : error.message,
+  });
+}
+
+function sendWhatsappError(res, error) {
+  const statusByCode = {
+    INVALID_PHONE: 400,
+    INVALID_LINK_COMMAND: 400,
+    INVALID_LINK_CODE: 400,
+    PHONE_MISMATCH: 409,
+    PHONE_ALREADY_IN_USE: 409,
+    WHATSAPP_ALREADY_LINKED: 409,
+    LINK_CODE_EXPIRED: 410,
+    WHATSAPP_NOT_LINKED: 409,
+  };
+  const status = statusByCode[error.code] || 500;
+  if (status === 500) console.error('WhatsApp link error:', error);
+  return res.status(status).json({
+    error: error.code || 'WHATSAPP_LINK_ERROR',
+    message: status === 500 ? 'Unable to process WhatsApp link' : error.message,
   });
 }
 
@@ -567,32 +587,91 @@ app.post('/api/session-drafts/:id/confirm', authMiddleware, (req, res) => {
   }
 });
 
+// The web account creates the code; WhatsApp consumes it from the selected phone.
+app.get('/api/whatsapp/link', authMiddleware, (req, res) => {
+  try {
+    res.json({ link: whatsappLinkService.getLink(req.user.id, { includeCode: true }) });
+  } catch (error) {
+    sendWhatsappError(res, error);
+  }
+});
+
+app.post('/api/whatsapp/link',
+  authMiddleware,
+  body('phoneNumber').isString().trim().isLength({ min: 8, max: 30 }),
+  handleValidationErrors,
+  (req, res) => {
+    try {
+      res.status(201).json(whatsappLinkService.requestLink(
+        req.user.id,
+        req.body.phoneNumber
+      ));
+    } catch (error) {
+      sendWhatsappError(res, error);
+    }
+  }
+);
+
+app.delete('/api/whatsapp/link', authMiddleware, (req, res) => {
+  try {
+    res.json({ link: whatsappLinkService.unlink(req.user.id) });
+  } catch (error) {
+    sendWhatsappError(res, error);
+  }
+});
+
 // Local functional adapter. A future Meta webhook will resolve the same inputs.
 app.post('/api/dev/whatsapp/inbound',
-  authMiddleware,
-  body('messageId').isString().trim().notEmpty(),
-  body('selectedPatientId').notEmpty(),
-  body('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
-  body('message.type').equals('text'),
-  body('message.text').isString().trim().isLength({ min: 1, max: 10000 }),
-  handleValidationErrors,
   (req, res) => {
     if (process.env.NODE_ENV === 'production' && process.env.WHATSAPP_ADAPTER !== 'fake') {
       return res.status(404).json({ error: 'NOT_FOUND' });
     }
 
     try {
-      const result = sessionDraftService.createDraft(req.user.id, {
+      const messageId = String(req.body.messageId || '').trim();
+      const from = String(req.body.from || '').trim();
+      const message = req.body.message || {};
+      const text = String(message.text || '').trim();
+      if (!messageId || !from || message.type !== 'text' || !text || text.length > 10000) {
+        return res.status(400).json({ error: 'INVALID_WHATSAPP_EVENT' });
+      }
+
+      if (/^VINCULAR\b/i.test(text)) {
+        const linked = whatsappLinkService.consumeCommand({ messageId, from, text });
+        return res.status(linked.deduplicated ? 200 : 201).json({
+          reply: {
+            kind: 'accountLinked',
+            text: 'WhatsApp vinculado correctamente.',
+          },
+          link: linked.link,
+          deduplicated: linked.deduplicated,
+        });
+      }
+
+      const userId = whatsappLinkService.resolveUserId(from);
+      if (!userId) {
+        const error = new Error('Vinculá este teléfono desde la web de AIRA');
+        error.code = 'WHATSAPP_NOT_LINKED';
+        throw error;
+      }
+      if (!req.body.selectedPatientId) {
+        return res.status(400).json({ error: 'INVALID_WHATSAPP_EVENT', message: 'selectedPatientId is required' });
+      }
+      if (req.body.clinicalDate && !/^\d{4}-\d{2}-\d{2}$/.test(req.body.clinicalDate)) {
+        return res.status(400).json({ error: 'INVALID_WHATSAPP_EVENT', message: 'clinicalDate is invalid' });
+      }
+
+      const result = sessionDraftService.createDraft(userId, {
         patientId: req.body.selectedPatientId,
         clinicalDate: req.body.clinicalDate,
         sessionType: req.body.sessionType || 'individual',
         durationMinutes: req.body.durationMinutes ?? null,
         careModality: req.body.careModality || 'unspecified',
         inputType: 'text',
-        cleanNote: req.body.message.text,
+        cleanNote: text,
       }, {
         source: 'whatsapp',
-        sourceMessageId: req.body.messageId,
+        sourceMessageId: messageId,
       });
 
       res.status(result.created ? 201 : 200).json({
@@ -604,7 +683,10 @@ app.post('/api/dev/whatsapp/inbound',
         deduplicated: !result.created,
       });
     } catch (error) {
-      sendDraftError(res, error);
+      if (error.code?.startsWith('DRAFT') || error.code === 'PATIENT_NOT_FOUND' || error.code === 'INVALID_DRAFT') {
+        return sendDraftError(res, error);
+      }
+      return sendWhatsappError(res, error);
     }
   }
 );

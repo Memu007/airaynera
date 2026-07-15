@@ -2,7 +2,7 @@
 
 Última actualización: 2026-07-14.
 
-Estado general: vertical web y borradores de texto aprobados localmente; vinculación con WhatsApp real pendiente.
+Estado general: vertical web, borradores de texto y vinculación simulada teléfono→cuenta aprobados localmente; menú conversacional y Meta real pendientes.
 
 Alcance actual: priorizar funcionamiento. Seguridad avanzada, cumplimiento formal y estética se retomarán después de validar la idea.
 
@@ -54,7 +54,7 @@ Criterio de salida:
 
 > Una base vacía se crea, las migraciones se aplican y las pruebas mínimas de contrato pasan en local y CI.
 
-Estado: núcleo cumplido. Migraciones `001` y `002`, contratos y pruebas locales aprobados; falta el doble de WhatsApp/transcripción.
+Estado: núcleo cumplido. Migraciones `001`, `002` y `003`, contratos y doble de WhatsApp aprobados; falta el doble de transcripción.
 
 ## Etapa 1 — Web funcional
 
@@ -119,6 +119,8 @@ Criterio de salida:
 
 > Un usuario vinculado desde la web manda `MENÚ` y recibe una respuesta desde el número real de AIRA.
 
+Estado parcial: código temporal, vencimiento, consumo desde teléfono, persistencia, estado visible, idempotencia y desvinculación están aprobados con el adaptador falso. La identidad de las notas ya se resuelve mediante `phone → userId`, sin aceptar JWT ni `userId` en el evento. Faltan `MENÚ`, webhook de Meta y envío real.
+
 Tag sugerido: `mvp-v0.2-whatsapp-linked`.
 
 ## Etapa 3 — Vertical completo con texto
@@ -174,7 +176,7 @@ Criterio de salida:
 
 Tag sugerido: `mvp-v0.3-text-e2e`.
 
-Estado parcial: el recorrido de texto está aprobado con un adaptador local autenticado, deduplicación y confirmación idempotente. Falta vinculación de número, conversación/menú y webhook real de Meta.
+Estado parcial: una nota de texto desde un teléfono vinculado crea un único borrador para la cuenta correcta y se confirma de forma idempotente. Faltan conversación/menú, confirmación desde WhatsApp y webhook real de Meta.
 
 ## Etapa 4 — Audio web y WhatsApp
 

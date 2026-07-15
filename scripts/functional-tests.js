@@ -311,29 +311,94 @@ class FunctionalTests {
       );
       this.test('Cancelled draft cannot be confirmed', confirmCancelled.status === 409);
 
+      const linkWithoutToken = await this.request('POST', '/api/whatsapp/link', {
+        phoneNumber: '1122334455'
+      });
+      this.test('Generating a WhatsApp link requires the web account', linkWithoutToken.status === 401);
+
+      const linkRequest = await this.request('POST', '/api/whatsapp/link', {
+        phoneNumber: '1122334455'
+      }, this.token);
+      const linkCommand = linkRequest.data?.command;
+      this.test('Web creates a pending WhatsApp link code',
+        linkRequest.status === 201 &&
+        linkRequest.data?.link?.status === 'pending' &&
+        /^VINCULAR \d{6}$/.test(linkCommand));
+
+      const beforeLink = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-before-link-001',
+        from: '+5491122334455',
+        selectedPatientId: patientId,
+        message: { type: 'text', text: 'Must not be accepted yet' }
+      });
+      this.test('An unlinked phone cannot create a draft', beforeLink.status === 409);
+
+      const linkEvent = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-link-001',
+        from: '+54 9 11 2233-4455',
+        message: { type: 'text', text: linkCommand }
+      });
+      this.test('The simulated phone consumes the web link code',
+        linkEvent.status === 201 && linkEvent.data?.link?.status === 'linked');
+
+      const repeatedLink = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-link-001',
+        from: '+5491122334455',
+        message: { type: 'text', text: linkCommand }
+      });
+      this.test('The repeated link event is idempotent',
+        repeatedLink.status === 200 && repeatedLink.data?.deduplicated === true);
+
+      const ownLink = await this.request('GET', '/api/whatsapp/link', null, this.token);
+      const otherLink = await this.request('GET', '/api/whatsapp/link', null, this.token2);
+      this.test('The web account sees its persisted phone link',
+        ownLink.data?.link?.status === 'linked' && ownLink.data?.link?.phoneNumber === '+5491122334455');
+      this.test('Another account does not see the phone link', otherLink.data?.link?.status === 'unlinked');
+
+      const competingLink = await this.request('POST', '/api/whatsapp/link', {
+        phoneNumber: '+5491122334455'
+      }, this.token2);
+      this.test('A linked phone cannot be claimed by another account', competingLink.status === 409);
+
+      const otherPatient = await this.request('POST', '/api/patients', {
+        name: 'Other Account Patient',
+        dni: '33333333'
+      }, this.token2);
+      const linkedForeignPatient = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-linked-foreign-patient-001',
+        from: '+5491122334455',
+        selectedPatientId: otherPatient.data?.id,
+        message: { type: 'text', text: 'Must not cross account boundaries' }
+      });
+      this.test('A linked phone cannot select another account patient', linkedForeignPatient.status === 404);
+      await this.request('DELETE', `/api/patients/${otherPatient.data?.id}`, null, this.token2);
+
       const foreignWhatsapp = await this.request('POST', '/api/dev/whatsapp/inbound', {
         messageId: 'fake-foreign-001',
+        from: '+5491199999999',
         selectedPatientId: patientId,
         message: { type: 'text', text: 'Must not be accepted' }
-      }, this.token2);
-      this.test('Fake WhatsApp cannot use another user patient', foreignWhatsapp.status === 404);
+      });
+      this.test('An unknown phone cannot use another account patient', foreignWhatsapp.status === 409);
 
       const whatsappDraft = await this.request('POST', '/api/dev/whatsapp/inbound', {
         messageId: 'fake-message-001',
+        from: '+5491122334455',
         selectedPatientId: patientId,
         clinicalDate: '2026-07-15',
         message: { type: 'text', text: 'WhatsApp draft note' }
-      }, this.token);
+      });
       const whatsappDraftId = whatsappDraft.data?.draft?.id;
       this.test('Fake WhatsApp creates a draft only',
         whatsappDraft.status === 201 && whatsappDraft.data?.draft?.source === 'whatsapp');
 
       const whatsappDuplicate = await this.request('POST', '/api/dev/whatsapp/inbound', {
         messageId: 'fake-message-001',
+        from: '+5491122334455',
         selectedPatientId: patientId,
         clinicalDate: '2026-07-15',
         message: { type: 'text', text: 'Duplicate body is ignored' }
-      }, this.token);
+      });
       this.test('Repeated WhatsApp message is deduplicated',
         whatsappDuplicate.status === 200 &&
         whatsappDuplicate.data?.deduplicated === true &&
@@ -348,6 +413,23 @@ class FunctionalTests {
       whatsappSessionId = confirmWhatsapp.data?.session?.id;
       this.test('WhatsApp draft confirms through the canonical endpoint',
         confirmWhatsapp.status === 201 && confirmWhatsapp.data?.session?.source === 'whatsapp');
+
+      const unlink = await this.request('DELETE', '/api/whatsapp/link', null, this.token);
+      this.test('The web account can unlink its phone', unlink.data?.link?.status === 'unlinked');
+
+      const afterUnlink = await this.request('POST', '/api/dev/whatsapp/inbound', {
+        messageId: 'fake-after-unlink-001',
+        from: '+5491122334455',
+        selectedPatientId: patientId,
+        message: { type: 'text', text: 'Must not be accepted after unlink' }
+      });
+      this.test('Unlinking stops phone identity resolution', afterUnlink.status === 409);
+
+      const releasedPhone = await this.request('POST', '/api/whatsapp/link', {
+        phoneNumber: '+5491122334455'
+      }, this.token2);
+      this.test('An unlinked phone can be linked by another account', releasedPhone.status === 201);
+      await this.request('DELETE', '/api/whatsapp/link', null, this.token2);
 
       const legacyWhatsappWrite = await this.request('POST', '/api/whatsapp/create-session', {
         patientData: { id: patientId },
@@ -418,8 +500,6 @@ tests.run().catch(err => {
   console.error('Error:', err);
   process.exit(1);
 });
-
-
 
 
 

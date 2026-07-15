@@ -8,10 +8,10 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 
 - Repositorio: `Memu007/Aira.final`.
 - Rama actual: `agent/01-web-core`.
-- Base de este bloque: `41892d3` (`record green ci baseline`).
+- Base de la rama: `41892d3` (`record green ci baseline`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: vertical web y vertical de texto con `SessionDraft`/WhatsApp simulado funcionando.
-- Próximo objetivo: modelar la vinculación cuenta web ↔ número de WhatsApp y reemplazar el transporte falso por Meta cuando existan credenciales.
+- Etapa técnica: vertical web, `SessionDraft` y vinculación teléfono→cuenta mediante WhatsApp simulado funcionando.
+- Próximo objetivo: implementar `MENÚ → elegir paciente → enviar nota → guardar/cancelar` sobre el teléfono vinculado; Meta real se incorpora cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -53,16 +53,17 @@ Registro web
 
 ### WhatsApp
 
-- Los endpoints activos de `/api/whatsapp/*` son receptores internos y simulaciones; no forman un webhook real de Meta.
-- Utilizan un usuario fijo con ID `1`.
-- Intentan asociar el teléfono del remitente con un paciente, aunque quien escribirá es el profesional.
-- No descargan audio.
-- No llaman a un proveedor real de transcripción.
-- El envío de respuestas está simulado.
-- Se guarda antes de confirmar y no hay protección completa contra duplicados.
-- La transcripción se recorta en el flujo actual.
-- El nuevo flujo funcional está en `POST /api/dev/whatsapp/inbound`: usa JWT, paciente explícito, texto y `messageId` deduplicable.
-- El nuevo adaptador crea solamente `SessionDraft`; confirma mediante el mismo endpoint canónico que la web.
+- Los endpoints `GET/POST/DELETE /api/whatsapp/link` administran el vínculo desde la cuenta web autenticada.
+- `db/migrations/003_whatsapp_links.sql` persiste teléfono, estado, código de seis dígitos y vencimiento; `whatsapp_link_events` conserva la deduplicación aunque el vínculo se regenere o elimine.
+- El código vence en diez minutos; regenerar invalida el anterior y repetir el mismo evento de vinculación es idempotente.
+- El flujo funcional está en `POST /api/dev/whatsapp/inbound`: no acepta JWT ni `userId`; resuelve la cuenta exclusivamente desde `from`.
+- El paciente continúa siendo explícito mediante `selectedPatientId` hasta implementar el menú conversacional.
+- El adaptador crea solamente `SessionDraft`; confirma mediante el mismo endpoint canónico que la web.
+- Un `messageId` repetido devuelve el mismo borrador y no crea otra fila.
+- Desvincular corta la resolución de identidad y libera el teléfono.
+- Un pendiente puede retomarse después de recargar la web; un pendiente vencido libera el número incluso si su propietario abandonó el flujo.
+- El deploy de prueba declara `WHATSAPP_ADAPTER=fake`; debe reemplazarse por Meta antes de producción real.
+- No existe todavía un webhook real de Meta, envío real de respuestas, descarga de audio ni proveedor de transcripción.
 - Los endpoints heredados que escribían directamente en `sessions` ahora devuelven `410`.
 - El reconocimiento y envío n8n restantes siguen siendo prototipos y no forman parte del vertical nuevo.
 
@@ -76,11 +77,12 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La batería actual pasa 66 de 66 pruebas funcionales con Node.js 20.
+- La batería actual pasa 78 de 78 pruebas funcionales con Node.js 20, además de las pruebas de migración y del servicio de vínculo.
 - Crear una sesión para un paciente inexistente ahora devuelve `404` en lugar de `500`.
 - Cinco workflows que referenciaban archivos o comandos inexistentes fueron movidos a `_archive/github-workflows/`.
 - `.github/workflows/ci.yml` es la verificación funcional canónica para el MVP.
 - SQLite ahora aplica migraciones versionadas desde `db/migrations/`.
+- La migración `003_whatsapp_links.sql` fue probada sobre base nueva, base heredada y segunda ejecución vacía.
 - La migración inicial es idempotente y fue probada contra una base nueva y una base con datos existentes.
 - `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
 
@@ -97,7 +99,7 @@ Estado remoto del PR técnico #2:
 - Verificación remota del vertical web: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
 - Implementación de borradores: `e9085b8` (`route notes through session drafts`).
 - Verificación remota de borradores: `Functional baseline`, `audit`, `semgrep` y `trufflehog` aprobados.
-- El PR técnico #2 refleja ahora 66 pruebas, confirmación idempotente y WhatsApp simulado.
+- Antes de este bloque, el PR técnico #2 reflejaba 66 pruebas, confirmación idempotente y WhatsApp simulado autenticado.
 
 ## Decisiones técnicas vigentes
 
@@ -120,6 +122,12 @@ Estado remoto del PR técnico #2:
 El 2026-07-14 se compararon tres propuestas independientes. Se eligió la propuesta B porque mantuvo IDs consistentes, separó explícitamente fecha clínica de creación y duración clínica de duración de audio, y llevó web y WhatsApp al mismo modelo de borrador confirmable.
 
 Para reducir riesgo, la implementación se dividió en dos cortes: primero el vertical web persistente; después `SessionDraft` y WhatsApp. SQLite conserva columnas históricas detrás de adaptadores y la API responde en formato canónico.
+
+### Decisión multiagente: vinculación web–WhatsApp
+
+El 2026-07-14 se compararon tres propuestas independientes. Se eligió un híbrido: el modelo persistente y la interfaz funcional de la propuesta mínima, junto con la regla de identidad y deduplicación de la propuesta conversacional.
+
+Este bloque implementa vínculo, expiración, consumo desde teléfono y notas identificadas por número. El estado conversacional y el menú se dejaron para el siguiente bloque para poder aislar primero la identidad. El evento entrante nunca acepta `userId`; la web obtiene identidad del JWT y WhatsApp del teléfono vinculado.
 
 ### Decisión multiagente: dependencias y CI
 
@@ -148,6 +156,7 @@ Rama prevista: `agent/01-web-core`.
 - [x] Introducir migraciones versionadas.
 - [x] Definir contratos canónicos de paciente, sesión y borrador.
 - [x] Crear un doble de prueba de WhatsApp para texto.
+- [x] Vincular explícitamente una cuenta web con un teléfono en el doble de WhatsApp.
 - [ ] Crear el doble de transcripción para audio.
 
 ### Etapa 1
@@ -169,6 +178,8 @@ Rama prevista: `agent/01-web-core`.
 Cumplido localmente el 2026-07-14. La prueba visible terminó con 1 paciente y 1 sesión antes y después de recargar, sin errores de consola.
 
 El 2026-07-14 se repitió el criterio con el formulario conectado a `POST /api/session-drafts` seguido de confirmación: después de recargar continuaron exactamente 1 paciente y 1 sesión, sin errores ni duplicados.
+
+El 2026-07-14 se aprobó además el corte de vinculación: login → generar código → recargar con el vínculo pendiente → recuperar el mismo comando → consumir `VINCULAR` desde el teléfono simulado → mostrar vínculo. El número persistió y quedó visible de forma parcial. La batería subió a 78/78.
 
 ## Dependencias que necesitaremos más adelante
 
@@ -210,10 +221,10 @@ No bloquean el vertical de texto.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar el estado del [PR documental #1](https://github.com/Memu007/Aira.final/pull/1).
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test` para confirmar la línea base 66/66.
-7. Diseñar la vinculación explícita cuenta web ↔ número de WhatsApp sin depender todavía de Meta.
-8. Hacer que el adaptador falso resuelva la cuenta desde esa vinculación.
-9. Incorporar Meta y audio recién después de aprobar la vinculación y el menú con texto.
+6. Ejecutar `npm test` para confirmar la línea base 78/78.
+7. Implementar el estado conversacional sobre el vínculo existente.
+8. Validar `MENÚ → paciente → nota → confirmar/cancelar → ficha web` sin JWT en el transporte.
+9. Incorporar Meta y audio recién después de aprobar el menú con texto.
 
 ## Regla para el próximo handoff
 

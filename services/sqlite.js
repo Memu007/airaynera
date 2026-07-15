@@ -565,6 +565,181 @@ function confirmSessionDraft(userId, id) {
   return confirm();
 }
 
+// ===== WHATSAPP LINK FUNCTIONS =====
+
+function mapWhatsappLinkRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    phoneNumber: row.phone_e164 || null,
+    status: row.status,
+    linkCode: row.link_code || null,
+    codeExpiresAt: row.code_expires_at || null,
+    linkedMessageId: row.linked_message_id || null,
+    linkedAt: row.linked_at || null,
+    unlinkedAt: row.unlinked_at || null,
+    lastSeenAt: row.last_seen_at || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function getWhatsappLink(userId) {
+  const row = getDb().prepare(
+    'SELECT * FROM whatsapp_links WHERE user_id = ?'
+  ).get(userId);
+  return mapWhatsappLinkRow(row);
+}
+
+function getLinkedWhatsappByPhone(phoneNumber) {
+  const row = getDb().prepare(`
+    SELECT * FROM whatsapp_links
+    WHERE phone_e164 = ? AND status = 'linked'
+  `).get(phoneNumber);
+  return mapWhatsappLinkRow(row);
+}
+
+function requestWhatsappLink(userId, phoneNumber, code, expiresAt, now) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE whatsapp_links SET
+      phone_e164=NULL, status='expired', link_code=NULL,
+      code_expires_at=NULL, updated_at=?
+    WHERE status='pending' AND code_expires_at <= ?
+  `).run(now, now);
+  const current = getWhatsappLink(userId);
+  if (current?.status === 'linked') {
+    const error = new Error('WhatsApp is already linked');
+    error.code = 'WHATSAPP_ALREADY_LINKED';
+    throw error;
+  }
+
+  try {
+    conn.prepare(`
+      INSERT INTO whatsapp_links (
+        user_id, phone_e164, status, link_code, code_expires_at,
+        created_at, updated_at
+      ) VALUES (?, ?, 'pending', ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        phone_e164=excluded.phone_e164,
+        status='pending',
+        link_code=excluded.link_code,
+        code_expires_at=excluded.code_expires_at,
+        linked_message_id=NULL,
+        linked_at=NULL,
+        unlinked_at=NULL,
+        last_seen_at=NULL,
+        updated_at=excluded.updated_at
+    `).run(userId, phoneNumber, code, expiresAt, now, now);
+  } catch (error) {
+    if (String(error.message).includes('link_code')) error.code = 'LINK_CODE_CONFLICT';
+    else if (String(error.message).includes('phone_e164')) error.code = 'PHONE_ALREADY_IN_USE';
+    throw error;
+  }
+
+  return getWhatsappLink(userId);
+}
+
+function expireWhatsappLink(userId, now) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE whatsapp_links SET
+      phone_e164=NULL, status='expired', link_code=NULL,
+      code_expires_at=NULL, updated_at=?
+    WHERE user_id=? AND status='pending'
+  `).run(now, userId);
+  return getWhatsappLink(userId);
+}
+
+function consumeWhatsappLinkCode({ messageId, phoneNumber, code, now }) {
+  const conn = getDb();
+  const consume = conn.transaction(() => {
+    const repeatedEvent = conn.prepare(
+      'SELECT * FROM whatsapp_link_events WHERE message_id = ?'
+    ).get(messageId);
+    if (repeatedEvent) {
+      if (repeatedEvent.phone_e164 !== phoneNumber) {
+        const error = new Error('The repeated event came from another phone number');
+        error.code = 'PHONE_MISMATCH';
+        throw error;
+      }
+      return { link: JSON.parse(repeatedEvent.response_json), deduplicated: true };
+    }
+
+    const row = conn.prepare(`
+      SELECT * FROM whatsapp_links WHERE link_code = ? AND status = 'pending'
+    `).get(code);
+    if (!row) {
+      const error = new Error('Invalid or previously used link code');
+      error.code = 'INVALID_LINK_CODE';
+      throw error;
+    }
+    if (row.phone_e164 !== phoneNumber) {
+      const error = new Error('The code belongs to another phone number');
+      error.code = 'PHONE_MISMATCH';
+      throw error;
+    }
+    if (new Date(row.code_expires_at) <= new Date(now)) {
+      conn.prepare(`
+        UPDATE whatsapp_links SET
+          phone_e164=NULL, status='expired', link_code=NULL,
+          code_expires_at=NULL, updated_at=?
+        WHERE id=?
+      `).run(now, row.id);
+      return { errorCode: 'LINK_CODE_EXPIRED' };
+    }
+
+    try {
+      conn.prepare(`
+        UPDATE whatsapp_links SET
+          status='linked', link_code=NULL, code_expires_at=NULL,
+          linked_message_id=?, linked_at=?, unlinked_at=NULL,
+          last_seen_at=?, updated_at=?
+        WHERE id=?
+      `).run(messageId, now, now, now, row.id);
+    } catch (error) {
+      if (String(error.message).includes('phone_e164')) error.code = 'PHONE_ALREADY_IN_USE';
+      throw error;
+    }
+
+    const link = getWhatsappLink(row.user_id);
+    conn.prepare(`
+      INSERT INTO whatsapp_link_events (
+        message_id, user_id, phone_e164, response_json, created_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(messageId, row.user_id, phoneNumber, JSON.stringify(link), now);
+    return { link, deduplicated: false };
+  });
+
+  const result = consume();
+  if (result.errorCode === 'LINK_CODE_EXPIRED') {
+    const error = new Error('Link code expired');
+    error.code = result.errorCode;
+    throw error;
+  }
+  return result;
+}
+
+function unlinkWhatsapp(userId, now) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE whatsapp_links SET
+      phone_e164=NULL, status='unlinked', link_code=NULL,
+      code_expires_at=NULL, linked_message_id=NULL, linked_at=NULL,
+      last_seen_at=NULL, unlinked_at=?, updated_at=?
+    WHERE user_id=?
+  `).run(now, now, userId);
+  return getWhatsappLink(userId);
+}
+
+function touchWhatsappLink(userId, now) {
+  getDb().prepare(`
+    UPDATE whatsapp_links SET last_seen_at=?, updated_at=?
+    WHERE user_id=? AND status='linked'
+  `).run(now, now, userId);
+}
+
 // ===== USER FUNCTIONS =====
 
 async function createUser(userData) {
@@ -642,6 +817,13 @@ module.exports = {
   updateSessionDraft,
   setSessionDraftStatus,
   confirmSessionDraft,
+  getWhatsappLink,
+  getLinkedWhatsappByPhone,
+  requestWhatsappLink,
+  expireWhatsappLink,
+  consumeWhatsappLinkCode,
+  unlinkWhatsapp,
+  touchWhatsappLink,
   createUser,
   verifyUser,
 };

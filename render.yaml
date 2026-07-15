@@ -11,6 +11,8 @@ services:
         generateValue: true
       - key: DATA_KEY
         generateValue: true
+      - key: WHATSAPP_ADAPTER
+        value: fake
     healthCheckPath: /health
     disk:
       name: aira-data

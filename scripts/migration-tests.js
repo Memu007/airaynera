@@ -18,6 +18,7 @@ try {
   assert.deepEqual(firstRun, [
     '001_initial_schema.sql',
     '002_canonical_sessions_and_drafts.sql',
+    '003_whatsapp_links.sql',
   ]);
   assert.deepEqual(secondRun, []);
 
@@ -27,7 +28,7 @@ try {
     ).all().map((row) => row.name)
   );
 
-  for (const tableName of ['users', 'patients', 'sessions', 'session_drafts', 'schema_migrations']) {
+  for (const tableName of ['users', 'patients', 'sessions', 'session_drafts', 'whatsapp_links', 'whatsapp_link_events', 'schema_migrations']) {
     assert.ok(tables.has(tableName), `Missing table: ${tableName}`);
   }
 
@@ -35,10 +36,10 @@ try {
     'SELECT id, applied_at FROM schema_migrations ORDER BY id'
   ).all();
 
-  assert.equal(migrationRows.length, 2);
+  assert.equal(migrationRows.length, 3);
   assert.deepEqual(
     migrationRows.map((row) => row.id),
-    ['001_initial_schema.sql', '002_canonical_sessions_and_drafts.sql']
+    ['001_initial_schema.sql', '002_canonical_sessions_and_drafts.sql', '003_whatsapp_links.sql']
   );
   assert.ok(migrationRows.every((row) => row.applied_at));
 
@@ -61,6 +62,7 @@ try {
     assert.deepEqual(runMigrations(legacyConnection), [
       '001_initial_schema.sql',
       '002_canonical_sessions_and_drafts.sql',
+      '003_whatsapp_links.sql',
     ]);
     const legacyUser = legacyConnection.prepare(
       'SELECT dni, name FROM users WHERE dni = ?'

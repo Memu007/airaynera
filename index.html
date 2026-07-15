@@ -2613,7 +2613,7 @@
             <p class="text-muted">Panel de Salud Mental</p>
             <div class="d-flex align-items-center justify-content-center mt-3">
               <div class="sync-dot"></div>
-              <small class="text-success">Sincronizado con WhatsApp</small>
+              <small class="text-muted">Vinculación con WhatsApp disponible</small>
             </div>
           </div>
 
@@ -2985,8 +2985,8 @@
                             <i class="fas fa-mobile-alt"></i>
                           </div>
                           <h6 class="quick-action-title">Vincular Celular</h6>
-                          <p class="quick-action-desc">
-                            Recibir mensaje de bienvenida
+                          <p class="quick-action-desc" id="whatsappLinkSummary">
+                            WhatsApp sin vincular
                           </p>
                         </div>
                       </div>
@@ -3494,7 +3494,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
                         <p class="text-muted small">Panel de Salud Mental</p>
                         <div class="d-flex align-items-center justify-content-center mt-2">
                              <span class="badge badge-pill badge-light text-success px-3 py-1" style="font-weight: 500; font-size: 0.8rem;">
-                                <i class="fab fa-whatsapp mr-1"></i> Sincronizado con WhatsApp
+                                <i class="fab fa-whatsapp mr-1"></i> Vinculación disponible
                             </span>
                         </div>
                     </div>
@@ -3623,7 +3623,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           </div>
           <div class="modal-body">
             <p class="mb-3">
-              Ingresá tu número de celular para recibir un mensaje de bienvenida
+              Ingresá el número que va a identificar tu cuenta cuando escribas
               por WhatsApp:
             </p>
             <div class="form-group">
@@ -3646,10 +3646,11 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
               >
             </div>
             <div class="alert alert-info" role="alert">
-              <i class="fas fa-info-circle mr-2"></i>Recibirás un mensaje de
-              bienvenida con instrucciones para comenzar a usar AIRA en tu
-              celular.
+              <i class="fas fa-info-circle mr-2"></i>En esta etapa de prueba,
+              AIRA genera un código y permite simular el mensaje de vinculación
+              que luego recibirá la integración oficial de WhatsApp.
             </div>
+            <div id="whatsappLinkResult" class="alert alert-success d-none" role="status"></div>
           </div>
           <div class="modal-footer">
             <button
@@ -3659,8 +3660,14 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
             >
               Cancelar
             </button>
-            <button type="button" class="btn btn-success" onclick="linkPhone()">
-              <i class="fab fa-whatsapp mr-2"></i>Enviar mensaje
+            <button type="button" id="unlinkPhoneBtn" class="btn btn-outline-danger d-none" onclick="unlinkPhone()">
+              Desvincular
+            </button>
+            <button type="button" id="requestPhoneLinkBtn" class="btn btn-success" onclick="linkPhone()">
+              <i class="fab fa-whatsapp mr-2"></i>Generar código
+            </button>
+            <button type="button" id="simulatePhoneLinkBtn" class="btn btn-primary d-none" onclick="simulatePhoneLink()">
+              Simular mensaje VINCULAR
             </button>
           </div>
         </div>
@@ -4517,6 +4524,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
       let moodEvolutionChartInstance = null;
       let topPatientsChartInstance = null;
       let whatsappSimulationTimeout;
+      let pendingWhatsappLink = null;
 
       // Datos se cargan desde el backend via API
 
@@ -4776,6 +4784,7 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
         loadPatientsData();
         loadSessionsData();
+        loadWhatsappLinkStatus();
 
         // Inicializar perfil del usuario
         if (currentUser) {
@@ -6537,7 +6546,62 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
 
       // Funciones para vincular celular
       function showLinkPhoneModal() {
+        pendingWhatsappLink = null;
+        $("#whatsappLinkResult").addClass("d-none").empty();
+        $("#simulatePhoneLinkBtn").addClass("d-none");
+        loadWhatsappLinkStatus(true);
         $("#linkPhoneModal").modal("show");
+      }
+
+      function renderWhatsappLinkStatus(link, inModal = false) {
+        const status = link?.status || "unlinked";
+        const summary = {
+          linked: `Vinculado a ${link.phoneMasked || link.phoneNumber}`,
+          pending: "Código de vinculación pendiente",
+          expired: "Código vencido: generá uno nuevo",
+          unlinked: "WhatsApp sin vincular",
+        }[status];
+        $("#whatsappLinkSummary").text(summary || "WhatsApp sin vincular");
+
+        if (!inModal) return;
+        const linked = status === "linked";
+        $("#phoneNumber").prop("disabled", linked);
+        $("#requestPhoneLinkBtn").toggleClass("d-none", linked);
+        $("#unlinkPhoneBtn").toggleClass("d-none", !linked);
+        if (status !== "pending") {
+          $("#simulatePhoneLinkBtn").addClass("d-none");
+        }
+        if (linked) {
+          $("#phoneNumber").val("");
+          $("#simulatePhoneLinkBtn").addClass("d-none");
+          $("#whatsappLinkResult")
+            .removeClass("d-none")
+            .html(`<strong>WhatsApp vinculado.</strong><br>${link.phoneMasked || link.phoneNumber}`);
+        }
+      }
+
+      function loadWhatsappLinkStatus(inModal = false) {
+        const token = localStorage.getItem("authToken");
+        if (!token) return;
+        $.ajax({
+          url: "/api/whatsapp/link",
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          success: function (response) {
+            renderWhatsappLinkStatus(response.link, inModal);
+            if (inModal && response.link?.status === "pending" && response.link.code) {
+              pendingWhatsappLink = {
+                phoneNumber: response.link.phoneNumber,
+                command: `VINCULAR ${response.link.code}`,
+                messageId: `web-link-${Date.now()}`,
+              };
+              $("#whatsappLinkResult")
+                .removeClass("d-none")
+                .html(`Código listo para enviar desde ese teléfono:<br><strong>${pendingWhatsappLink.command}</strong>`);
+              $("#simulatePhoneLinkBtn").removeClass("d-none");
+            }
+          },
+        });
       }
 
       function linkPhone() {
@@ -6556,20 +6620,82 @@ Especialista en salud mental con 10 años de experiencia en tratamiento de trast
           return;
         }
 
-        // Aquí iría la lógica para enviar el mensaje de WhatsApp
-        // En la demo, simulamos el envío
-        $("#linkPhoneModal").modal("hide");
+        const token = localStorage.getItem("authToken");
+        $("#requestPhoneLinkBtn").prop("disabled", true);
+        $.ajax({
+          url: "/api/whatsapp/link",
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          contentType: "application/json",
+          data: JSON.stringify({ phoneNumber }),
+          success: function (response) {
+            pendingWhatsappLink = {
+              phoneNumber: response.link.phoneNumber,
+              command: response.command,
+              messageId: `web-link-${Date.now()}`,
+            };
+            renderWhatsappLinkStatus(response.link, true);
+            $("#whatsappLinkResult")
+              .removeClass("d-none")
+              .html(`Código listo para enviar desde ese teléfono:<br><strong>${response.command}</strong>`);
+            $("#simulatePhoneLinkBtn").removeClass("d-none");
+          },
+          error: function (xhr) {
+            showNotification(xhr.responseJSON?.message || "No se pudo generar el código", "error");
+          },
+          complete: function () {
+            $("#requestPhoneLinkBtn").prop("disabled", false);
+          },
+        });
+      }
 
-        // Mostrar mensaje de éxito
-        setTimeout(() => {
-          showNotification(
-            "✅ Mensaje enviado correctamente a +54" + phoneNumber,
-            "success"
-          );
-        }, 800);
+      function simulatePhoneLink() {
+        if (!pendingWhatsappLink) return;
+        $("#simulatePhoneLinkBtn").prop("disabled", true);
+        $.ajax({
+          url: "/api/dev/whatsapp/inbound",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({
+            messageId: pendingWhatsappLink.messageId,
+            from: pendingWhatsappLink.phoneNumber,
+            message: { type: "text", text: pendingWhatsappLink.command },
+          }),
+          success: function (response) {
+            pendingWhatsappLink = null;
+            renderWhatsappLinkStatus(response.link, true);
+            showNotification("WhatsApp vinculado correctamente", "success");
+          },
+          error: function (xhr) {
+            if (["LINK_CODE_EXPIRED", "INVALID_LINK_CODE"].includes(xhr.responseJSON?.error)) {
+              pendingWhatsappLink = null;
+              $("#simulatePhoneLinkBtn").addClass("d-none");
+              loadWhatsappLinkStatus(true);
+            }
+            showNotification(xhr.responseJSON?.message || "No se pudo simular la vinculación", "error");
+          },
+          complete: function () {
+            $("#simulatePhoneLinkBtn").prop("disabled", false);
+          },
+        });
+      }
 
-        // Limpiar campo
-        $("#phoneNumber").val("");
+      function unlinkPhone() {
+        const token = localStorage.getItem("authToken");
+        $.ajax({
+          url: "/api/whatsapp/link",
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+          success: function (response) {
+            pendingWhatsappLink = null;
+            $("#whatsappLinkResult").addClass("d-none").empty();
+            $("#phoneNumber").val("").prop("disabled", false);
+            $("#simulatePhoneLinkBtn, #unlinkPhoneBtn").addClass("d-none");
+            $("#requestPhoneLinkBtn").removeClass("d-none");
+            renderWhatsappLinkStatus(response.link, true);
+            showNotification("WhatsApp desvinculado", "success");
+          },
+        });
       }
 
       // --- LANDING PAGE CHAT ---

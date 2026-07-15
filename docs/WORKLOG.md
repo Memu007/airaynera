@@ -2,6 +2,42 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-14 — Vinculación cuenta web ↔ teléfono simulado
+
+### Objetivo
+
+Eliminar el JWT del transporte simulado y demostrar que un mensaje entrante puede identificar correctamente al profesional a partir de un número previamente vinculado en la web.
+
+### Trabajo realizado
+
+- Tres agentes compitieron con propuestas independientes de datos, servicio, endpoints, interfaz y gates.
+- Se eligió un corte mínimo persistente: vínculo y nota ahora; menú conversacional completo en el siguiente bloque.
+- Se agregó la migración `003_whatsapp_links.sql` con estados, código temporal, teléfono único e identificador del evento de vinculación.
+- Los eventos consumidos se conservan en `whatsapp_link_events`, de modo que los reintentos tardíos no vuelven a ejecutar efectos.
+- La web autenticada puede consultar, generar y eliminar un vínculo.
+- El código de seis dígitos vence en diez minutos, se invalida al regenerar y solamente puede consumirse desde el teléfono indicado.
+- `POST /api/dev/whatsapp/inbound` ya no acepta JWT ni `userId`; resuelve `phone → userId` y después usa `SessionDraft`.
+- Un teléfono desconocido no crea borradores; desvincular corta inmediatamente la resolución de identidad.
+- La interfaz dejó de afirmar que WhatsApp está sincronizado sin respaldo persistido.
+- El modal visible genera el código, simula `VINCULAR`, muestra el número parcial y permite desvincular.
+- El mismo código pendiente se recupera al cerrar el modal o recargar la web.
+- El deploy de prueba activa explícitamente el adaptador falso hasta incorporar Meta.
+
+### Verificaciones
+
+- `npm test`: migraciones, servicio de vínculo y 78/78 pruebas funcionales aprobadas.
+- Cubiertos vencimiento, liberación de códigos abandonados, código regenerado, teléfono incorrecto, número ocupado, repetición tardía del evento, aislamiento entre cuentas y reutilización después de desvincular.
+- Una nota desde el teléfono vinculado crea un solo borrador; el mismo `messageId` no duplica.
+- `npm run build`, sintaxis JavaScript y `git diff --check`: aprobados.
+- Recorrido visible aprobado: login → vincular celular → generar código → recargar pendiente → recuperar código → simular mensaje → estado vinculado.
+- Después de recargar, la web conserva tanto el pendiente recuperable como el teléfono ya vinculado.
+
+### Siguiente trabajo
+
+1. Implementar el estado conversacional `MENÚ → elegir paciente → enviar nota → confirmar/cancelar` sobre el teléfono ya vinculado.
+2. Mantener el mismo servicio de vínculo y borradores al agregar el webhook de Meta.
+3. Agregar audio solamente después de aprobar el menú completo con texto.
+
 ## 2026-07-14 — Borradores y WhatsApp simulado con texto
 
 ### Objetivo
