@@ -1,109 +1,92 @@
 # AIRA Medical
 
-Sistema de gestión para profesionales de salud mental. Gestiona pacientes y sesiones con SQLite.
+AIRA ayuda a psicólogos y psiquiatras a mantener actualizadas las fichas de sus pacientes mediante notas breves enviadas desde la web o WhatsApp.
 
-## Requisitos
+El flujo objetivo del MVP es:
 
-- Node.js >= 18
-- npm >= 8
-
-## Instalación
-
-```bash
-npm install
+```text
+Cuenta web
+→ WhatsApp vinculado
+→ Selección explícita del paciente
+→ Nota de texto o audio
+→ Borrador editable
+→ Confirmación
+→ Sesión guardada en la ficha web
 ```
 
-## Configuración
+## Estado del proyecto
 
-Copiar `.env.example` a `.env` y configurar:
+El proyecto está en una etapa de consolidación funcional. La web, la persistencia básica y algunos prototipos de WhatsApp ya existen, pero la integración real de WhatsApp y audio todavía no funciona de punta a punta.
+
+Las prioridades vigentes son:
+
+1. Estabilizar registro, pacientes y sesiones en la web.
+2. Vincular una cuenta web con un número de WhatsApp.
+3. Completar el recorrido mediante una nota de texto.
+4. Incorporar audio reutilizando el mismo sistema de borradores.
+5. Probar el producto con profesionales.
+
+El detalle y el estado actualizado se encuentran en la [documentación activa](docs/README.md).
+
+## Documentación principal
+
+- [Definición del producto](docs/PRODUCT.md)
+- [Roadmap del MVP](docs/ROADMAP.md)
+- [Handoff actualizado](docs/HANDOFF.md)
+- [Registro de trabajo](docs/WORKLOG.md)
+
+Al retomar el proyecto, empezar siempre por `docs/HANDOFF.md`.
+
+## Tecnología actual
+
+- Node.js y Express.
+- Frontend HTML, CSS y JavaScript.
+- SQLite con almacenamiento persistente.
+- JWT para autenticación.
+- Render como configuración de despliegue actual.
+
+Para validar el producto no se planea reescribir toda la aplicación ni migrar de tecnología. Las funcionalidades nuevas se separarán gradualmente en rutas, servicios, proveedores y workers.
+
+## Instalación local
+
+Requisitos:
+
+- Node.js 20 recomendado.
+- npm 8 o superior.
 
 ```bash
+npm ci
 cp .env.example .env
-```
-
-Variables principales:
-- `PORT` - Puerto del servidor (default: 3000)
-- `JWT_SECRET` - Secreto para tokens JWT
-- `DATA_KEY` - Clave de cifrado para datos sensibles (opcional)
-
-## Ejecutar
-
-```bash
-# Desarrollo
 npm run dev
-
-# Producción
-npm start
 ```
 
-Abrir en navegador: `http://localhost:3000`
+Sin configurar `PORT`, el servidor usa el puerto `8080`. El archivo `.env.example` propone el puerto `3000` para desarrollo.
 
-## API Endpoints
+Las variables, tokens y credenciales reales nunca deben subirse al repositorio.
 
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| POST | `/api/auth/verify` | Verificar token |
-| GET | `/api/patients` | Listar pacientes |
-| POST | `/api/patients` | Crear paciente |
-| PATCH | `/api/patients/:id` | Actualizar paciente |
-| DELETE | `/api/patients/:id` | Eliminar paciente |
-| GET | `/api/sessions` | Listar sesiones |
-| POST | `/api/sessions` | Crear sesión |
-| PATCH | `/api/sessions/:id` | Actualizar sesión |
-| DELETE | `/api/sessions/:id` | Eliminar sesión |
+## Estructura activa
 
-## Deploy
-
-### Render
-
-1. Conectar repositorio en Render
-2. El archivo `render.yaml` configura todo automáticamente
-3. Variables JWT_SECRET y DATA_KEY se generan automáticamente
-
-### Docker
-
-```bash
-docker build -t aira-medical .
-docker run -p 3000:3000 -v ./data:/app/data aira-medical
+```text
+server.js             servidor Express actual
+index.html            interfaz web actual
+services/sqlite.js    acceso y esquema SQLite actual
+utils/                utilidades compartidas
+js/ css/ images/      recursos de la interfaz
+scripts/              scripts activos o pendientes de consolidación
+docs/                 producto, roadmap y handoff vigentes
+_archive/             prototipos y código histórico; no es producción
 ```
 
-### VPS (PM2)
+El contenido de `_archive/` puede servir como referencia, pero no debe considerarse parte del sistema activo sin revisión y adaptación.
 
-```bash
-npm install -g pm2
-pm2 start server.js --name aira
-pm2 save
-```
+## Forma de trabajo
 
-## Backup
+- Una rama por vertical funcional.
+- Commits pequeños y verificables.
+- Pull request en borrador mientras la etapa está en curso.
+- `main` representa la versión estable.
+- Un tag por demostración aceptada.
+- Actualizar `docs/HANDOFF.md` después de cada bloque relevante.
+- Agregar una entrada a `docs/WORKLOG.md` sin borrar el historial anterior.
 
-```bash
-npm run backup
-```
-
-Los backups se guardan en `data/backups/`.
-
-## Estructura
-
-```
-├── server.js          # Servidor Express
-├── index.html         # Frontend completo
-├── services/
-│   └── sqlite.js      # Base de datos SQLite
-├── utils/
-│   └── crypto.js      # Cifrado de datos
-├── js/, css/, images/ # Assets frontend
-├── data/              # SQLite y datos
-└── scripts/
-    └── backup-simple.js
-```
-
-## Escala
-
-Optimizado para:
-- Hasta 2000 profesionales
-- 400 pacientes por profesional (800K total)
-- 20M+ sesiones
-
-SQLite con WAL mode + índices compuestos.
+GitHub respalda el código y la documentación. Las bases de datos, audios, transcripciones, secretos y datos clínicos requieren un respaldo separado y nunca deben incluirse en Git.

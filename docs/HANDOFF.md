@@ -1,0 +1,164 @@
+# Handoff de AIRA
+
+Este es el documento operativo que debe leerse primero al retomar el proyecto.
+
+Última actualización: 2026-07-14.
+
+## Estado actual
+
+- Repositorio: `Memu007/Aira.final`.
+- Rama actual: `agent/document-product-roadmap`.
+- Commit base: `b78d7081810cdea9e2ef37af0dd54409ba7070aa`.
+- El árbol estaba limpio y sincronizado con `origin/main` antes de agregar esta documentación.
+- Etapa de producto: planificación del MVP terminada.
+- Etapa técnica: implementación del nuevo recorrido todavía no iniciada.
+- Próximo objetivo: Etapa 0 y Etapa 1 de `ROADMAP.md`.
+
+## Dirección del producto acordada
+
+AIRA no procesará sesiones terapéuticas completas en el MVP. El profesional enviará una nota posterior de aproximadamente 2 a 10 minutos o escribirá un texto breve.
+
+El profesional no se reconoce con IA: su número de WhatsApp se vincula explícitamente con la cuenta creada en la web.
+
+El paciente tampoco se deduce del audio: se selecciona explícitamente desde la web o el menú de WhatsApp antes de enviar la nota.
+
+Toda entrada crea primero un borrador. La sesión definitiva se crea solamente después de **Guardar**.
+
+La web es la fuente de verdad y WhatsApp es un canal adicional sobre los mismos datos.
+
+## Recorrido objetivo
+
+```text
+Registro web
+→ Crear paciente
+→ Vincular WhatsApp
+→ Elegir paciente
+→ Enviar texto o audio
+→ Recibir borrador
+→ Guardar / Editar / Regrabar / Cancelar
+→ Ver sesión en la ficha web
+```
+
+## Hallazgos relevantes del código actual
+
+### Web
+
+- El registro no deja correctamente autenticado al usuario para continuar usando todas las APIs.
+- La web no carga las sesiones desde `GET /api/sessions` al iniciar.
+- El formato de pacientes y sesiones difiere entre frontend, API y SQLite.
+- La interfaz envía tipos y nombres de campo que el servidor no acepta o no devuelve.
+- Parte del dashboard y de la configuración modifica solamente estado local.
+
+### WhatsApp
+
+- Los endpoints activos de `/api/whatsapp/*` son receptores internos y simulaciones; no forman un webhook real de Meta.
+- Utilizan un usuario fijo con ID `1`.
+- Intentan asociar el teléfono del remitente con un paciente, aunque quien escribirá es el profesional.
+- No descargan audio.
+- No llaman a un proveedor real de transcripción.
+- El envío de respuestas está simulado.
+- Se guarda antes de confirmar y no hay protección completa contra duplicados.
+- La transcripción se recorta en el flujo actual.
+
+### Código archivado
+
+- `_archive/` contiene workflows de n8n, clientes parciales de Meta, un bot anterior y un grabador web.
+- Sirven como referencia, pero contienen URLs, contratos y endpoints que no coinciden con la aplicación activa.
+- No deben restaurarse completos sin revisión.
+
+### Pruebas y CI
+
+- El repositorio local no tenía dependencias instaladas al hacer esta revisión.
+- La ejecución inicial del servidor falló por faltar `node_modules`; todavía no se estableció una línea base de pruebas actual.
+- Existen varios workflows de GitHub que referencian archivos o comandos archivados o inexistentes.
+- `TESTING-REPORT.md` refleja una ejecución de noviembre de 2025 y no debe interpretarse como una validación del código actual.
+
+## Decisiones técnicas vigentes
+
+- Mantener Express y SQLite para el MVP.
+- No reescribir el frontend completo antes de validar el producto.
+- Extraer gradualmente rutas y servicios nuevos.
+- Mantener identidad, conversaciones, borradores, confirmación y deduplicación dentro de AIRA.
+- No usar n8n como fuente de verdad.
+- Implementar proveedores intercambiables para transcripción y estructuración.
+- Validar primero el recorrido completo con texto y después agregar audio.
+- Conservar transcripción literal y nota limpia por separado.
+- Usar una cola persistente sencilla en SQLite para el piloto.
+
+## Próximo bloque de trabajo
+
+Rama prevista: `agent/01-web-core`.
+
+### Etapa 0
+
+- [ ] Instalar dependencias con `npm ci`.
+- [ ] Ejecutar el servidor con una base temporal.
+- [ ] Registrar los resultados de la línea base.
+- [ ] Estandarizar Node.js 20.
+- [ ] Consolidar una única CI confiable.
+- [ ] Introducir migraciones versionadas.
+- [ ] Definir contratos canónicos de paciente, sesión y borrador.
+- [ ] Crear dobles de prueba para WhatsApp y transcripción.
+
+### Etapa 1
+
+- [ ] Corregir el recorrido de registro y autenticación.
+- [ ] Corregir creación y carga de pacientes.
+- [ ] Corregir creación, carga, detalle y edición de sesiones.
+- [ ] Hacer persistentes los datos después de recargar.
+- [ ] Corregir filtros e indicadores del dashboard.
+- [ ] Incorporar el modelo inicial de borrador.
+- [ ] Agregar pruebas del recorrido web completo.
+
+## Criterio para cerrar el próximo bloque
+
+> Un usuario nuevo se registra, crea un paciente, registra una sesión y continúa viéndola correctamente después de recargar la web.
+
+## Dependencias que necesitaremos más adelante
+
+### Meta / WhatsApp
+
+- App de Meta.
+- WhatsApp Business Account.
+- Número de prueba o producción.
+- Token de acceso.
+- `phone_number_id`.
+- URL HTTPS pública de staging.
+- Token de verificación.
+
+No bloquean la Etapa 0 o 1.
+
+### Audio
+
+- Credencial del primer proveedor de transcripción.
+- Audios de prueba creados o anonimizados.
+
+No bloquean el vertical de texto.
+
+## Estado de publicación de esta documentación
+
+- Los archivos documentales se prepararon y validaron localmente.
+- GitHub CLI (`gh`) quedó instalado y autenticado como `Memu007`.
+- Se creó la rama `agent/document-product-roadmap` para publicar estos cambios sin modificar directamente `main`.
+- El commit, push y PR en borrador se completan como parte de este mismo bloque de trabajo.
+
+## Cómo retomar
+
+1. Leer este archivo.
+2. Revisar `git status -sb` y `git diff`.
+3. Confirmar que solamente estén los cambios documentales esperados.
+4. Confirmar el estado del PR documental.
+5. Crear o retomar la rama `agent/01-web-core` desde el commit documental.
+6. Instalar dependencias y establecer la línea base de pruebas.
+7. Comenzar la Etapa 0.
+
+## Regla para el próximo handoff
+
+Actualizar este archivo antes de finalizar cada bloque. Debe quedar explícito:
+
+- qué cambió;
+- qué se verificó;
+- qué falló;
+- qué archivos son relevantes;
+- cuál es la siguiente acción exacta;
+- qué necesita aportar el usuario.

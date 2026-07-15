@@ -1,5 +1,8 @@
 # AIRA Medical - Testing Report
 
+> [!WARNING]
+> Informe histórico generado en noviembre de 2025. Sus comandos, archivos y resultados no fueron reproducidos sobre el estado actual del repositorio y varias referencias ya no coinciden con `package.json`. Para conocer el estado vigente, consultar [docs/HANDOFF.md](docs/HANDOFF.md) y [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Resumen Ejecutivo
 
 | Categoría | Estado | Detalles |
@@ -127,7 +130,6 @@ npm run test:load smoke
 ---
 
 *Generado: Nov 2025*
-
 
 
 
