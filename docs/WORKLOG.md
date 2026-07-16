@@ -2,6 +2,26 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Protocolo permanente para agentes y briefs de desarrollo
+
+### Objetivo
+
+Versionar la forma de hablar con la PM y de darle instrucciones a la dev para evitar pedidos ambiguos, cierres prematuros y pérdida de contexto entre agentes.
+
+### Trabajo realizado
+
+- Se agregó `AGENTS.md` en la raíz para que los agentes lean primero HANDOFF, WORKLOG, PRODUCT, ROADMAP y DOMAIN_CONTRACTS, verifiquen `main` y no mezclen cambios ajenos.
+- Se fijó comunicación en español, breve, objetiva y adversarial: diferenciar implementado, simulado, probado, pendiente e hipótesis; no actuar como *yes-man*.
+- Cada brief para la dev debe cubrir un solo hito con objetivo, incluido, fuera de alcance, criterios observables, validación adversarial y entrega.
+- Se exige probar recuperación, persistencia, duplicados, respuestas tardías o concurrencia cuando correspondan, y revisar el diff una segunda vez antes de declarar un hito cerrado.
+- Se agregó una plantilla copiable y la regla de informar resultados exactos, límites y bloqueos sin inventar evidencia.
+- `docs/README.md` enlaza las instrucciones permanentes antes del orden de lectura documental.
+
+### Verificación
+
+- `git diff --check` como gate documental.
+- Sin cambios de código ni pruebas funcionales necesarias para este hito.
+
 ## 2026-07-16 — Posicionamiento, Calendar, precio y seguimiento futuro
 
 ### Objetivo

@@ -2,6 +2,8 @@
 
 Este directorio contiene la documentación vigente del producto. Su objetivo es que una persona o agente pueda retomar el trabajo sin depender de la memoria de una conversación.
 
+Antes de este orden, todo agente debe leer [`../AGENTS.md`](../AGENTS.md), que define la forma permanente de trabajar, auditar y redactar instrucciones para la dev.
+
 ## Orden de lectura
 
 1. [HANDOFF.md](HANDOFF.md): estado actual, bloqueos y siguiente trabajo concreto.
