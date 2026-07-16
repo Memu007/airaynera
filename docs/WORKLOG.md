@@ -2,6 +2,33 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Segunda auditoría de edición + integración de Gemini
+
+### Objetivo
+
+Cerrar los hallazgos de una auditoría adversarial independiente sobre `main` y, con todo en verde, integrar el arreglo de Gemini `user_input`.
+
+### Trabajo realizado
+
+- **Reasignación de paciente bloqueada:** `PATCH /api/sessions/:id` rechaza `patientId`/`pacienteId` con `400` (middleware `rejectPatientReassignment`) y además los elimina de los cambios; una sesión ya no puede moverse a otro paciente.
+- **Contrato POST/PATCH unificado de verdad:** se extrajo `clinicalSessionValidators()` compartido; la fecha se valida contra el calendario real (rechaza `2026-02-31` y `not-a-date`), y `normalizeSessionInput` dejó de inyectar defaults en PATCH, así `null`, `false` o tipos inválidos llegan al validador en vez de coercionarse. Todo cuerpo inválido devuelve `400` sin persistir.
+- **Carrera A→A:** el guard por `id` no bastaba; se agregó una secuencia monotónica por sesión (`sessionSaveSeq`) de modo que una respuesta vieja (A-v1) demorada no pisa una más nueva (A-v2) ni en la interfaz ni en la base.
+- **Escaping de nombres y notas:** se agregó `escapeHtml` y se aplicó en tarjetas de sesión, actividad reciente del dashboard, modal de "hoy", tarjetas de paciente y los selectores de paciente; `Paciente <Equipo>` y una nota con HTML se muestran literales en todos lados.
+- **Prueba de navegador reproducible:** el runner resuelve el navegador por `PLAYWRIGHT_CHROMIUM_PATH`/`CHROMIUM_PATH`, instalaciones del sistema (macOS/Linux) o el canal `chrome`, en vez de asumir `/opt/pw-browsers`. Se agregó un job de CI en ubuntu con el Chrome del sistema. La cobertura de filtros ahora incluye paciente **y** fecha.
+- **Integración de Gemini:** se integró `536c11c` (`fix gemini v1 audio input shape`) desde la rama remota `gemini-user-input-fix`: envuelve texto y audio en un paso `user_input`, corrige la aserción contractual, agrega un `--probe` de un audio y amplía el timeout de cleanup remoto a 3s. Se conserva el reporte fallido `benchmarks/audio/results/gemini-smoke-20260715-failed-input-shape.json` como artefacto de auditoría; **0/40 es un fallo de contrato, no evidencia de calidad**, y el smoke debe repetirse (probe y luego completo) cuando exista credencial.
+
+### Pruebas agregadas / ampliadas
+
+- `scripts/session-edit-tests.js`: rechazo de reasignación de paciente y los casos de contrato `not-a-date`, `2026-02-31`, `telepathy`, `"false"`, medicación de 5001 caracteres, `sessionType:null` y `cleanNote:false`. 27 checks.
+- `scripts/session-edit-browser-tests.js`: carrera A→A determinista (UI y base conservan A-v2), render literal de nombre y nota en listado y dashboard, y conservación del filtro de fecha además del de paciente; runner de navegador portable. 38 checks.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **27/27** de edición de sesión, salida con código 0.
+- `npm run test:session-edit:browser`: **38/38** en Chromium real, sin errores de página.
+- `npm run lint`: aprobado. `git diff --check`: limpio.
+- `npm audit`: 0 vulnerabilidades. El reporte de Gemini y el árbol se revisaron: no contienen claves.
+
 ## 2026-07-16 — Endurecimiento de la edición de sesiones
 
 ### Objetivo
@@ -32,7 +59,7 @@ Cerrar la revisión de la edición de sesiones: el camino feliz funcionaba pero 
 
 ### Pendiente explícito
 
-- El commit local `536c11c` (arreglo Gemini `user_input`, sus pruebas y el reporte 0/40) **no está publicado ni es alcanzable** desde este entorno. No se reconstruyó ni se fabricó su reporte; queda a la espera de que se empuje al remoto para integrarlo y reconciliar `AUDIO_PROVIDER_BENCHMARK`, `HANDOFF` y `WORKLOG`.
+- El commit local `536c11c` (arreglo Gemini `user_input`, sus pruebas y el reporte 0/40) **no estaba publicado ni era alcanzable** al momento de esta entrada. No se reconstruyó ni se fabricó su reporte. **Resuelto** más tarde el mismo día: se publicó como rama `gemini-user-input-fix` y se integró en `main`; ver la entrada superior "Segunda auditoría de edición + integración de Gemini".
 
 ## 2026-07-16 — Edición visible de sesiones guardadas
 
@@ -96,8 +123,16 @@ Integrar Gemini como primer proveedor real sin bloquear la web, sin romper fixtu
 - `npm run lint`, `npm run check:syntax` y `git diff --check`: aprobados.
 - `npm run benchmark:audio-worker`: 40/40 `ready`, cero residuos y todos los gates aprobados después de introducir el pipeline asíncrono.
 - `npm run smoke:gemini -- --validate-only`: 40/40 WAV generados y validados offline en macOS.
-- Smoke real Gemini: no ejecutado; `GEMINI_API_KEY` y `GOOGLE_API_KEY` no estaban configuradas en este entorno.
+- En el cierre inicial el smoke real no se ejecutó porque faltaba una clave; la actualización posterior con credencial temporal se registra debajo.
 - Commit funcional: `74a6ba3` (`add gemini audio worker integration`).
+
+Actualización con credencial temporal:
+
+- La credencial autenticó contra `models/gemini-3.1-flash-lite` con HTTP 200 y se mantuvo sólo en memoria del proceso.
+- La primera corrida real completó 0/40: Interactions v1 rechazó cada request porque texto y audio estaban enviados como contenidos directos en vez de estar envueltos en un paso `user_input`.
+- El reporte fallido quedó preservado en `benchmarks/audio/results/gemini-smoke-20260715-failed-input-shape.json`; no contiene la clave.
+- Se corrigió el payload, se agregó la aserción contractual correspondiente y un `--probe` de un audio antes de repetir la corrida completa.
+- Seis cleanup remotos superaron el timeout inicial de un segundo; se amplió a tres segundos, todavía por debajo de la gracia de apagado del supervisor.
 
 ### Decisión de uso
 

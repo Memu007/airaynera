@@ -325,7 +325,7 @@ function createGeminiTranscriber(options = {}) {
         },
         'remote file cleanup',
         // Cleanup gets one short independent attempt even when worker shutdown aborted inference.
-        { retry: false, timeoutMs: 1000 }
+        { retry: false, timeoutMs: 3000 }
       );
     } catch (error) {
       if (error?.status !== 404) throw error;
@@ -374,10 +374,13 @@ function createGeminiTranscriber(options = {}) {
           model,
           store: false,
           system_instruction: TRANSCRIPTION_INSTRUCTION,
-          input: [
-            { type: 'text', text: 'Transcribí todo el audio.' },
-            { type: 'audio', uri: file.uri, mime_type: mimeType },
-          ],
+          input: [{
+            type: 'user_input',
+            content: [
+              { type: 'text', text: 'Transcribí todo el audio.' },
+              { type: 'audio', uri: file.uri, mime_type: mimeType },
+            ],
+          }],
           response_format: {
             type: 'text',
             mime_type: 'application/json',

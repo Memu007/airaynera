@@ -84,7 +84,7 @@ El reporte conserva commit, hash del manifiesto, hash del prompt, modelo, hashes
 - Provider registry, fixture síncrono, worker asíncrono, heartbeat, shutdown y fencing tardío: aprobado.
 - Scorer offline, incluido un caso adversarial que contiene afirmación y negación contradictorias: aprobado.
 - Generación y validación local de 40 WAV con servicios de voz de macOS: aprobada el 2026-07-15.
-- Smoke real contra Gemini: **no ejecutado** porque este entorno no tiene `GEMINI_API_KEY` ni `GOOGLE_API_KEY` configurada.
+- Primera corrida real: 0/40 por shape inválido de Interactions v1; el API exigió un paso `user_input` que contenga texto y audio. El payload y su test se corrigieron; el resultado fallido se conserva para auditoría y debe repetirse primero con `--probe` y después completo.
 
 No se registrará un resultado fake como si fuera una corrida Gemini.
 

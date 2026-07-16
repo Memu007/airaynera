@@ -118,7 +118,8 @@ async function testProviderContract(tempWav) {
   assert.equal(body.model, 'gemini-3.1-flash-lite');
   assert.equal(body.store, false);
   assert.equal(body.response_format.schema.required[0], 'transcript');
-  assert.equal(body.input[1].mime_type, 'audio/wav');
+  assert.equal(body.input[0].type, 'user_input');
+  assert.equal(body.input[0].content[1].mime_type, 'audio/wav');
   assert.equal(interactionCall.init.headers['x-goog-api-key'], 'test-only-key');
   assert.ok(mock.calls.some((call) => call.init.method === 'DELETE'));
 }
