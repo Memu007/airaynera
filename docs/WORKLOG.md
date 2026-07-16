@@ -2,6 +2,35 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Roles, desacuerdo y revisión multiagente
+
+### Objetivo
+
+Establecer cómo colaboran PM, dev y lead/auditor, incluyendo autonomía, preguntas, desacuerdos con evidencia, revisión adversarial y multiagentes para ambos roles.
+
+### Decisión
+
+- La PM decide problema, prioridad, alcance, UX, precio y aceptación de riesgos de producto.
+- La dev decide la implementación técnica reversible dentro de los contratos y conserva responsabilidad sobre lo que publica.
+- El lead/auditor define gates, revisa evidencia y coordina revisiones; no amplía el producto ni tiene razón por jerarquía.
+- La dev puede y debe discutir una instrucción de Codex o del auditor con reproducción, prueba, contrato, diff o medición. El auditor debe responder con evidencia y corregirse si fue refutado.
+- La dev pregunta sólo ante cambios materiales de producto, UX, contratos, datos, costos, integraciones, acciones irreversibles, contradicciones o cambios ajenos. Las decisiones técnicas reversibles se toman y documentan sin frenar el hito.
+- Tanto dev como lead pueden usar multiagentes para riesgos altos o frentes independientes. Los agentes trabajan primero de forma independiente; la síntesis se basa en evidencia, no en mayoría.
+- Se formalizaron severidades P0–P3. P0/P1 bloquean con evidencia; P2/P3 pueden documentarse sin ampliar el hito.
+- Se limitan las auditorías generales a una ronda completa y una de verificación. Sólo un P0/P1 nuevo dentro del alcance reabre el hito.
+
+### Archivos
+
+- `docs/ROLES_AND_REVIEW.md`: protocolo completo, matriz de decisiones, formatos de pregunta/discrepancia, multiagentes, auditoría y cierre.
+- `AGENTS.md`: resumen obligatorio y enlace al protocolo.
+- `docs/README.md` y `docs/HANDOFF.md`: orden de lectura y estado operativo actualizados.
+
+### Verificación
+
+- Dos revisiones independientes: perspectiva de la dev y perspectiva del auditor.
+- `git diff --check` como gate documental.
+- Sin cambios de código ni pruebas funcionales necesarias para este hito.
+
 ## 2026-07-16 — Protocolo permanente para agentes y briefs de desarrollo
 
 ### Objetivo

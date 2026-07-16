@@ -7,11 +7,13 @@ Antes de este orden, todo agente debe leer [`../AGENTS.md`](../AGENTS.md), que d
 ## Orden de lectura
 
 1. [HANDOFF.md](HANDOFF.md): estado actual, bloqueos y siguiente trabajo concreto.
-2. [PRODUCT.md](PRODUCT.md): problema, alcance y decisiones del producto.
-3. [ROADMAP.md](ROADMAP.md): etapas, entregables y criterios de aceptación.
-4. [WORKLOG.md](WORKLOG.md): registro cronológico de lo realizado.
-5. [AUDIO_WORKER_BENCHMARK.md](AUDIO_WORKER_BENCHMARK.md): volumen, latencia y limpieza del pipeline operativo.
-6. [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md): costos, candidatos y gate para elegir transcripción real.
+2. [WORKLOG.md](WORKLOG.md): registro cronológico de lo realizado.
+3. [PRODUCT.md](PRODUCT.md): problema, alcance y decisiones del producto.
+4. [ROLES_AND_REVIEW.md](ROLES_AND_REVIEW.md): autoridad, autonomía, preguntas, desacuerdo, multiagentes y auditoría adversarial.
+5. [ROADMAP.md](ROADMAP.md): etapas, entregables y criterios de aceptación.
+6. [DOMAIN_CONTRACTS.md](DOMAIN_CONTRACTS.md): contratos funcionales vigentes.
+7. [AUDIO_WORKER_BENCHMARK.md](AUDIO_WORKER_BENCHMARK.md): volumen, latencia y limpieza del pipeline operativo.
+8. [AUDIO_PROVIDER_BENCHMARK.md](AUDIO_PROVIDER_BENCHMARK.md): costos, candidatos y gate para elegir transcripción real.
 
 ## Regla de mantenimiento
 
