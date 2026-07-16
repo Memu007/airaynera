@@ -355,13 +355,16 @@ function requireSessionRevision(req, res, next) {
     });
   }
   const raw = String(ifMatch).trim();
-  if (!/^\d+$/.test(raw)) {
+  const parsed = Number(raw);
+  // A safe positive integer only: reject non-digits, 0, and values beyond the
+  // safe-integer range.
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(parsed) || parsed <= 0) {
     return res.status(400).json({
       error: "INVALID_REVISION",
-      message: "If-Match debe ser un entero positivo (revisión de la sesión)",
+      message: "If-Match debe ser un entero positivo válido (revisión de la sesión)",
     });
   }
-  req.expectedRevision = Number(raw);
+  req.expectedRevision = parsed;
   next();
 }
 
