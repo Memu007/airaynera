@@ -2,6 +2,39 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Precondición obligatoria, UI de conflicto y recuperación
+
+### Objetivo
+
+Cerrar los bloqueantes de una cuarta auditoría adversarial sobre `b9cde96`: el CAS estaba bien pero la concurrencia no podía declararse cerrada porque la precondición no era obligatoria, el formulario se cerraba antes de confirmar y no había recuperación ante respuesta perdida.
+
+### Bloqueantes resueltos
+
+1. **Revisión obligatoria:** `PATCH /api/sessions/:id` ahora exige `If-Match`. Falta → `428 REVISION_REQUIRED` sin cambios; malformada (no entero positivo) → `400 INVALID_REVISION`. Un cliente viejo o sin cabecera no puede sobrescribir. Un cuerpo vacío/ignorado (`{}`, `[]`, sólo campos ignorados) → `400 EMPTY_PATCH` sin tocar `revision`.
+2. **No destruir el formulario antes de confirmar:** el guardado ya no cierra la edición de forma optimista; la ficha vuelve a solo lectura recién al confirmar. Ante `409` se muestra un panel de conflicto con la versión del servidor y "mi versión" íntegra, y botones para reintentar (sobrescribe con la revisión fresca), editar mi versión o usar la del servidor.
+3. **Nunca perder v2:** un `409` de v1 mientras v2 está pendiente conserva v2 como "mi versión" (no ejecuta un `pending = null` que la pierda); queda visible y recuperable.
+4. **Respuesta perdida:** ante un error de red sin respuesta, el cliente consulta la sesión; si el servidor ya contiene la edición (revisión +1 y contenido coincidente) adopta esa revisión y envía la pendiente; si no, reintenta; si otro cliente avanzó, abre el conflicto.
+5. **Advertencia de salida:** `beforeunload` avisa mientras haya guardados en vuelo o pendientes.
+
+### Contrato y pruebas
+
+- Se agregaron casos inválidos para `inputType`, `rawTranscript` y `audioDurationSeconds` en la matriz de POST.
+- Se renombró la prueba antes llamada "solicitudes reordenadas": ahora refleja que demuestra **serialización ante una primera solicitud lenta**, no que v2 llegue al servidor antes que v1.
+- Se actualizaron las pruebas funcionales para enviar `If-Match` (la precondición es obligatoria).
+- Nuevas pruebas de aceptación en navegador: respuesta de v1 cortada con `route.fetch()`+abort con v2 en cola → base e interfaz terminan en v2; `409` de v1 con v2 pendiente → v2 recuperable y visible; conflicto entre pestañas → no se pisa el cambio ajeno ni desaparece el texto local, y el reintento con mi versión persiste.
+
+### Documentación
+
+- `DOMAIN_CONTRACTS.md`: se agregó `revision` al contrato de `Session` y una sección de edición/concurrencia con `If-Match`, `428`, `409`, `EMPTY_PATCH`, tipos estrictos y comportamiento del cliente.
+- `HANDOFF.md`: hito, checkbox de edición marcado y cifras reales.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **128/128** de edición de sesión, salida con código 0.
+- `npm run test:session-edit:browser`: **53/53** en Chromium real, sin errores de página.
+- `npm run lint`: aprobado. `git diff --check`: limpio. `npm audit`: 0 vulnerabilidades.
+- Gemini real: no ejecutado (sin credencial); el proveedor por defecto sigue `fake`.
+
 ## 2026-07-16 — Concurrencia real de edición y contrato estricto
 
 ### Objetivo

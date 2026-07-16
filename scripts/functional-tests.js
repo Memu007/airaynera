@@ -267,10 +267,11 @@ class FunctionalTests {
       );
       this.test('Session filters use the clinical date', filteredRes.data?.sessions?.length === 1);
 
-      // Update
+      // Update (revision precondition is mandatory)
+      const beforeUpdate = listRes.data.sessions.find((s) => s.id === sessionId);
       const updateRes = await this.request('PATCH', `/api/sessions/${sessionId}`, {
         cleanNote: 'Updated notes'
-      }, this.token);
+      }, this.token, { 'If-Match': String(beforeUpdate.revision) });
       this.test('Update session returns 200', updateRes.status === 200);
       this.test('Canonical session note was updated', updateRes.data?.cleanNote === 'Updated notes');
 
@@ -451,7 +452,7 @@ class FunctionalTests {
         rawTranscript: 'Confirmed evidence must stay immutable',
         inputType: 'text',
         audioDurationSeconds: 1
-      }, this.token);
+      }, this.token, { 'If-Match': String(confirmWebAudio.data.session.revision) });
       this.test('Confirmed audio keeps raw evidence and media metadata immutable',
         tamperedConfirmedAudio.data?.cleanNote === 'Nota confirmada con revisión posterior.' &&
         tamperedConfirmedAudio.data?.rawTranscript === audioDraft.data?.draft?.rawTranscript &&
@@ -859,9 +860,12 @@ class FunctionalTests {
           session.id === whatsappAudioSessionId && session.inputType === 'audio'
         ));
 
+      const whatsappSessionRow = sessionsAfterWhatsappAudio.data.sessions.find(
+        (session) => session.id === whatsappAudioSessionId
+      );
       const reviewedWhatsappSession = await this.request('PATCH', `/api/sessions/${whatsappAudioSessionId}`, {
         cleanNote: 'Nota de WhatsApp revisada desde la web.'
-      }, this.token);
+      }, this.token, { 'If-Match': String(whatsappSessionRow.revision) });
       this.test('Editing an unscored WhatsApp note preserves its missing mood',
         reviewedWhatsappSession.data?.cleanNote === 'Nota de WhatsApp revisada desde la web.' &&
         reviewedWhatsappSession.data?.moodAssessment === null);

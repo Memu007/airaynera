@@ -64,6 +64,7 @@ El recorrido de texto está implementado en web y WhatsApp simulado. La web acep
   "requiresFollowUp": true,
   "audioDurationSeconds": null,
   "status": "confirmed",
+  "revision": 1,
   "draftId": null,
   "createdAt": "2026-07-15T00:35:00.000Z",
   "updatedAt": "2026-07-15T00:35:00.000Z",
@@ -74,6 +75,18 @@ El recorrido de texto está implementado en web y WhatsApp simulado. La web acep
 `sessionType`: `individual | group | family | couple | other`.
 
 `careModality`: `inPerson | video | phone | unspecified`.
+
+### Edición y concurrencia de `PATCH /api/sessions/:id`
+
+- `revision` es un entero que empieza en `1` y se incrementa en cada edición exitosa. Es la unidad de concurrencia optimista de la sesión.
+- La edición exige la precondición `If-Match: <revision>`:
+  - falta la cabecera → `428 REVISION_REQUIRED` y no cambia nada (un cliente viejo o sin cabecera no puede sobrescribir a ciegas);
+  - cabecera presente pero no entera positiva → `400 INVALID_REVISION`;
+  - revisión distinta de la actual → `409 REVISION_CONFLICT` con el cuerpo `{ error, message, session }` (la sesión vigente), sin sobrescribir.
+- Una edición sin ningún campo editable (`{}`, `[]` o sólo campos ignorados como `rawTranscript`) devuelve `400 EMPTY_PATCH` y **no** incrementa `revision`.
+- El paciente nunca se reasigna: `patientId`/`pacienteId` en el cuerpo devuelve `400 PATIENT_REASSIGNMENT_NOT_ALLOWED`.
+- Contrato de tipos estricto (mismo para POST y PATCH): fecha de calendario real `YYYY-MM-DD`, tipos/modalidades por lista, duración entera 1–480 o nula, ánimo 1–5 o nulo, seguimiento booleano real, límites de nota (10000) y medicación (5000). Arrays y objetos se rechazan antes de cualquier coerción; un `patientId` objeto es `400`, nunca `500`. `inputType`, `rawTranscript` y `audioDurationSeconds` se validan al crear y son inmutables en PATCH.
+- Cliente: los guardados de una misma sesión se serializan (última edición pendiente gana con la revisión fresca); el formulario no se cierra hasta confirmar; ante `409` se conserva íntegra "mi versión" junto a la del servidor con opciones de reintentar/editar/usar la del servidor; una respuesta perdida se reconcilia consultando la sesión y, si ya se aplicó, adoptando su revisión y enviando la pendiente; se advierte antes de cerrar/recargar con trabajo sin confirmar.
 
 ## SessionDraft
 

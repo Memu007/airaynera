@@ -249,15 +249,25 @@ async function main() {
     let patchCount = 0;
     let delayResponseForId = null; // server persists now; response held
     let holdRequestForId = null; // request reaches the server late
+    let abortResponseForId = null; // server persists now; response is dropped
     await page.route('**/api/sessions/*', async (route) => {
       const req = route.request();
       if (req.method() === 'PATCH') {
         patchCount += 1;
         const url = req.url();
+        if (abortResponseForId && url.endsWith(`/api/sessions/${abortResponseForId}`)) {
+          abortResponseForId = null;
+          // Let the server apply the edit, hold long enough for a v2 to queue,
+          // then drop the response so the client sees a network failure without
+          // knowing whether it was applied.
+          await route.fetch();
+          await new Promise((r) => setTimeout(r, 1500));
+          return route.abort();
+        }
         if (holdRequestForId && url.endsWith(`/api/sessions/${holdRequestForId}`)) {
           holdRequestForId = null;
-          // Hold the request so a later save can be confirmed before this one
-          // even reaches the server (proves ordering, not just response timing).
+          // Hold the request so a later save can be queued before this one
+          // even reaches the server (serialization under a slow first request).
           await new Promise((r) => setTimeout(r, 1500));
           return route.continue();
         }
@@ -408,53 +418,48 @@ async function main() {
     test('A save still persisted on the server', a2Saved.cleanNote === 'A2-LATE');
     await closeModal();
 
-    // ---- 5b. A newer save (A-v2) wins over a delayed older save (A-v1) ----
+    // ---- 5b. A newer save (v2) wins over a delayed older save (v1) ----
     console.log('\n5️⃣b Newer save on the same session wins over a delayed older one');
     await openDetail(a1);
     await enterEdit();
     await page.fill('#editSessionContent', 'A1-v1');
-    delayResponseForId = a1; // server persists v1 now, but its response is held ~1.5s
-    await page.click('#saveSessionEditBtn'); // optimistic close, v1 in flight
+    delayResponseForId = a1; // v1 persists now; its response is held ~1.5s
+    await page.click('#saveSessionEditBtn'); // form stays open, v1 in flight
     await page.waitForTimeout(300);
-    await openDetail(a1); // reopen the SAME session while v1's response is held
-    await enterEdit();
-    await page.fill('#editSessionContent', 'A1-v2');
+    await page.fill('#editSessionContent', 'A1-v2'); // edit in place, same form
     await page.click('#saveSessionEditBtn'); // v2 queued behind v1 (serialized)
     const aaDb = await getSessionEventually(a1, (s) => s.cleanNote === 'A1-v2', 8000);
-    test('DB keeps A-v2 after the late A-v1 response', aaDb.cleanNote === 'A1-v2');
-    await page.waitForTimeout(400); // let the settle re-render the modal
+    test('DB keeps v2 after the late v1 response', aaDb.cleanNote === 'A1-v2');
+    await page.waitForTimeout(500);
     const aaBody = await bodyText();
-    test('UI shows A-v2 after the late A-v1 response', /A1-v2/.test(aaBody) && !/A1-v1/.test(aaBody));
+    test('UI shows v2 after the late v1 response', /A1-v2/.test(aaBody) && !/A1-v1/.test(aaBody));
     await closeModal();
 
-    // ---- 5d. Reordered requests: v2 confirmed before v1 reaches the server ----
-    console.log('\n5️⃣d Second save confirmed before the first reaches the server → v2 wins');
+    // ---- 5d. Serialization under a slow first request (v1 reaches server late) ----
+    console.log('\n5️⃣d Serialization: a slow first request still ends at v2');
     await openDetail(a1);
     await enterEdit();
     await page.fill('#editSessionContent', 'REQ-v1');
     holdRequestForId = a1; // v1's request is held before it reaches the server
     await page.click('#saveSessionEditBtn');
     await page.waitForTimeout(300);
-    await openDetail(a1);
-    await enterEdit();
-    await page.fill('#editSessionContent', 'REQ-v2'); // confirmed while v1 hasn't hit server
+    await page.fill('#editSessionContent', 'REQ-v2'); // queued while v1 is still held
     await page.click('#saveSessionEditBtn');
     const reqDb = await getSessionEventually(a1, (s) => s.cleanNote === 'REQ-v2', 8000);
-    test('DB keeps v2 when the first request is delayed to the server', reqDb.cleanNote === 'REQ-v2');
-    await page.waitForTimeout(400);
+    test('DB ends at v2 when the first request is slow', reqDb.cleanNote === 'REQ-v2');
+    await page.waitForTimeout(500);
     const reqBody = await bodyText();
-    test('UI keeps v2 with reordered requests', /REQ-v2/.test(reqBody) && !/REQ-v1/.test(reqBody));
+    test('UI ends at v2 when the first request is slow', /REQ-v2/.test(reqBody) && !/REQ-v1/.test(reqBody));
     await closeModal();
 
-    // ---- 5e. Concurrent edit from another client → 409, no silent overwrite ----
-    console.log('\n5️⃣e Concurrent edit from another client returns 409 and is not overwritten');
-    // Reload so appData holds the server-fresh revision for a1.
+    // ---- 5e. Concurrent edit from another client → 409, conflict UI, no overwrite ----
+    console.log('\n5️⃣e Concurrent edit from another client → 409 conflict, my text kept');
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.session-card', { timeout: 15000 });
     const beforeConflict = await getSession(a1);
     await openDetail(a1);
     await enterEdit();
-    await page.fill('#editSessionContent', 'MY EDIT');
+    await page.fill('#editSessionContent', 'MI TEXTO LOCAL');
     // Another client edits a1 first, bumping its revision.
     const otherPatch = await fetch(`${base}/api/sessions/${a1}`, {
       method: 'PATCH',
@@ -463,10 +468,9 @@ async function main() {
         Authorization: `Bearer ${token}`,
         'If-Match': String(beforeConflict.revision),
       },
-      body: JSON.stringify({ cleanNote: 'OTHER TAB' }),
+      body: JSON.stringify({ cleanNote: 'CAMBIO AJENO' }),
     });
     test('other client edit succeeds (200)', otherPatch.status === 200);
-    // Our save is based on the now-stale revision → must 409.
     const [conflictResp] = await Promise.all([
       page.waitForResponse(
         (r) => r.request().method() === 'PATCH' && r.url().includes(`/api/sessions/${a1}`),
@@ -476,32 +480,90 @@ async function main() {
     ]);
     test('stale save is rejected with 409', conflictResp.status() === 409);
     const conflictDb = await getSession(a1);
-    test('conflicting save did not overwrite the other client', conflictDb.cleanNote === 'OTHER TAB');
+    test('conflict did not overwrite the other client', conflictDb.cleanNote === 'CAMBIO AJENO');
     await page.waitForTimeout(400);
     const conflictBody = await bodyText();
-    test('UI adopts the other client version after conflict', /OTHER TAB/.test(conflictBody) && !/MY EDIT/.test(conflictBody));
+    test('conflict UI shows the server version', /CAMBIO AJENO/.test(conflictBody));
+    test('conflict UI keeps my local text (not lost)', /MI TEXTO LOCAL/.test(conflictBody));
+    // Retry with my version overwrites, based on the server's fresh revision.
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.request().method() === 'PATCH' && r.url().includes(`/api/sessions/${a1}`),
+        { timeout: 8000 }
+      ),
+      page.click('#conflictRetryBtn'),
+    ]);
+    const resolved = await getSessionEventually(a1, (s) => s.cleanNote === 'MI TEXTO LOCAL', 8000);
+    test('retry with my version now persists', resolved.cleanNote === 'MI TEXTO LOCAL');
     await closeModal();
 
-    // ---- 5f. A late response must not close a reopened dirty edit ----
-    console.log('\n5️⃣f Late response does not discard a reopened unsaved edit');
+    // ---- 5f. A late response must not discard an unsaved edit in the form ----
+    console.log('\n5️⃣f Late response does not discard unsaved changes still in the form');
     await openDetail(a2);
     await enterEdit();
     await page.fill('#editSessionContent', 'DIRTY-SAVED');
     delayResponseForId = a2; // hold the save response
-    await page.click('#saveSessionEditBtn'); // optimistic close, response held
+    await page.click('#saveSessionEditBtn'); // form stays open, response held
     await page.waitForTimeout(300);
-    await openDetail(a2);
-    await enterEdit();
-    await page.fill('#editSessionContent', 'DIRTY-UNSAVED'); // dirty, not saved
+    await page.fill('#editSessionContent', 'DIRTY-UNSAVED'); // keep typing, do not save
     await page.waitForTimeout(1600); // let the held response arrive
     const dirtyStillOpen = await page.locator('#sessionEditForm').count();
     const dirtyValue = await page.evaluate(
       () => document.querySelector('#editSessionContent')?.value
     );
-    test('dirty edit form is still open after the late response', dirtyStillOpen === 1);
-    test('unsaved changes are preserved', dirtyValue === 'DIRTY-UNSAVED');
-    // Cancel out of the dirty edit without saving.
-    await page.click('#sessionDetailFooter .btn-secondary');
+    test('edit form is still open after the late response', dirtyStillOpen === 1);
+    test('unsaved changes are preserved in the form', dirtyValue === 'DIRTY-UNSAVED');
+    await page.click('#sessionDetailFooter .btn-secondary'); // cancel
+    await closeModal();
+
+    // ---- 5g. Lost response: v1 applied but response dropped, v2 queued → v2 wins ----
+    console.log('\n5️⃣g Lost response is recovered and the queued v2 still wins');
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    await openDetail(a2);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'LOST-v1');
+    abortResponseForId = a2; // server applies v1, but the response is dropped
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(300);
+    await page.fill('#editSessionContent', 'LOST-v2'); // queued while v1 recovers
+    await page.click('#saveSessionEditBtn');
+    const lostDb = await getSessionEventually(a2, (s) => s.cleanNote === 'LOST-v2', 10000);
+    test('DB ends at v2 after a lost v1 response', lostDb.cleanNote === 'LOST-v2');
+    await page.waitForTimeout(500);
+    const lostBody = await bodyText();
+    test('UI ends at v2 after a lost v1 response', /LOST-v2/.test(lostBody) && !/LOST-v1/.test(lostBody));
+    await closeModal();
+
+    // ---- 5h. v1 gets 409 while v2 is pending → v2 stays recoverable/visible ----
+    console.log('\n5️⃣h A 409 on v1 while v2 is pending keeps v2 recoverable');
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    const beforePending = await getSession(b1);
+    await openDetail(b1);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'PEND-v1');
+    delayResponseForId = b1; // hold v1's response (it will be a 409)
+    // Make v1 stale: another client edits b1 before v1 is sent.
+    await fetch(`${base}/api/sessions/${b1}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'If-Match': String(beforePending.revision),
+      },
+      body: JSON.stringify({ cleanNote: 'AJENO-PEND' }),
+    });
+    await page.click('#saveSessionEditBtn'); // v1 in flight (will 409, response held)
+    await page.waitForTimeout(300);
+    await page.fill('#editSessionContent', 'PEND-v2'); // queue v2 while v1 is held
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(1800); // let v1's held 409 resolve
+    const pendConflictBody = await bodyText();
+    test('v2 (not v1) is preserved as my version after the 409', /PEND-v2/.test(pendConflictBody));
+    test('the other client change is shown and not overwritten', /AJENO-PEND/.test(pendConflictBody));
+    const pendDb = await getSession(b1);
+    test('server still holds the other client change', pendDb.cleanNote === 'AJENO-PEND');
     await closeModal();
 
     // ---- 5c. Names and notes render literally in the session list ----

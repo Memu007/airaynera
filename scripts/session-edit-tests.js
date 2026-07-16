@@ -117,6 +117,14 @@ async function main() {
     const res = await api('GET', '/api/sessions');
     return (res.data.sessions || []).find((s) => String(s.id) === String(id));
   };
+  // Valid edits must carry the current revision (If-Match is mandatory).
+  const patchSession = async (id, body, extraHeaders = {}) => {
+    const current = await getSession(id);
+    return api('PATCH', `/api/sessions/${id}`, body, {
+      'If-Match': String(current.revision),
+      ...extraHeaders,
+    });
+  };
 
   try {
     await waitForHealth(`${base}/health`, server);
@@ -146,7 +154,7 @@ async function main() {
         medicationNotes: 'Ninguna',
       });
       const id = created.data.id;
-      const patch = await api('PATCH', `/api/sessions/${id}`, {
+      const patch = await patchSession(id, {
         cleanNote: 'Nota EDITADA.',
         sessionType: 'couple',
         durationMinutes: 60,
@@ -181,7 +189,7 @@ async function main() {
       const id = created.data.id;
       const before = await getSession(id);
       test('medication present before clearing', before.medicationNotes === 'Clonazepam 0.5mg');
-      const patch = await api('PATCH', `/api/sessions/${id}`, { medicationNotes: null });
+      const patch = await patchSession(id, { medicationNotes: null });
       test('clearing medication returns 200', patch.status === 200);
       const after = await getSession(id);
       test('medication persists as null after clearing', after.medicationNotes === null);
@@ -254,12 +262,15 @@ async function main() {
       const id = created.data.id;
       const baseline = await getSession(id);
 
+      // Send a valid revision so each case is judged on the contract (400),
+      // not on the precondition (428); invalid bodies never bump the revision.
+      const ifMatch = { 'If-Match': String(baseline.revision) };
       for (const [label, body] of ADVERSARIAL_CASES) {
-        const res = await api('PATCH', `/api/sessions/${id}`, body);
+        const res = await api('PATCH', `/api/sessions/${id}`, body, ifMatch);
         test(`PATCH ${label} → 400`, res.status === 400);
       }
       // Also: an object patientId must be 400 (reassignment guard), never 500.
-      const objPatient = await api('PATCH', `/api/sessions/${id}`, { patientId: {} });
+      const objPatient = await api('PATCH', `/api/sessions/${id}`, { patientId: {} }, ifMatch);
       test('PATCH patientId object → 400 (not 500)', objPatient.status === 400);
 
       const afterInvalid = await getSession(id);
@@ -287,6 +298,24 @@ async function main() {
       for (const [label, value] of [['object', {}], ['array', []]]) {
         const res = await api('POST', '/api/sessions', { ...validBase, patientId: value });
         test(`POST patientId ${label} → 400 (not 500)`, res.status === 400);
+      }
+
+      // Audio-evidence fields are validated on create.
+      const audioCases = [
+        ['inputType: invalid enum', { inputType: 'video' }],
+        ['inputType: array', { inputType: ['audio'] }],
+        ['rawTranscript: number', { rawTranscript: 123 }],
+        ['rawTranscript: object', { rawTranscript: {} }],
+        ['rawTranscript: oversized', { rawTranscript: 'x'.repeat(20001) }],
+        ['audioDurationSeconds: string', { audioDurationSeconds: 'x' }],
+        ['audioDurationSeconds: negative', { audioDurationSeconds: -5 }],
+        ['audioDurationSeconds: zero', { audioDurationSeconds: 0 }],
+        ['audioDurationSeconds: too long', { audioDurationSeconds: 99999 }],
+        ['audioDurationSeconds: array', { audioDurationSeconds: [10] }],
+      ];
+      for (const [label, body] of audioCases) {
+        const res = await api('POST', '/api/sessions', { ...validBase, ...body });
+        test(`POST ${label} → 400`, res.status === 400);
       }
 
       const after = (await api('GET', '/api/sessions')).data.sessions.length;
@@ -317,12 +346,44 @@ async function main() {
       test('conflicting edit did not persist', afterConflict.cleanNote === 'v-dos');
       test('conflicting edit did not bump revision', afterConflict.revision === r0 + 1);
 
+      // Precondition is mandatory: a client that omits the revision cannot
+      // overwrite blindly.
+      const r1 = afterConflict.revision;
       const noHeader = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'v-cuatro' });
-      test('PATCH without If-Match still works (200)', noHeader.status === 200);
-      test('revision keeps incrementing without If-Match', noHeader.data.revision === r0 + 2);
+      test('PATCH without If-Match → 428', noHeader.status === 428);
+      const afterNoHeader = await getSession(id);
+      test('428 changed nothing', afterNoHeader.cleanNote === 'v-dos' && afterNoHeader.revision === r1);
 
-      const badHeader = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'v-cinco' }, { 'If-Match': 'not-a-number' });
-      test('non-integer If-Match → 400', badHeader.status === 400);
+      for (const [label, value] of [
+        ['non-integer', 'not-a-number'],
+        ['decimal', '1.5'],
+        ['negative', '-1'],
+        ['blank', '   '],
+      ]) {
+        const bad = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'x' }, { 'If-Match': value });
+        // A blank header is treated as absent → 428; a present-but-malformed one → 400.
+        const expected = value.trim() === '' ? 428 : 400;
+        test(`If-Match ${label} → ${expected}`, bad.status === expected);
+      }
+      const afterBadHeaders = await getSession(id);
+      test('malformed revisions changed nothing', afterBadHeaders.revision === r1);
+
+      // Empty / ignored-only patches: 400 and no revision bump.
+      for (const [label, body] of [
+        ['empty object', {}],
+        ['array body', []],
+        ['ignored fields only', { rawTranscript: 'x', inputType: 'audio', foo: 1 }],
+      ]) {
+        const res = await api('PATCH', `/api/sessions/${id}`, body, { 'If-Match': String(r1) });
+        test(`empty/ignored PATCH (${label}) → 400`, res.status === 400);
+      }
+      const afterEmpty = await getSession(id);
+      test('empty/ignored patches did not bump revision', afterEmpty.revision === r1);
+
+      // A correct edit with the fresh revision still works and increments.
+      const ok2 = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'v-final' }, { 'If-Match': String(r1) });
+      test('valid edit with fresh revision → 200', ok2.status === 200);
+      test('revision increments again', ok2.data.revision === r1 + 1);
     }
 
     console.log('\n4️⃣  Immutable audio evidence on PATCH');
@@ -341,7 +402,7 @@ async function main() {
       const before = await getSession(id);
       test('created session is audio', before.inputType === 'audio');
 
-      const patch = await api('PATCH', `/api/sessions/${id}`, {
+      const patch = await patchSession(id, {
         cleanNote: 'Nota revisada.',
         rawTranscript: 'HACK evidence',
         inputType: 'text',
@@ -366,7 +427,7 @@ async function main() {
         moodAssessment: 4,
       });
       const id = created.data.id;
-      const patch = await api('PATCH', `/api/sessions/${id}`, {
+      const patch = await patchSession(id, {
         durationMinutes: null,
         moodAssessment: null,
       });
