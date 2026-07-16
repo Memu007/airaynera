@@ -343,6 +343,28 @@ function createAudioValidators() {
   ];
 }
 
+// Every session PATCH must carry the revision it edited (If-Match). A missing
+// precondition is 428 (an old/naive client may not overwrite blindly); a
+// malformed one is 400. The value must be a positive integer.
+function requireSessionRevision(req, res, next) {
+  const ifMatch = req.get("If-Match");
+  if (ifMatch === undefined || String(ifMatch).trim() === "") {
+    return res.status(428).json({
+      error: "REVISION_REQUIRED",
+      message: "Falta la precondición If-Match con la revisión de la sesión",
+    });
+  }
+  const raw = String(ifMatch).trim();
+  if (!/^\d+$/.test(raw)) {
+    return res.status(400).json({
+      error: "INVALID_REVISION",
+      message: "If-Match debe ser un entero positivo (revisión de la sesión)",
+    });
+  }
+  req.expectedRevision = Number(raw);
+  next();
+}
+
 // A session's patient can never be reassigned through PATCH.
 function rejectPatientReassignment(req, res, next) {
   const body = req.body || {};
@@ -652,6 +674,7 @@ app.post('/api/sessions',
 app.patch('/api/sessions/:id',
     authMiddleware,
     rejectPatientReassignment,
+    requireSessionRevision,
     validateRawSessionTypes,
     normalizeSessionInput,
     ...clinicalSessionValidators(),
@@ -663,21 +686,22 @@ app.patch('/api/sessions/:id',
         delete changes.patientId;
         delete changes.pacienteId;
 
-        // Optimistic concurrency: the client sends the revision it edited via
-        // If-Match. A mismatch means another writer changed the session first.
-        const ifMatch = req.get('If-Match');
-        let expectedRevision;
-        if (ifMatch !== undefined && ifMatch !== '') {
-            expectedRevision = Number(ifMatch);
-            if (!Number.isInteger(expectedRevision)) {
-                return res.status(400).json({
-                    error: 'INVALID_REVISION',
-                    message: 'If-Match debe ser un entero (revisión de la sesión)',
-                });
-            }
+        // An empty patch (no editable field, e.g. {}, [] or only ignored fields)
+        // is a 400 and must not bump the revision.
+        const editableKeys = [
+            'clinicalDate', 'sessionType', 'careModality', 'durationMinutes',
+            'moodAssessment', 'cleanNote', 'medicationNotes', 'requiresFollowUp',
+        ];
+        if (!editableKeys.some((k) => changes[k] !== undefined)) {
+            return res.status(400).json({
+                error: 'EMPTY_PATCH',
+                message: 'La edición no contiene ningún campo editable',
+            });
         }
 
-        const result = sql.updateSession(req.user.id, req.params.id, changes, { expectedRevision });
+        const result = sql.updateSession(req.user.id, req.params.id, changes, {
+            expectedRevision: req.expectedRevision,
+        });
         if (result.status === 'notfound') {
             return res.status(404).json({ error: 'Session not found' });
         }

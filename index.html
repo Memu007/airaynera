@@ -6026,6 +6026,16 @@
       // id -> { inFlight: bool, pending: { payload } | null }
       const sessionSaveState = {};
 
+      // Warn before leaving/reloading while a session save is still in flight or
+      // pending, so an unconfirmed edit is not silently lost.
+      window.addEventListener("beforeunload", (event) => {
+        if (sessionHasWorkInFlight()) {
+          event.preventDefault();
+          event.returnValue = "";
+          return "";
+        }
+      });
+
       function showSessionDetail(sessionId) {
         const session = appData.sessions.find((s) => s.id === sessionId);
         if (!session) return;
@@ -6092,9 +6102,12 @@
         `);
       }
 
-      function enterSessionEditMode() {
+      function enterSessionEditMode(prefill) {
         const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
         if (!session) return;
+        // When recovering from a conflict we prefill "my version" over the
+        // (now server-updated) session so the user never loses their text.
+        const source = prefill && typeof prefill === "object" ? { ...session, ...prefill } : session;
 
         const optionList = (labels, selected) =>
           Object.entries(labels)
@@ -6165,12 +6178,14 @@
         // Populate values through the DOM API so patient name and note text are
         // never interpreted as HTML.
         $("#editSessionPatientName").text(session.patientName || "Paciente");
-        $("#editSessionClinicalDate").val(session.clinicalDate || "");
-        $("#editSessionDurationMinutes").val(session.durationMinutes ?? "");
-        $("#editSessionContent").val(session.cleanNote || "");
-        $("#editSessionMedication").val(session.medicationNotes || "");
-        $("#editSessionMood").val(session.moodAssessment == null ? "" : String(session.moodAssessment));
-        $("#editSessionRequiresFollowUp").prop("checked", Boolean(session.requiresFollowUp));
+        $("#editSessionClinicalDate").val(source.clinicalDate || "");
+        $("#editSessionType").val(source.sessionType || "individual");
+        $("#editSessionCareModality").val(source.careModality || "unspecified");
+        $("#editSessionDurationMinutes").val(source.durationMinutes ?? "");
+        $("#editSessionContent").val(source.cleanNote || "");
+        $("#editSessionMedication").val(source.medicationNotes || "");
+        $("#editSessionMood").val(source.moodAssessment == null ? "" : String(source.moodAssessment));
+        $("#editSessionRequiresFollowUp").prop("checked", Boolean(source.requiresFollowUp));
 
         // Submit-driven so validation is consistent with the new-note form.
         $("#sessionEditForm").on("submit", saveSessionEdit);
@@ -6196,50 +6211,50 @@
         }
       }
 
-      function saveSessionEdit(event) {
-        if (event) event.preventDefault();
-        const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
-        if (!session) return;
+      function getSaveState(id) {
+        return (
+          sessionSaveState[id] ||
+          (sessionSaveState[id] = { inFlight: false, pending: null, conflict: null, netAttempts: 0 })
+        );
+      }
 
+      // True while any session still has a save in flight or a pending edit.
+      function sessionHasWorkInFlight() {
+        return Object.values(sessionSaveState).some((s) => s && (s.inFlight || s.pending));
+      }
+
+      // Read the edit form and validate. Returns a payload, or null when
+      // invalid (showing a warning unless silent).
+      function readSessionEditForm(silent) {
         const cleanNote = ($("#editSessionContent").val() || "").trim();
         const clinicalDate = ($("#editSessionClinicalDate").val() || "").trim();
         const durationRaw = ($("#editSessionDurationMinutes").val() || "").trim();
         const moodRaw = $("#editSessionMood").val();
+        const warn = (t, m) => {
+          if (!silent) notificaciones.advertencia(t, m);
+        };
 
-        // Empty date must fail loudly instead of silently keeping the old one.
         if (!/^\d{4}-\d{2}-\d{2}$/.test(clinicalDate)) {
-          notificaciones.advertencia(
-            "Fecha requerida",
-            "Elegí una fecha clínica válida; no puede quedar vacía."
-          );
-          return;
+          warn("Fecha requerida", "Elegí una fecha clínica válida; no puede quedar vacía.");
+          return null;
         }
         if (!cleanNote) {
-          notificaciones.advertencia("Contenido requerido", "La nota clínica no puede quedar vacía.");
-          return;
+          warn("Contenido requerido", "La nota clínica no puede quedar vacía.");
+          return null;
         }
-        // Duration is optional, but if present it must be a whole number of
-        // minutes: reject decimals ("45.9") and exponential notation ("4e2").
         let durationMinutes = null;
         if (durationRaw !== "") {
           if (!/^\d+$/.test(durationRaw)) {
-            notificaciones.advertencia(
-              "Duración inválida",
-              "La duración debe ser un número entero de minutos, sin decimales."
-            );
-            return;
+            warn("Duración inválida", "La duración debe ser un número entero de minutos, sin decimales.");
+            return null;
           }
           durationMinutes = Number.parseInt(durationRaw, 10);
           if (durationMinutes < 1 || durationMinutes > 480) {
-            notificaciones.advertencia(
-              "Duración fuera de rango",
-              "La duración clínica debe estar entre 1 y 480 minutos."
-            );
-            return;
+            warn("Duración fuera de rango", "La duración clínica debe estar entre 1 y 480 minutos.");
+            return null;
           }
         }
-
-        const payload = {
+        return {
           clinicalDate,
           sessionType: $("#editSessionType").val(),
           durationMinutes,
@@ -6249,26 +6264,37 @@
           moodAssessment: moodRaw === "" ? null : Number.parseInt(moodRaw, 10),
           requiresFollowUp: $("#editSessionRequiresFollowUp").is(":checked"),
         };
-
-        const targetId = session.id;
-
-        // Optimistically reflect the edit locally and return to the read-only
-        // view; the revision is left untouched until the server confirms.
-        const idx = appData.sessions.findIndex((s) => s.id === targetId);
-        if (idx !== -1) {
-          appData.sessions[idx] = { ...appData.sessions[idx], ...payload };
-          renderSessionDetailView(appData.sessions[idx]);
-        }
-
-        enqueueSessionSave(targetId, payload);
       }
 
-      // Queue a save for a session, coalescing to the latest pending edit while
-      // one is already in flight.
+      function payloadsEqual(a, b) {
+        if (!a || !b) return false;
+        return (
+          a.cleanNote === b.cleanNote &&
+          a.clinicalDate === b.clinicalDate &&
+          a.sessionType === b.sessionType &&
+          a.careModality === b.careModality &&
+          (a.durationMinutes ?? null) === (b.durationMinutes ?? null) &&
+          (a.medicationNotes ?? null) === (b.medicationNotes ?? null) &&
+          (a.moodAssessment ?? null) === (b.moodAssessment ?? null) &&
+          Boolean(a.requiresFollowUp) === Boolean(b.requiresFollowUp)
+        );
+      }
+
+      function saveSessionEdit(event) {
+        if (event) event.preventDefault();
+        const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
+        if (!session) return;
+        const payload = readSessionEditForm(false);
+        if (!payload) return;
+        // Do NOT close or destroy the form here: it stays until the save is
+        // confirmed, so nothing is lost if the request fails or conflicts.
+        markSavingIndicator(true);
+        enqueueSessionSave(session.id, payload);
+      }
+
+      // Coalesce to the latest pending edit while one is already in flight.
       function enqueueSessionSave(targetId, payload) {
-        const state =
-          sessionSaveState[targetId] ||
-          (sessionSaveState[targetId] = { inFlight: false, pending: null });
+        const state = getSaveState(targetId);
         if (state.inFlight) {
           state.pending = { payload };
           return;
@@ -6277,7 +6303,7 @@
       }
 
       function sendSessionSave(targetId, payload) {
-        const state = sessionSaveState[targetId];
+        const state = getSaveState(targetId);
         state.inFlight = true;
         const token = localStorage.getItem("authToken");
         const current = appData.sessions.find((s) => s.id === targetId);
@@ -6294,82 +6320,236 @@
           data: JSON.stringify(payload),
           success: function (updated) {
             state.inFlight = false;
-            // Adopt the server's truth (including the new revision) so a queued
-            // follow-up save carries the fresh revision instead of a stale one.
-            const i = appData.sessions.findIndex((s) => s.id === targetId);
-            if (i !== -1) {
-              appData.sessions[i] = {
-                ...appData.sessions[i],
-                ...updated,
-                patientName: updated.patientName || appData.sessions[i].patientName,
-              };
-            }
+            state.netAttempts = 0;
+            applyServerSession(targetId, updated);
             if (state.pending) {
               const next = state.pending;
               state.pending = null;
               sendSessionSave(targetId, next.payload); // send latest edit, in order
             } else {
-              settleSessionSave(targetId);
-              notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
+              finishSaveChain(targetId, payload);
             }
           },
           error: function (xhr) {
-            state.inFlight = false;
             if (xhr.status === 409) {
-              // Another tab/client changed the session first. Never overwrite:
-              // adopt the server version and ask the user to review.
-              state.pending = null;
-              const server = xhr.responseJSON && xhr.responseJSON.session;
-              if (server) {
-                const i = appData.sessions.findIndex((s) => s.id === targetId);
-                if (i !== -1) {
-                  appData.sessions[i] = {
-                    ...appData.sessions[i],
-                    ...server,
-                    patientName: server.patientName || appData.sessions[i].patientName,
-                  };
-                }
-                settleSessionSave(targetId);
-              }
-              notificaciones.advertencia(
-                "Conflicto de edición",
-                "La sesión fue modificada en otra pestaña o dispositivo. Se cargó la última versión; revisá y volvé a guardar."
-              );
+              state.inFlight = false;
+              handleSaveConflict(targetId, payload, xhr.responseJSON && xhr.responseJSON.session);
               return;
             }
-            if (state.pending) {
-              // A newer edit is queued; attempt it.
-              const next = state.pending;
-              state.pending = null;
-              sendSessionSave(targetId, next.payload);
+            if (xhr.status === 0) {
+              // Response lost: keep the slot "in flight" (so a concurrent v2
+              // queues as pending) while we find out whether v1 applied.
+              recoverLostSave(targetId, payload, baseRevision);
               return;
             }
+            state.inFlight = false;
+            // 400/428/500 etc.: keep the form and its content, surface the error.
+            markSavingIndicator(false);
             const msg =
               xhr.responseJSON?.details?.[0]?.msg ||
               xhr.responseJSON?.message ||
               xhr.responseJSON?.error ||
               "No se pudo guardar la sesión.";
             notificaciones.error("Error", msg);
+            if (state.pending) {
+              const next = state.pending;
+              state.pending = null;
+              sendSessionSave(targetId, next.payload);
+            }
           },
         });
       }
 
-      // Refresh dependent views once a session's save chain has settled. The
-      // detail modal is only re-rendered when it still shows this session AND is
-      // not being edited, so a late response can't discard an unsaved edit.
-      function settleSessionSave(targetId) {
+      function applyServerSession(targetId, updated) {
+        const i = appData.sessions.findIndex((s) => s.id === targetId);
+        if (i !== -1) {
+          appData.sessions[i] = {
+            ...appData.sessions[i],
+            ...updated,
+            patientName: updated.patientName || appData.sessions[i].patientName,
+          };
+        }
+      }
+
+      function fetchSessionFresh(targetId, cb) {
+        const token = localStorage.getItem("authToken");
+        $.ajax({
+          url: "/api/sessions",
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          success: (res) => cb((res.sessions || []).find((s) => s.id === targetId) || null),
+          error: () => cb(null),
+        });
+      }
+
+      function serverMatchesPayload(server, payload) {
+        return payloadsEqual(
+          {
+            cleanNote: server.cleanNote,
+            clinicalDate: server.clinicalDate,
+            sessionType: server.sessionType,
+            careModality: server.careModality,
+            durationMinutes: server.durationMinutes,
+            medicationNotes: server.medicationNotes,
+            moodAssessment: server.moodAssessment,
+            requiresFollowUp: server.requiresFollowUp,
+          },
+          payload
+        );
+      }
+
+      // Recover from a lost response: if the server already contains our edit,
+      // adopt its revision and continue with the pending edit; otherwise resend.
+      function recoverLostSave(targetId, payload, baseRevision) {
+        const state = getSaveState(targetId);
+        state.inFlight = true; // hold the slot so a concurrent v2 queues as pending
+        state.netAttempts = (state.netAttempts || 0) + 1;
+        if (state.netAttempts > 4) {
+          state.inFlight = false;
+          markSavingIndicator(false);
+          notificaciones.error(
+            "Sin conexión",
+            "No pudimos confirmar el guardado. Tu edición sigue en la ficha; reintentá cuando tengas conexión."
+          );
+          return;
+        }
+        fetchSessionFresh(targetId, (server) => {
+          if (!server) {
+            sendSessionSave(targetId, payload); // retry; sendSessionSave re-arms inFlight
+            return;
+          }
+          const base = Number(baseRevision);
+          if (server.revision === base + 1 && serverMatchesPayload(server, payload)) {
+            // v1 applied even though its response was lost.
+            state.netAttempts = 0;
+            state.inFlight = false;
+            applyServerSession(targetId, server);
+            if (state.pending) {
+              const next = state.pending;
+              state.pending = null;
+              sendSessionSave(targetId, next.payload);
+            } else {
+              finishSaveChain(targetId, payload);
+            }
+          } else if (server.revision === base) {
+            sendSessionSave(targetId, payload); // never reached the server
+          } else {
+            state.inFlight = false;
+            handleSaveConflict(targetId, payload, server); // someone else advanced it
+          }
+        });
+      }
+
+      function markSavingIndicator(saving) {
+        const $btn = $("#saveSessionEditBtn");
+        if (!$btn.length) return;
+        if (saving) {
+          if (!$btn.data("origLabel")) $btn.data("origLabel", $btn.html());
+          $btn.html('<i class="fas fa-spinner fa-spin"></i> Guardando…');
+        } else if ($btn.data("origLabel")) {
+          $btn.html($btn.data("origLabel"));
+        }
+      }
+
+      // Called once a save chain settles with no pending work. Closes the form
+      // to read-only only if the user has NOT kept typing past what was saved.
+      function finishSaveChain(targetId, savedPayload) {
+        markSavingIndicator(false);
         refreshDashboardViews();
         renderSessionsPreservingFilters();
-        const editing = document.getElementById("sessionEditForm") !== null;
         const fresh = appData.sessions.find((s) => s.id === targetId);
-        if (
-          !editing &&
-          fresh &&
-          currentSessionDetailId === targetId &&
-          $("#sessionDetailModal").hasClass("show")
-        ) {
-          renderSessionDetailView(fresh);
+        const showing = currentSessionDetailId === targetId && $("#sessionDetailModal").hasClass("show");
+        if (showing && fresh) {
+          const editing = document.getElementById("sessionEditForm") !== null;
+          if (!editing) {
+            renderSessionDetailView(fresh);
+          } else {
+            const currentAttempt = readSessionEditForm(true);
+            if (payloadsEqual(currentAttempt, savedPayload)) {
+              renderSessionDetailView(fresh); // clean: safe to close
+            }
+            // else: unsaved changes present → keep the form open
+          }
         }
+        notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
+      }
+
+      // On 409 keep the user's latest version (never lose a pending v2) and show
+      // it beside the server version so they can retry, edit, or discard.
+      function handleSaveConflict(targetId, attemptedPayload, serverSession) {
+        const state = getSaveState(targetId);
+        markSavingIndicator(false);
+        const myVersion = state.pending ? state.pending.payload : attemptedPayload;
+        state.pending = null;
+        state.conflict = { myVersion };
+        if (serverSession) applyServerSession(targetId, serverSession);
+        refreshDashboardViews();
+        renderSessionsPreservingFilters();
+        if (currentSessionDetailId === targetId && $("#sessionDetailModal").hasClass("show")) {
+          renderSessionConflict(targetId);
+        }
+        notificaciones.advertencia(
+          "Conflicto de edición",
+          "La sesión cambió en otra parte. Conservamos tu versión para que la revises."
+        );
+      }
+
+      function renderSessionConflict(targetId) {
+        const state = getSaveState(targetId);
+        const server = appData.sessions.find((s) => s.id === targetId);
+        const mine = state.conflict && state.conflict.myVersion;
+        if (!server || !mine) return;
+        const $body = $("#sessionDetailBody");
+        $body.html(`
+          <div class="alert alert-warning" role="alert">
+            <i class="fas fa-exclamation-triangle mr-1"></i>
+            La sesión fue modificada en otra pestaña o dispositivo. <strong>Tu versión no se perdió.</strong>
+          </div>
+          <div class="row">
+            <div class="col-md-6">
+              <h6 class="text-muted">Versión del servidor (rev <span class="conflict-server-rev"></span>)</h6>
+              <p class="conflict-server-note"></p>
+            </div>
+            <div class="col-md-6">
+              <h6 class="text-primary">Tu versión (sin guardar)</h6>
+              <p class="conflict-my-note"></p>
+            </div>
+          </div>
+        `);
+        $body.find(".conflict-server-rev").text(String(server.revision));
+        $body.find(".conflict-server-note").text(server.cleanNote || "Sin contenido");
+        $body.find(".conflict-my-note").text(mine.cleanNote || "Sin contenido");
+        $("#sessionDetailFooter").html(`
+          <button type="button" class="btn btn-outline-secondary" onclick="useServerVersion()">Usar la del servidor</button>
+          <button type="button" class="btn btn-outline-primary" onclick="editMyConflictVersion()">Editar mi versión</button>
+          <button type="button" class="btn btn-warning" id="conflictRetryBtn" onclick="retryMyConflictVersion()">Reintentar con mi versión</button>
+        `);
+      }
+
+      function useServerVersion() {
+        const id = currentSessionDetailId;
+        const state = getSaveState(id);
+        state.conflict = null;
+        const fresh = appData.sessions.find((s) => s.id === id);
+        if (fresh) renderSessionDetailView(fresh);
+      }
+
+      function editMyConflictVersion() {
+        const id = currentSessionDetailId;
+        const state = getSaveState(id);
+        const mine = state.conflict && state.conflict.myVersion;
+        state.conflict = null;
+        enterSessionEditMode(mine || undefined);
+      }
+
+      function retryMyConflictVersion() {
+        const id = currentSessionDetailId;
+        const state = getSaveState(id);
+        const mine = state.conflict && state.conflict.myVersion;
+        state.conflict = null;
+        if (!mine) return;
+        // Re-send my version against the now-current server revision (overwrite).
+        enqueueSessionSave(id, mine);
       }
 
       function showPatientDetail(patientId) {
