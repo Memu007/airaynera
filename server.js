@@ -252,24 +252,94 @@ function isRealCalendarDate(value) {
 // One clinical-field contract shared by POST and PATCH so both reject the same
 // out-of-contract values instead of coercing them. Patient identity and the
 // audio evidence fields are handled per route.
+const SESSION_TYPES = ["individual", "group", "family", "couple", "other"];
+const CARE_MODALITIES = ["inPerson", "video", "phone", "unspecified"];
+
+// Reject arrays/objects and wrong primitive types on the raw body BEFORE
+// normalizeSessionInput can coerce them (e.g. ["individual"] -> "individual"
+// via object-key access). Also makes a patientId object a 400, never a 500.
+function validateRawSessionTypes(req, res, next) {
+  const b = req.body || {};
+  const fail = (field, message) =>
+    res.status(400).json({ error: "INVALID_FIELD_TYPE", field, message });
+
+  // Patient id may be a string or a numeric id, never an array/object.
+  for (const f of ["patientId", "pacienteId"]) {
+    if (b[f] !== undefined && b[f] !== null && typeof b[f] !== "string" && typeof b[f] !== "number") {
+      return fail(f, "El identificador de paciente debe ser texto o número");
+    }
+  }
+  // Text fields must be strings (null allowed only where a clear is meaningful).
+  const textFields = [
+    "clinicalDate", "fecha", "sessionType", "tipo", "careModality",
+    "cleanNote", "notes", "notas", "summary", "medicationNotes", "medication_notes",
+    "inputType", "rawTranscript", "transcription",
+  ];
+  for (const f of textFields) {
+    if (b[f] !== undefined && b[f] !== null && typeof b[f] !== "string") {
+      return fail(f, `El campo ${f} debe ser texto`);
+    }
+  }
+  // Numeric fields must be real JSON numbers, not strings/arrays/objects.
+  const numberFields = [
+    "durationMinutes", "duracion", "moodAssessment", "mood_assessment", "audioDurationSeconds",
+  ];
+  for (const f of numberFields) {
+    if (b[f] !== undefined && b[f] !== null && typeof b[f] !== "number") {
+      return fail(f, `El campo ${f} debe ser numérico`);
+    }
+  }
+  // Booleans must be real booleans.
+  for (const f of ["requiresFollowUp", "requires_followup"]) {
+    if (b[f] !== undefined && typeof b[f] !== "boolean") {
+      return fail(f, `El campo ${f} debe ser booleano`);
+    }
+  }
+  next();
+}
+
+// One clinical-field contract shared by POST and PATCH. Uses strict typeof
+// checks (not express-validator coercion) so a real integer/boolean/string is
+// required and nothing is silently coerced.
 function clinicalSessionValidators() {
   return [
     body("clinicalDate").optional().custom(isRealCalendarDate)
       .withMessage("La fecha clínica debe existir en el calendario (YYYY-MM-DD)"),
-    body("sessionType").optional().isIn(["individual", "group", "family", "couple", "other"])
+    body("sessionType").optional()
+      .custom((v) => typeof v === "string" && SESSION_TYPES.includes(v))
       .withMessage("Tipo de sesión inválido"),
-    body("careModality").optional().isIn(["inPerson", "video", "phone", "unspecified"])
+    body("careModality").optional()
+      .custom((v) => typeof v === "string" && CARE_MODALITIES.includes(v))
       .withMessage("Modalidad inválida"),
-    body("durationMinutes").optional({ nullable: true }).isInt({ min: 1, max: 480 })
+    body("durationMinutes").optional({ nullable: true })
+      .custom((v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 480)
       .withMessage("La duración debe ser un entero entre 1 y 480"),
-    body("moodAssessment").optional({ nullable: true }).isInt({ min: 1, max: 5 })
+    body("moodAssessment").optional({ nullable: true })
+      .custom((v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5)
       .withMessage("El ánimo debe ser un entero entre 1 y 5"),
-    body("cleanNote").optional().isString().withMessage("La nota debe ser texto")
-      .isLength({ max: 10000 }).withMessage("La nota supera el máximo permitido"),
-    body("medicationNotes").optional({ nullable: true }).isString().withMessage("La medicación debe ser texto")
-      .isLength({ max: 5000 }).withMessage("La medicación supera el máximo permitido"),
+    body("cleanNote").optional()
+      .custom((v) => typeof v === "string" && v.length <= 10000)
+      .withMessage("La nota debe ser texto de hasta 10000 caracteres"),
+    body("medicationNotes").optional({ nullable: true })
+      .custom((v) => typeof v === "string" && v.length <= 5000)
+      .withMessage("La medicación debe ser texto de hasta 5000 caracteres"),
     body("requiresFollowUp").optional().custom((value) => typeof value === "boolean")
       .withMessage("El seguimiento debe ser un booleano"),
+  ];
+}
+
+// Audio-evidence fields are only accepted on create (POST); PATCH drops them.
+function createAudioValidators() {
+  return [
+    body("inputType").optional()
+      .custom((v) => typeof v === "string" && ["text", "audio"].includes(v))
+      .withMessage("inputType inválido"),
+    body("rawTranscript").optional({ nullable: true })
+      .custom((v) => typeof v === "string" && v.length <= 20000)
+      .withMessage("rawTranscript inválido"),
+    body("audioDurationSeconds").optional({ nullable: true })
+      .custom((v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 7200)
+      .withMessage("audioDurationSeconds inválido"),
   ];
 }
 
@@ -391,6 +461,7 @@ function normalizeSession(s) {
     requiresFollowUp: Boolean(s.requires_followup),
     audioDurationSeconds: s.audio_duration_seconds == null ? null : Number(s.audio_duration_seconds),
     status: s.status || "confirmed",
+    revision: Number(s.revision || 1),
     draftId: s.draft_id == null ? null : String(s.draft_id),
     createdAt: s.created_at || null,
     updatedAt: s.updated_at || s.created_at || null,
@@ -559,9 +630,11 @@ app.get('/api/sessions', authMiddleware, (req, res) => {
 
 app.post('/api/sessions',
     authMiddleware,
+    validateRawSessionTypes,
     normalizeSessionInput,
     body('patientId').notEmpty().withMessage('patientId es requerido'),
     ...clinicalSessionValidators(),
+    ...createAudioValidators(),
     handleValidationErrors,
     (req, res) => {
     try {
@@ -579,6 +652,7 @@ app.post('/api/sessions',
 app.patch('/api/sessions/:id',
     authMiddleware,
     rejectPatientReassignment,
+    validateRawSessionTypes,
     normalizeSessionInput,
     ...clinicalSessionValidators(),
     handleValidationErrors,
@@ -588,12 +662,33 @@ app.patch('/api/sessions/:id',
         // Patient identity is never mutable through PATCH (guarded above too).
         delete changes.patientId;
         delete changes.pacienteId;
-        const updated = sql.updateSession(req.user.id, req.params.id, changes);
-        if (updated) {
-            res.json(normalizeSession(updated));
-        } else {
-            res.status(404).json({ error: 'Session not found' });
+
+        // Optimistic concurrency: the client sends the revision it edited via
+        // If-Match. A mismatch means another writer changed the session first.
+        const ifMatch = req.get('If-Match');
+        let expectedRevision;
+        if (ifMatch !== undefined && ifMatch !== '') {
+            expectedRevision = Number(ifMatch);
+            if (!Number.isInteger(expectedRevision)) {
+                return res.status(400).json({
+                    error: 'INVALID_REVISION',
+                    message: 'If-Match debe ser un entero (revisión de la sesión)',
+                });
+            }
         }
+
+        const result = sql.updateSession(req.user.id, req.params.id, changes, { expectedRevision });
+        if (result.status === 'notfound') {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        if (result.status === 'conflict') {
+            return res.status(409).json({
+                error: 'REVISION_CONFLICT',
+                message: 'La sesión fue modificada en otra pestaña o dispositivo',
+                session: normalizeSession(result.session),
+            });
+        }
+        res.json(normalizeSession(result.session));
     } catch (err) {
         console.error('Error updating session:', err);
         res.status(500).json({ error: 'Database error' });

@@ -6020,10 +6020,11 @@
       }
 
       let currentSessionDetailId = null;
-      // Monotonic save counter per session id: a response is only applied if it
-      // is still the latest save issued for that session, so an older save
-      // (A-v1) cannot overwrite a newer one (A-v2) when it responds late.
-      const sessionSaveSeq = {};
+      // Per-session save queue. Saves for the same session are serialized so
+      // their writes reach SQLite in order; while one is in flight only the
+      // latest pending edit is kept and sent afterwards with the fresh revision.
+      // id -> { inFlight: bool, pending: { payload } | null }
+      const sessionSaveState = {};
 
       function showSessionDetail(sessionId) {
         const session = appData.sessions.find((s) => s.id === sessionId);
@@ -6249,49 +6250,99 @@
           requiresFollowUp: $("#editSessionRequiresFollowUp").is(":checked"),
         };
 
-        const token = localStorage.getItem("authToken");
         const targetId = session.id;
-        const saveSeq = (sessionSaveSeq[targetId] || 0) + 1;
-        sessionSaveSeq[targetId] = saveSeq;
-        const $btn = $("#saveSessionEditBtn");
-        const originalText = $btn.html();
-        $btn.html('<i class="fas fa-spinner fa-spin"></i> Guardando...').prop("disabled", true);
+
+        // Optimistically reflect the edit locally and return to the read-only
+        // view; the revision is left untouched until the server confirms.
+        const idx = appData.sessions.findIndex((s) => s.id === targetId);
+        if (idx !== -1) {
+          appData.sessions[idx] = { ...appData.sessions[idx], ...payload };
+          renderSessionDetailView(appData.sessions[idx]);
+        }
+
+        enqueueSessionSave(targetId, payload);
+      }
+
+      // Queue a save for a session, coalescing to the latest pending edit while
+      // one is already in flight.
+      function enqueueSessionSave(targetId, payload) {
+        const state =
+          sessionSaveState[targetId] ||
+          (sessionSaveState[targetId] = { inFlight: false, pending: null });
+        if (state.inFlight) {
+          state.pending = { payload };
+          return;
+        }
+        sendSessionSave(targetId, payload);
+      }
+
+      function sendSessionSave(targetId, payload) {
+        const state = sessionSaveState[targetId];
+        state.inFlight = true;
+        const token = localStorage.getItem("authToken");
+        const current = appData.sessions.find((s) => s.id === targetId);
+        const baseRevision = current && current.revision != null ? String(current.revision) : null;
 
         $.ajax({
           url: `/api/sessions/${targetId}`,
           method: "PATCH",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(baseRevision != null ? { "If-Match": baseRevision } : {}),
+          },
           contentType: "application/json",
           data: JSON.stringify(payload),
           success: function (updated) {
-            // Ignore a response that a newer save for this session superseded.
-            if (sessionSaveSeq[targetId] !== saveSeq) return;
-            const idx = appData.sessions.findIndex((s) => s.id === targetId);
-            if (idx !== -1) {
-              // Preserve patientName, which the list endpoint resolves via relation.
-              appData.sessions[idx] = {
-                ...appData.sessions[idx],
+            state.inFlight = false;
+            // Adopt the server's truth (including the new revision) so a queued
+            // follow-up save carries the fresh revision instead of a stale one.
+            const i = appData.sessions.findIndex((s) => s.id === targetId);
+            if (i !== -1) {
+              appData.sessions[i] = {
+                ...appData.sessions[i],
                 ...updated,
-                patientName: updated.patientName || appData.sessions[idx].patientName,
+                patientName: updated.patientName || appData.sessions[i].patientName,
               };
             }
-            // Only touch the modal if it is still showing the session we saved,
-            // so a late response for A cannot overwrite an open session B.
-            const stillShowing =
-              currentSessionDetailId === targetId && $("#sessionDetailModal").hasClass("show");
-            if (stillShowing && idx !== -1) {
-              renderSessionDetailView(appData.sessions[idx]);
+            if (state.pending) {
+              const next = state.pending;
+              state.pending = null;
+              sendSessionSave(targetId, next.payload); // send latest edit, in order
+            } else {
+              settleSessionSave(targetId);
+              notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
             }
-            refreshDashboardViews();
-            renderSessionsPreservingFilters();
-            notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
           },
           error: function (xhr) {
-            // Ignore a response that a newer save for this session superseded.
-            if (sessionSaveSeq[targetId] !== saveSeq) return;
-            // Restore the button only if this same edit form is still on screen.
-            if (currentSessionDetailId === targetId && document.getElementById("saveSessionEditBtn")) {
-              $btn.html(originalText).prop("disabled", false);
+            state.inFlight = false;
+            if (xhr.status === 409) {
+              // Another tab/client changed the session first. Never overwrite:
+              // adopt the server version and ask the user to review.
+              state.pending = null;
+              const server = xhr.responseJSON && xhr.responseJSON.session;
+              if (server) {
+                const i = appData.sessions.findIndex((s) => s.id === targetId);
+                if (i !== -1) {
+                  appData.sessions[i] = {
+                    ...appData.sessions[i],
+                    ...server,
+                    patientName: server.patientName || appData.sessions[i].patientName,
+                  };
+                }
+                settleSessionSave(targetId);
+              }
+              notificaciones.advertencia(
+                "Conflicto de edición",
+                "La sesión fue modificada en otra pestaña o dispositivo. Se cargó la última versión; revisá y volvé a guardar."
+              );
+              return;
+            }
+            if (state.pending) {
+              // A newer edit is queued; attempt it.
+              const next = state.pending;
+              state.pending = null;
+              sendSessionSave(targetId, next.payload);
+              return;
             }
             const msg =
               xhr.responseJSON?.details?.[0]?.msg ||
@@ -6301,6 +6352,24 @@
             notificaciones.error("Error", msg);
           },
         });
+      }
+
+      // Refresh dependent views once a session's save chain has settled. The
+      // detail modal is only re-rendered when it still shows this session AND is
+      // not being edited, so a late response can't discard an unsaved edit.
+      function settleSessionSave(targetId) {
+        refreshDashboardViews();
+        renderSessionsPreservingFilters();
+        const editing = document.getElementById("sessionEditForm") !== null;
+        const fresh = appData.sessions.find((s) => s.id === targetId);
+        if (
+          !editing &&
+          fresh &&
+          currentSessionDetailId === targetId &&
+          $("#sessionDetailModal").hasClass("show")
+        ) {
+          renderSessionDetailView(fresh);
+        }
       }
 
       function showPatientDetail(patientId) {
@@ -6889,7 +6958,7 @@
             loadPatientsData();
             notificaciones.exito(
               "Paciente Registrado",
-              `El paciente ${name} ha sido agregado exitosamente.`
+              `El paciente ${escapeHtml(name)} ha sido agregado exitosamente.`
             );
           },
           error: function (xhr) {

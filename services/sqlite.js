@@ -317,18 +317,24 @@ function addSession(userId, s) {
   return getSessionById(userId, info.lastInsertRowid);
 }
 
-function updateSession(userId, id, changes) {
+function updateSession(userId, id, changes, options = {}) {
   const conn = getDb();
   const current = conn.prepare('SELECT * FROM sessions WHERE id = ? AND userId = ?').get(id, userId);
-  if (!current) return null;
+  if (!current) return { status: 'notfound', session: null };
 
-  const patientId = String(changes.pacienteId ?? current.pacienteId);
-  const patient = conn.prepare('SELECT id FROM patients WHERE id = ? AND userId = ?').get(patientId, userId);
-  if (!patient) {
-    const error = new Error('Patient not found or access denied');
-    error.code = 'PATIENT_NOT_FOUND';
-    throw error;
+  // Optimistic concurrency: reject an edit built on a stale revision so a
+  // concurrent write from another tab/client is never silently overwritten.
+  const expectedRevision = options.expectedRevision;
+  if (
+    expectedRevision !== undefined &&
+    expectedRevision !== null &&
+    Number(current.revision) !== Number(expectedRevision)
+  ) {
+    return { status: 'conflict', session: getSessionById(userId, id) };
   }
+
+  // The patient never changes on edit (reassignment is blocked upstream).
+  const patientId = String(current.pacienteId);
 
   const cleanNote = String(changes.cleanNote ?? changes.notas ?? current.clean_note ?? current.notas ?? '');
   const sessionType = String(changes.sessionType ?? changes.tipo ?? current.tipo ?? 'individual');
@@ -356,19 +362,27 @@ function updateSession(userId, id, changes) {
   const audioDurationSeconds = changes.audioDurationSeconds === undefined ? current.audio_duration_seconds : changes.audioDurationSeconds;
   const careModality = String(changes.careModality ?? current.care_modality ?? 'unspecified');
   const updatedAt = new Date().toISOString();
+  const nextRevision = Number(current.revision || 1) + 1;
 
-  conn.prepare(`
+  // The revision in the WHERE clause guards against a concurrent writer that
+  // bumped it between our read and write; 0 rows changed means a conflict.
+  const info = conn.prepare(`
     UPDATE sessions SET
       pacienteId=?, notas=?, clean_note=?, tipo=?, fecha=?, clinical_date=?,
       duracion=?, medication_notes=?, mood_assessment=?, requires_followup=?,
-      raw_transcript=?, input_type=?, audio_duration_seconds=?, care_modality=?, updated_at=?
-    WHERE id=? AND userId=?
+      raw_transcript=?, input_type=?, audio_duration_seconds=?, care_modality=?,
+      updated_at=?, revision=?
+    WHERE id=? AND userId=? AND revision=?
   `).run(
     patientId, cleanNote, cleanNote, sessionType, clinicalDate, clinicalDate,
     durationMinutes, medicationNotes, moodAssessment, requiresFollowUp ? 1 : 0,
-    rawTranscript, inputType, audioDurationSeconds, careModality, updatedAt, id, userId
+    rawTranscript, inputType, audioDurationSeconds, careModality,
+    updatedAt, nextRevision, id, userId, current.revision
   );
-  return getSessionById(userId, id);
+  if (info.changes === 0) {
+    return { status: 'conflict', session: getSessionById(userId, id) };
+  }
+  return { status: 'updated', session: getSessionById(userId, id) };
 }
 
 function deleteSession(userId, id) {

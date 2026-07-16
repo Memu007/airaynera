@@ -22,6 +22,7 @@ try {
     '004_whatsapp_conversations.sql',
     '005_audio_pipeline.sql',
     '006_audio_processing_jobs.sql',
+    '007_session_revision.sql',
   ]);
   assert.deepEqual(secondRun, []);
 
@@ -39,12 +40,17 @@ try {
     'SELECT id, applied_at FROM schema_migrations ORDER BY id'
   ).all();
 
-  assert.equal(migrationRows.length, 6);
+  assert.equal(migrationRows.length, 7);
   assert.deepEqual(
     migrationRows.map((row) => row.id),
-    ['001_initial_schema.sql', '002_canonical_sessions_and_drafts.sql', '003_whatsapp_links.sql', '004_whatsapp_conversations.sql', '005_audio_pipeline.sql', '006_audio_processing_jobs.sql']
+    ['001_initial_schema.sql', '002_canonical_sessions_and_drafts.sql', '003_whatsapp_links.sql', '004_whatsapp_conversations.sql', '005_audio_pipeline.sql', '006_audio_processing_jobs.sql', '007_session_revision.sql']
   );
   assert.ok(migrationRows.every((row) => row.applied_at));
+
+  const sessionColumnsMain = new Set(
+    connection.prepare('PRAGMA table_info(sessions)').all().map((column) => column.name)
+  );
+  assert.ok(sessionColumnsMain.has('revision'), 'sessions must have a revision column');
 
   const legacyConnection = new BetterSqlite3(path.join(tempDir, 'legacy.db'));
   try {
@@ -69,6 +75,7 @@ try {
       '004_whatsapp_conversations.sql',
       '005_audio_pipeline.sql',
       '006_audio_processing_jobs.sql',
+      '007_session_revision.sql',
     ]);
     const legacyUser = legacyConnection.prepare(
       'SELECT dni, name FROM users WHERE dni = ?'
