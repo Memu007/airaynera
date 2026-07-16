@@ -11,7 +11,7 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
 - Último hito funcional: `74a6ba3` (`add gemini audio worker integration`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite, desactivado por defecto. Una credencial temporal autenticó el modelo; la primera corrida real detectó y corrigió un shape inválido de `user_input` (integrado desde `536c11c`), y queda pendiente repetir el probe/smoke. El smoke sintético de 40 WAV quedó generado y validado offline. La batería funcional aprobó 129/129 más 27/27 de edición de sesión.
+- Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite, desactivado por defecto. Una credencial temporal autenticó el modelo; la primera corrida real detectó y corrigió un shape inválido de `user_input` (integrado desde `536c11c`), y queda pendiente repetir el probe/smoke. El smoke sintético de 40 WAV quedó generado y validado offline. La edición de sesión ahora tiene control de concurrencia real (revisión optimista + serialización en cliente). La batería aprobó **129/129** funcionales más **108/108** de contrato/concurrencia de edición (`npm test`), y **46/46** en navegador real.
 - Próximo objetivo: repetir el probe y el smoke integrado después de corregir el shape `user_input` detectado por la primera corrida real. Después corresponde preparar el corpus humano decisorio y comparar los mismos bytes con otros proveedores antes de aprobar uso clínico. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
@@ -63,7 +63,7 @@ Registro web
 - El `PATCH /api/sessions/:id` valida el mismo contrato que el POST: fecha `YYYY-MM-DD`, tipos y modalidades permitidos, duración entera de 1 a 480, ánimo 1–5 o nulo, booleano real para seguimiento y límites de texto; un cuerpo fuera de contrato devuelve `400` y no persiste.
 - Vaciar la medicación persiste `NULL` y desaparece de la ficha; `updateSession` distingue "campo ausente" de "vaciado explícito".
 - El formulario de edición usa submit y validación consistente: rechaza duración decimal o exponencial (no la trunca), exige fecha no vacía en lugar de conservar la anterior y valida en el mismo handler.
-- Una respuesta tardía de la sesión A ya no puede sobrescribir una sesión B abierta: la respuesta se vincula al `id` guardado y sólo redibuja la modal si sigue mostrando esa sesión; título y cuerpo se renderizan juntos.
+- Concurrencia de edición con garantía real, no sólo de pantalla: las sesiones tienen una columna `revision`; `PATCH /api/sessions/:id` acepta `If-Match` y actualiza de forma condicional, devolviendo `409` ante una edición concurrente de otra pestaña/cliente en vez de sobrescribir en silencio. En el cliente, los guardados de una misma sesión se serializan (se conserva sólo la última edición pendiente y se envía con la revisión fresca), así el último guardado gana también en SQLite, no sólo en la interfaz. Una respuesta tardía no cierra ni redibuja una edición reabierta con cambios sin guardar. Título y cuerpo de la modal se renderizan juntos.
 - Guardar una edición conserva los filtros de paciente y fecha; las tarjetas de sesión abren con Enter y Espacio; el nombre del paciente se muestra como texto, nunca interpolado como HTML en el formulario.
 - Queda pendiente una bandeja para recuperar borradores fuera del modal.
 
@@ -122,9 +122,9 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La batería integral actual aprobó 129/129 pruebas funcionales más 23/23 de edición de sesión (`scripts/session-edit-tests.js`), incluida en `npm test`; el total sale con código 0 en Node.js 22.
-- `scripts/session-edit-tests.js` cubre edición completa con persistencia tras recarga, borrado de medicación a `NULL`, doce cuerpos fuera de contrato que devuelven `400` sin persistir, inmutabilidad de `rawTranscript`/`inputType`/`audioDurationSeconds` y limpieza de campos anulables.
-- `scripts/session-edit-browser-tests.js` (Chromium por `playwright-core`, fuera de `npm test`) aprobó 28/28: edición completa con recarga real, borrado de medicación, rechazo de duración decimal/exponencial y fecha vacía sin enviar PATCH, respuesta tardía de A que no altera la B abierta, conservación de filtros, apertura por teclado (Enter y Espacio) y nombre de paciente renderizado como texto. Sirve los assets CDN desde `vendor/` porque el navegador no tiene salida de red.
+- La batería integral actual aprobó 129/129 pruebas funcionales más 108/108 de edición de sesión (`scripts/session-edit-tests.js`), incluida en `npm test`; el total sale con código 0.
+- `scripts/session-edit-tests.js` cubre edición completa con persistencia tras recarga, borrado de medicación a `NULL`, la matriz adversaria completa aplicada por caso a **POST y PATCH** (valores fuera de rango, tipos equivocados, arrays y objetos) devolviendo `400` sin crear ni modificar ningún campo —incluida medicación—, `patientId` objeto que da `400` y no `500`, inmutabilidad de `rawTranscript`/`inputType`/`audioDurationSeconds`, y la concurrencia optimista (revisión inicial 1, `If-Match` correcto incrementa, `If-Match` obsoleto da `409` sin persistir, `If-Match` no entero da `400`).
+- `scripts/session-edit-browser-tests.js` (Chromium por `playwright-core`, fuera de `npm test`) aprobó 46/46: además de edición completa con recarga, borrado de medicación, rechazos de formulario, filtros, teclado y render literal, cubre la concurrencia real: A-v2 gana sobre una A-v1 con respuesta demorada, **A-v2 gana cuando la primera solicitud llega tarde al servidor (solicitudes reordenadas)**, edición concurrente de otro cliente que devuelve `409` y no sobrescribe, y una respuesta tardía que no descarta una edición reabierta con cambios sin guardar. El runner resuelve el navegador por `PLAYWRIGHT_CHROMIUM_PATH`/`CHROMIUM_PATH`, instalación del sistema (macOS/Linux) o canal `chrome`, y sirve los assets CDN desde `vendor/`. Corre en un job de CI en ubuntu con el Chrome del sistema.
 - `scripts/ui-contract-tests.js` verifica los campos clínicos explícitos y que seguimiento no se derive del ánimo.
 - La suite del worker cubre límite streamed, expiración integral, carrera después del snapshot y recuperación desde un segundo proceso real.
 - `scripts/gemini-provider-tests.js` cubre contrato HTTP sin red, estado `ACTIVE`, JSON estructurado, retries seguros, abort, shutdown, heartbeat y fencing contra un resultado asíncrono obsoleto.
@@ -314,7 +314,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 ## Historial y estado de publicación
 
 - Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`, publicado el 2026-07-15.
-- Verificación del hito actual: `npm test` con 129/129, smoke del supervisor, build, contrato UI, sintaxis embebida y `git diff --check` aprobados.
+- Verificación del hito actual: `npm test` con 129/129 funcionales + 108/108 de edición, navegador real 46/46, smoke del supervisor, build, contrato UI, sintaxis embebida y `git diff --check` aprobados.
 - Implementación de la auditoría: `4a0a082` (backend/worker), `e533eb9` (flujo web) y `f1472c4` (operación/contratos).
 - Benchmark operativo del worker: `6ebe43b` (`benchmark controlled audio worker throughput`).
 - Corrección de confiabilidad posterior a la auditoría: `4a0a082` (`harden audio expiry and inactive patient flow`).
@@ -337,7 +337,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar que `airaynera/main` tenga el último commit publicado.
 5. Retomar `agent/01-web-core`.
-6. Ejecutar `npm test`, `npm run test:runtime-supervisor`, `npm run build` y `npm run lint` antes de cada publicación; la batería actual aprueba 129/129.
+6. Ejecutar `npm test`, `npm run test:session-edit:browser`, `npm run test:runtime-supervisor`, `npm run build` y `npm run lint` antes de cada publicación; la batería actual aprueba 129/129 + 108/108 y 46/46 en navegador.
 7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
 8. Publicar el siguiente hito verificado en `airaynera/main` y registrar el resultado aquí y en `docs/WORKLOG.md`.
 9. Generar el corpus sintético fijo, configurar `GEMINI_API_KEY` fuera de Git y ejecutar `npm run smoke:gemini` con reporte obligatorio.

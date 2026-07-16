@@ -1,6 +1,6 @@
 # Integración y benchmark de proveedores de audio
 
-Última revisión: 2026-07-15.
+Última revisión: 2026-07-16.
 
 ## Decisión actual
 
@@ -28,7 +28,7 @@ Sólo al configurar `AUDIO_TRANSCRIBER=gemini` y `GEMINI_API_KEY` un archivo rea
 - `upload, finalize` e `interactions.create` no se repiten a ciegas si se pierde la respuesta;
 - la pérdida de lease o el apagado del worker abortan upload, espera, backoff o inferencia;
 - un resultado tardío con fencing token obsoleto no puede modificar el borrador;
-- el cleanup remoto tiene un intento independiente de hasta un segundo; si falla queda un warning y Files API conserva su expiración automática.
+- el cleanup remoto tiene un intento independiente de hasta tres segundos (ampliado desde un segundo tras observar que seis cleanups de la primera corrida real superaban el segundo, todavía por debajo de la gracia de apagado del supervisor); si falla queda un warning y Files API conserva su expiración automática.
 
 El pipeline tiene una ruta asíncrona usada por `workers/audio-worker.js`. La ruta síncrona se conserva únicamente para fixtures y rechaza proveedores que devuelvan una promesa.
 
@@ -84,6 +84,7 @@ El reporte conserva commit, hash del manifiesto, hash del prompt, modelo, hashes
 - Provider registry, fixture síncrono, worker asíncrono, heartbeat, shutdown y fencing tardío: aprobado.
 - Scorer offline, incluido un caso adversarial que contiene afirmación y negación contradictorias: aprobado.
 - Generación y validación local de 40 WAV con servicios de voz de macOS: aprobada el 2026-07-15.
+- Portabilidad: la generación del corpus depende hoy de las voces TTS de macOS (`say`), por lo que no es reproducible en Linux/CI sin otra fuente de voz; la validación offline de hashes y el scorer sí son portables. La prueba de navegador de la edición de sesión (`scripts/session-edit-browser-tests.js`) resuelve el navegador por `PLAYWRIGHT_CHROMIUM_PATH`/instalación del sistema/canal `chrome` y corre en CI, pero pertenece al recorrido web, no a este benchmark de audio.
 - Primera corrida real: 0/40 por shape inválido de Interactions v1; el API exigió un paso `user_input` que contenga texto y audio. El payload y su test se corrigieron; el resultado fallido se conserva para auditoría y debe repetirse primero con `--probe` y después completo.
 
 No se registrará un resultado fake como si fuera una corrida Gemini.

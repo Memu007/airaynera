@@ -187,7 +187,58 @@ async function main() {
       test('medication persists as null after clearing', after.medicationNotes === null);
     }
 
-    console.log('\n3️⃣  Out-of-contract PATCH is rejected (400) and never persists');
+    // Shared adversarial matrix: wrong values, wrong types, arrays and objects.
+    // Each is a body fragment applied over a valid session on both POST and PATCH.
+    const ADVERSARIAL_CASES = [
+      ['sessionType: invalid string', { sessionType: 'therapy' }],
+      ['sessionType: null', { sessionType: null }],
+      ['sessionType: object', { sessionType: {} }],
+      ['sessionType: array', { sessionType: ['individual'] }],
+      ['careModality: invalid', { careModality: 'telepathy' }],
+      ['careModality: array', { careModality: [] }],
+      ['moodAssessment: above range', { moodAssessment: 9 }],
+      ['moodAssessment: below range', { moodAssessment: 0 }],
+      ['moodAssessment: string', { moodAssessment: '3' }],
+      ['moodAssessment: float', { moodAssessment: 3.5 }],
+      ['moodAssessment: array', { moodAssessment: [3] }],
+      ['durationMinutes: decimal', { durationMinutes: 45.9 }],
+      ['durationMinutes: exponential string', { durationMinutes: '4e2' }],
+      ['durationMinutes: above range', { durationMinutes: 500 }],
+      ['durationMinutes: zero', { durationMinutes: 0 }],
+      ['durationMinutes: numeric string', { durationMinutes: '45' }],
+      ['durationMinutes: array', { durationMinutes: [45] }],
+      ['durationMinutes: object', { durationMinutes: {} }],
+      ['clinicalDate: slashes', { clinicalDate: '2026/07/10' }],
+      ['clinicalDate: not-a-date', { clinicalDate: 'not-a-date' }],
+      ['clinicalDate: impossible', { clinicalDate: '2026-02-31' }],
+      ['clinicalDate: number', { clinicalDate: 20260710 }],
+      ['clinicalDate: array', { clinicalDate: [] }],
+      ['requiresFollowUp: "yes"', { requiresFollowUp: 'yes' }],
+      ['requiresFollowUp: "false"', { requiresFollowUp: 'false' }],
+      ['requiresFollowUp: 1', { requiresFollowUp: 1 }],
+      ['requiresFollowUp: array', { requiresFollowUp: [true] }],
+      ['cleanNote: false', { cleanNote: false }],
+      ['cleanNote: number', { cleanNote: 123 }],
+      ['cleanNote: array', { cleanNote: [] }],
+      ['cleanNote: oversized', { cleanNote: 'x'.repeat(10001) }],
+      ['medicationNotes: oversized', { medicationNotes: 'x'.repeat(5001) }],
+      ['medicationNotes: number', { medicationNotes: 123 }],
+      ['medicationNotes: array', { medicationNotes: [] }],
+    ];
+
+    const sameFields = (a, b) =>
+      a.cleanNote === b.cleanNote &&
+      a.sessionType === b.sessionType &&
+      a.durationMinutes === b.durationMinutes &&
+      a.careModality === b.careModality &&
+      a.moodAssessment === b.moodAssessment &&
+      a.requiresFollowUp === b.requiresFollowUp &&
+      a.clinicalDate === b.clinicalDate &&
+      a.medicationNotes === b.medicationNotes &&
+      a.patientId === b.patientId &&
+      a.revision === b.revision;
+
+    console.log('\n3️⃣  Out-of-contract PATCH: each case is 400 and never persists');
     {
       const created = await api('POST', '/api/sessions', {
         patientId,
@@ -198,52 +249,80 @@ async function main() {
         clinicalDate: '2026-07-10',
         moodAssessment: 3,
         requiresFollowUp: false,
+        medicationNotes: 'MedBase',
       });
       const id = created.data.id;
       const baseline = await getSession(id);
 
-      const invalidBodies = [
-        ['invalid sessionType', { sessionType: 'therapy' }],
-        ['null sessionType', { sessionType: null }],
-        ['invalid careModality', { careModality: 'telepathy' }],
-        ['mood above range', { moodAssessment: 9 }],
-        ['mood below range', { moodAssessment: 0 }],
-        ['decimal duration', { durationMinutes: 45.9 }],
-        ['exponential duration', { durationMinutes: '4e2' }],
-        ['duration above range', { durationMinutes: 500 }],
-        ['duration zero', { durationMinutes: 0 }],
-        ['malformed date', { clinicalDate: '2026/07/10' }],
-        ['literal not-a-date', { clinicalDate: 'not-a-date' }],
-        ['impossible calendar date', { clinicalDate: '2026-02-31' }],
-        ['string false followup', { requiresFollowUp: 'false' }],
-        ['non-boolean followup', { requiresFollowUp: 'yes' }],
-        ['numeric followup', { requiresFollowUp: 1 }],
-        ['oversized note', { cleanNote: 'x'.repeat(10001) }],
-        ['non-string note', { cleanNote: false }],
-        ['oversized medication', { medicationNotes: 'x'.repeat(5001) }],
-      ];
-
-      let all400 = true;
-      for (const [label, body] of invalidBodies) {
+      for (const [label, body] of ADVERSARIAL_CASES) {
         const res = await api('PATCH', `/api/sessions/${id}`, body);
-        if (res.status !== 400) {
-          all400 = false;
-          console.log(`      · ${label} returned ${res.status}, expected 400`);
-        }
+        test(`PATCH ${label} → 400`, res.status === 400);
       }
-      test('every invalid PATCH returns 400', all400);
+      // Also: an object patientId must be 400 (reassignment guard), never 500.
+      const objPatient = await api('PATCH', `/api/sessions/${id}`, { patientId: {} });
+      test('PATCH patientId object → 400 (not 500)', objPatient.status === 400);
 
       const afterInvalid = await getSession(id);
-      test(
-        'session unchanged after invalid PATCHes',
-        afterInvalid.cleanNote === baseline.cleanNote &&
-          afterInvalid.sessionType === baseline.sessionType &&
-          afterInvalid.durationMinutes === baseline.durationMinutes &&
-          afterInvalid.careModality === baseline.careModality &&
-          afterInvalid.moodAssessment === baseline.moodAssessment &&
-          afterInvalid.requiresFollowUp === baseline.requiresFollowUp &&
-          afterInvalid.clinicalDate === baseline.clinicalDate
-      );
+      test('no field (incl. medication/revision) changed after invalid PATCHes', sameFields(afterInvalid, baseline));
+    }
+
+    console.log('\n3️⃣b Out-of-contract POST: each case is 400 and creates nothing');
+    {
+      const validBase = {
+        patientId,
+        cleanNote: 'Alta válida.',
+        sessionType: 'individual',
+        durationMinutes: 40,
+        careModality: 'inPerson',
+        clinicalDate: '2026-07-10',
+        moodAssessment: 3,
+        requiresFollowUp: false,
+      };
+      const before = (await api('GET', '/api/sessions')).data.sessions.length;
+
+      for (const [label, body] of ADVERSARIAL_CASES) {
+        const res = await api('POST', '/api/sessions', { ...validBase, ...body });
+        test(`POST ${label} → 400`, res.status === 400);
+      }
+      for (const [label, value] of [['object', {}], ['array', []]]) {
+        const res = await api('POST', '/api/sessions', { ...validBase, patientId: value });
+        test(`POST patientId ${label} → 400 (not 500)`, res.status === 400);
+      }
+
+      const after = (await api('GET', '/api/sessions')).data.sessions.length;
+      test('no session was created by any invalid POST', after === before);
+    }
+
+    console.log('\n3️⃣c Optimistic concurrency (revision + If-Match)');
+    {
+      const created = await api('POST', '/api/sessions', {
+        patientId,
+        cleanNote: 'v-uno',
+        durationMinutes: 30,
+        careModality: 'inPerson',
+        clinicalDate: '2026-07-10',
+      });
+      const id = created.data.id;
+      const r0 = created.data.revision;
+      test('new session starts at revision 1', r0 === 1);
+
+      const ok = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'v-dos' }, { 'If-Match': String(r0) });
+      test('matching If-Match updates (200)', ok.status === 200);
+      test('revision increments after a successful edit', ok.data.revision === r0 + 1);
+
+      const stale = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'v-tres' }, { 'If-Match': String(r0) });
+      test('stale If-Match is rejected with 409', stale.status === 409);
+      test('409 returns the current session', stale.data?.session?.cleanNote === 'v-dos');
+      const afterConflict = await getSession(id);
+      test('conflicting edit did not persist', afterConflict.cleanNote === 'v-dos');
+      test('conflicting edit did not bump revision', afterConflict.revision === r0 + 1);
+
+      const noHeader = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'v-cuatro' });
+      test('PATCH without If-Match still works (200)', noHeader.status === 200);
+      test('revision keeps incrementing without If-Match', noHeader.data.revision === r0 + 2);
+
+      const badHeader = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'v-cinco' }, { 'If-Match': 'not-a-number' });
+      test('non-integer If-Match → 400', badHeader.status === 400);
     }
 
     console.log('\n4️⃣  Immutable audio evidence on PATCH');

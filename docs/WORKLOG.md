@@ -2,6 +2,38 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Concurrencia real de edición y contrato estricto
+
+### Objetivo
+
+Cerrar los hallazgos de una tercera auditoría adversarial sobre `ef2d639`: el control `sessionSaveSeq` sólo protegía la pantalla y una solicitud vieja tardía podía sobrescribir en SQLite una edición nueva. Además endurecer el contrato contra arrays/objetos y ampliar la matriz a POST.
+
+### Prioridad 1 — concurrencia
+
+- **Revisión optimista en el backend:** migración `007_session_revision.sql` agrega `revision` (default 1) a `sessions`; `updateSession` actualiza de forma condicional (`WHERE ... AND revision = ?`) e incrementa. `PATCH /api/sessions/:id` lee `If-Match`; ante revisión obsoleta responde `409` con la sesión actual y **no** sobrescribe. `normalizeSession` expone `revision`.
+- **Serialización en el cliente:** los guardados de una misma sesión ya no salen en paralelo; si hay uno en curso se conserva sólo la última edición pendiente y se envía al terminar, con la revisión fresca devuelta por el guardado anterior. Así el último guardado gana también en la base, no sólo en la interfaz.
+- **Protección de formulario sucio:** una respuesta tardía sólo redibuja la modal si sigue mostrando esa sesión y no está en modo edición, de modo que no cierra ni descarta una edición reabierta con cambios sin guardar.
+- **Conflicto entre pestañas:** el cliente adopta la versión del servidor y avisa; nunca pisa el cambio ajeno.
+
+### Prioridad 2 — contrato estricto
+
+- **Rechazo de arrays/objetos antes de coercionar:** nuevo middleware `validateRawSessionTypes` corre antes de `normalizeSessionInput` (que coercionaba `["individual"]` → `"individual"` por acceso de clave). IDs y textos deben ser strings (id de paciente además admite número), duración y ánimo enteros JSON reales, seguimiento booleano real. Un `patientId` objeto da `400`, nunca `500`.
+- **Fecha de calendario real** (rechaza `2026-02-31`), tipos/modalidades por lista, con `typeof` estricto en vez de coerción de express-validator.
+- **`inputType`, `rawTranscript` y `audioDurationSeconds` validados en POST.**
+- La misma matriz adversaria (34 casos, incluidos arrays y objetos) se aplica **por caso** a POST y PATCH; se verifica que ningún campo —incluida medicación y `revision`— cambie y que ninguna sesión se cree.
+
+### Prioridad 3 — UX y documentación
+
+- La notificación de alta de paciente usa `escapeHtml`: muestra `Paciente <Equipo>` literal.
+- `HANDOFF.md` y `AUDIO_PROVIDER_BENCHMARK.md` actualizados (hito, cifras reales, CI, cleanup de 3 s, portabilidad honesta del corpus TTS y del runner de navegador).
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **108/108** de edición de sesión, salida con código 0. Incluye migración `007` y la columna `revision`.
+- `npm run test:session-edit:browser`: **46/46** en Chromium real, con las pruebas deterministas de concurrencia: A-v2 sobre A-v1 demorada, **A-v2 con solicitudes reordenadas (la primera llega tarde al servidor)**, `409` entre clientes sin sobrescribir, y formulario sucio preservado.
+- `npm run lint`: aprobado. `git diff --check`: limpio. `npm audit`: 0 vulnerabilidades.
+- No se ejecutó Gemini real: sigue sin credencial y el proveedor por defecto continúa `fake`.
+
 ## 2026-07-16 — Segunda auditoría de edición + integración de Gemini
 
 ### Objetivo

@@ -245,17 +245,25 @@ async function main() {
       return route.fulfill({ status: 200, contentType: 'application/javascript', body: '' });
     });
 
-    // Track PATCH requests and optionally delay one, for the race test.
+    // Track PATCH requests and optionally delay one, for the concurrency tests.
     let patchCount = 0;
-    let delayPatchForId = null;
+    let delayResponseForId = null; // server persists now; response held
+    let holdRequestForId = null; // request reaches the server late
     await page.route('**/api/sessions/*', async (route) => {
       const req = route.request();
       if (req.method() === 'PATCH') {
         patchCount += 1;
-        if (delayPatchForId && req.url().endsWith(`/api/sessions/${delayPatchForId}`)) {
-          delayPatchForId = null;
-          // Let the server persist immediately (preserving write order), then
-          // hold only the *response* so a later save can land in between.
+        const url = req.url();
+        if (holdRequestForId && url.endsWith(`/api/sessions/${holdRequestForId}`)) {
+          holdRequestForId = null;
+          // Hold the request so a later save can be confirmed before this one
+          // even reaches the server (proves ordering, not just response timing).
+          await new Promise((r) => setTimeout(r, 1500));
+          return route.continue();
+        }
+        if (delayResponseForId && url.endsWith(`/api/sessions/${delayResponseForId}`)) {
+          delayResponseForId = null;
+          // Server persists immediately; only the response is held.
           const response = await route.fetch();
           await new Promise((r) => setTimeout(r, 1500));
           return route.fulfill({ response });
@@ -292,6 +300,28 @@ async function main() {
     };
     const bodyText = () => page.evaluate(() => document.querySelector('#sessionDetailBody').textContent);
     const titleText = () => page.evaluate(() => document.querySelector('#sessionDetailTitle').textContent);
+    // Click save and wait for the resulting PATCH to complete (the UI closes the
+    // form optimistically, so server state must be awaited separately).
+    const saveEdit = async (id) => {
+      const [resp] = await Promise.all([
+        page.waitForResponse(
+          (r) => r.request().method() === 'PATCH' && r.url().includes(`/api/sessions/${id}`),
+          { timeout: 8000 }
+        ),
+        page.click('#saveSessionEditBtn'),
+      ]);
+      return resp;
+    };
+    const getSessionEventually = async (id, predicate, timeoutMs = 6000) => {
+      const start = Date.now();
+      let last = null;
+      while (Date.now() - start < timeoutMs) {
+        last = await getSession(id);
+        if (last && predicate(last)) return last;
+        await page.waitForTimeout(150);
+      }
+      return last;
+    };
 
     // ---- 1. Full edit through the UI persists across a reload ----
     console.log('\n1️⃣  Full edit persists across a real reload');
@@ -304,13 +334,8 @@ async function main() {
     await page.selectOption('#editSessionMood', '5');
     await page.check('#editSessionRequiresFollowUp');
     await page.fill('#editSessionMedication', 'Sertralina 50mg');
-    await page.click('#saveSessionEditBtn');
-    await page.waitForFunction(
-      () => document.querySelector('#sessionEditForm') === null &&
-            /A1 EDITADA/.test(document.querySelector('#sessionDetailBody')?.textContent || ''),
-      { timeout: 8000 }
-    );
-    const persisted = await getSession(a1);
+    await saveEdit(a1);
+    const persisted = await getSessionEventually(a1, (s) => s.cleanNote === 'A1 EDITADA');
     test('server has edited note', persisted.cleanNote === 'A1 EDITADA');
     test('server has edited duration', persisted.durationMinutes === 60);
     test('server has edited type', persisted.sessionType === 'couple');
@@ -329,12 +354,8 @@ async function main() {
     await openDetail(a1);
     await enterEdit();
     await page.fill('#editSessionMedication', '');
-    await page.click('#saveSessionEditBtn');
-    await page.waitForFunction(
-      () => document.querySelector('#sessionEditForm') === null,
-      { timeout: 8000 }
-    );
-    const clearedServer = await getSession(a1);
+    await saveEdit(a1);
+    const clearedServer = await getSessionEventually(a1, (s) => s.medicationNotes === null);
     test('medication cleared to null on server', clearedServer.medicationNotes === null);
     const afterClear = await bodyText();
     test('medication no longer shown in ficha', !/Sertralina/.test(afterClear));
@@ -373,7 +394,7 @@ async function main() {
     await openDetail(a2);
     await enterEdit();
     await page.fill('#editSessionContent', 'A2-LATE');
-    delayPatchForId = a2; // the next PATCH to a2 will be held ~1.5s
+    delayResponseForId = a2; // the next PATCH to a2 will have its response held ~1.5s
     await page.click('#saveSessionEditBtn');
     await page.waitForTimeout(200); // let the request start and be delayed
     await openDetail(b1); // navigate to B while A is still in flight
@@ -383,7 +404,7 @@ async function main() {
     test('modal still shows session B title', /Bruno Beta/.test(raceTitle));
     test('modal still shows session B body', /Nota de Bruno/.test(raceBody));
     test('late A response did not leak into B body', !/A2-LATE/.test(raceBody));
-    const a2Saved = await getSession(a2);
+    const a2Saved = await getSessionEventually(a2, (s) => s.cleanNote === 'A2-LATE');
     test('A save still persisted on the server', a2Saved.cleanNote === 'A2-LATE');
     await closeModal();
 
@@ -392,22 +413,95 @@ async function main() {
     await openDetail(a1);
     await enterEdit();
     await page.fill('#editSessionContent', 'A1-v1');
-    delayPatchForId = a1; // server persists v1 now, but its response is held ~1.5s
-    await page.click('#saveSessionEditBtn');
-    await page.waitForTimeout(300); // let v1 reach and persist on the server
+    delayResponseForId = a1; // server persists v1 now, but its response is held ~1.5s
+    await page.click('#saveSessionEditBtn'); // optimistic close, v1 in flight
+    await page.waitForTimeout(300);
     await openDetail(a1); // reopen the SAME session while v1's response is held
     await enterEdit();
     await page.fill('#editSessionContent', 'A1-v2');
-    await page.click('#saveSessionEditBtn');
-    await page.waitForFunction(
-      () => document.querySelector('#sessionEditForm') === null,
-      { timeout: 8000 }
-    );
-    await page.waitForTimeout(1800); // let v1's delayed response arrive and be ignored
+    await page.click('#saveSessionEditBtn'); // v2 queued behind v1 (serialized)
+    const aaDb = await getSessionEventually(a1, (s) => s.cleanNote === 'A1-v2', 8000);
+    test('DB keeps A-v2 after the late A-v1 response', aaDb.cleanNote === 'A1-v2');
+    await page.waitForTimeout(400); // let the settle re-render the modal
     const aaBody = await bodyText();
     test('UI shows A-v2 after the late A-v1 response', /A1-v2/.test(aaBody) && !/A1-v1/.test(aaBody));
-    const aaDb = await getSession(a1);
-    test('DB keeps A-v2 after the late A-v1 response', aaDb.cleanNote === 'A1-v2');
+    await closeModal();
+
+    // ---- 5d. Reordered requests: v2 confirmed before v1 reaches the server ----
+    console.log('\n5️⃣d Second save confirmed before the first reaches the server → v2 wins');
+    await openDetail(a1);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'REQ-v1');
+    holdRequestForId = a1; // v1's request is held before it reaches the server
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(300);
+    await openDetail(a1);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'REQ-v2'); // confirmed while v1 hasn't hit server
+    await page.click('#saveSessionEditBtn');
+    const reqDb = await getSessionEventually(a1, (s) => s.cleanNote === 'REQ-v2', 8000);
+    test('DB keeps v2 when the first request is delayed to the server', reqDb.cleanNote === 'REQ-v2');
+    await page.waitForTimeout(400);
+    const reqBody = await bodyText();
+    test('UI keeps v2 with reordered requests', /REQ-v2/.test(reqBody) && !/REQ-v1/.test(reqBody));
+    await closeModal();
+
+    // ---- 5e. Concurrent edit from another client → 409, no silent overwrite ----
+    console.log('\n5️⃣e Concurrent edit from another client returns 409 and is not overwritten');
+    // Reload so appData holds the server-fresh revision for a1.
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    const beforeConflict = await getSession(a1);
+    await openDetail(a1);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'MY EDIT');
+    // Another client edits a1 first, bumping its revision.
+    const otherPatch = await fetch(`${base}/api/sessions/${a1}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'If-Match': String(beforeConflict.revision),
+      },
+      body: JSON.stringify({ cleanNote: 'OTHER TAB' }),
+    });
+    test('other client edit succeeds (200)', otherPatch.status === 200);
+    // Our save is based on the now-stale revision → must 409.
+    const [conflictResp] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.request().method() === 'PATCH' && r.url().includes(`/api/sessions/${a1}`),
+        { timeout: 8000 }
+      ),
+      page.click('#saveSessionEditBtn'),
+    ]);
+    test('stale save is rejected with 409', conflictResp.status() === 409);
+    const conflictDb = await getSession(a1);
+    test('conflicting save did not overwrite the other client', conflictDb.cleanNote === 'OTHER TAB');
+    await page.waitForTimeout(400);
+    const conflictBody = await bodyText();
+    test('UI adopts the other client version after conflict', /OTHER TAB/.test(conflictBody) && !/MY EDIT/.test(conflictBody));
+    await closeModal();
+
+    // ---- 5f. A late response must not close a reopened dirty edit ----
+    console.log('\n5️⃣f Late response does not discard a reopened unsaved edit');
+    await openDetail(a2);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'DIRTY-SAVED');
+    delayResponseForId = a2; // hold the save response
+    await page.click('#saveSessionEditBtn'); // optimistic close, response held
+    await page.waitForTimeout(300);
+    await openDetail(a2);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'DIRTY-UNSAVED'); // dirty, not saved
+    await page.waitForTimeout(1600); // let the held response arrive
+    const dirtyStillOpen = await page.locator('#sessionEditForm').count();
+    const dirtyValue = await page.evaluate(
+      () => document.querySelector('#editSessionContent')?.value
+    );
+    test('dirty edit form is still open after the late response', dirtyStillOpen === 1);
+    test('unsaved changes are preserved', dirtyValue === 'DIRTY-UNSAVED');
+    // Cancel out of the dirty edit without saving.
+    await page.click('#sessionDetailFooter .btn-secondary');
     await closeModal();
 
     // ---- 5c. Names and notes render literally in the session list ----
@@ -445,11 +539,8 @@ async function main() {
     await openDetail(a1);
     await enterEdit();
     await page.fill('#editSessionContent', 'A1 con filtro');
-    await page.click('#saveSessionEditBtn');
-    await page.waitForFunction(
-      () => document.querySelector('#sessionEditForm') === null,
-      { timeout: 8000 }
-    );
+    await saveEdit(a1);
+    await getSessionEventually(a1, (s) => s.cleanNote === 'A1 con filtro');
     await closeModal();
     const filterStillSet = await page.evaluate(() => document.querySelector('#sessionPatientFilter').value);
     const cardsAfter = await page.locator('#sessionsList .session-card').count();
@@ -467,11 +558,8 @@ async function main() {
     await openDetail(dNew);
     await enterEdit();
     await page.fill('#editSessionContent', 'Delia nueva editada');
-    await page.click('#saveSessionEditBtn');
-    await page.waitForFunction(
-      () => document.querySelector('#sessionEditForm') === null,
-      { timeout: 8000 }
-    );
+    await saveEdit(dNew);
+    await getSessionEventually(dNew, (s) => s.cleanNote === 'Delia nueva editada');
     await closeModal();
     const dateFilterKept = await page.evaluate(() => ({
       patient: document.querySelector('#sessionPatientFilter').value,
