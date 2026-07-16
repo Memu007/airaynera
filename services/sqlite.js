@@ -337,7 +337,15 @@ function updateSession(userId, id, changes) {
     ? changes.durationMinutes
     : (changes.duracion !== undefined ? changes.duracion : current.duracion);
   const durationMinutes = durationValue == null ? null : Number(durationValue);
-  const medicationNotes = String(changes.medicationNotes ?? changes.medication_notes ?? current.medication_notes ?? '');
+  // Distinguish "not provided" (keep current) from an explicit clear (persist NULL).
+  let medicationValue;
+  if (changes.medicationNotes !== undefined) medicationValue = changes.medicationNotes;
+  else if (changes.medication_notes !== undefined) medicationValue = changes.medication_notes;
+  else medicationValue = current.medication_notes;
+  const medicationNotes =
+    medicationValue == null || String(medicationValue).trim() === ''
+      ? null
+      : String(medicationValue);
   const moodValue = changes.moodAssessment !== undefined
     ? changes.moodAssessment
     : (changes.mood_assessment !== undefined ? changes.mood_assessment : current.mood_assessment);

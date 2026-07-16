@@ -520,7 +520,19 @@ app.post('/api/sessions',
     }
 });
 
-app.patch('/api/sessions/:id', authMiddleware, normalizeSessionInput, (req, res) => {
+app.patch('/api/sessions/:id',
+    authMiddleware,
+    normalizeSessionInput,
+    body('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('La fecha clínica debe tener formato YYYY-MM-DD'),
+    body('sessionType').optional().isIn(['individual', 'group', 'family', 'couple', 'other']).withMessage('Tipo de sesión inválido'),
+    body('careModality').optional().isIn(['inPerson', 'video', 'phone', 'unspecified']).withMessage('Modalidad inválida'),
+    body('durationMinutes').optional({ nullable: true }).isInt({ min: 1, max: 480 }).withMessage('La duración debe ser un entero entre 1 y 480'),
+    body('moodAssessment').optional({ nullable: true }).isInt({ min: 1, max: 5 }).withMessage('El ánimo debe ser un entero entre 1 y 5'),
+    body('cleanNote').optional().isString().isLength({ max: 10000 }).withMessage('La nota supera el máximo permitido'),
+    body('medicationNotes').optional({ nullable: true }).isString().isLength({ max: 5000 }).withMessage('La medicación supera el máximo permitido'),
+    body('requiresFollowUp').optional().custom((value) => typeof value === 'boolean').withMessage('El seguimiento debe ser un booleano'),
+    handleValidationErrors,
+    (req, res) => {
     try {
         const changes = { ...req.body };
         if (changes.patientId !== undefined) changes.pacienteId = changes.patientId;

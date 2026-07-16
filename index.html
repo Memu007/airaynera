@@ -6015,12 +6015,14 @@
         const session = appData.sessions.find((s) => s.id === sessionId);
         if (!session) return;
         currentSessionDetailId = sessionId;
-        $("#sessionDetailTitle").text(`Sesión de ${session.patientName}`);
         renderSessionDetailView(session);
         $("#sessionDetailModal").modal("show");
       }
 
       function renderSessionDetailView(session) {
+        // Title and body are rendered together so they can never belong to
+        // different sessions (guards against a late response mismatching them).
+        $("#sessionDetailTitle").text(`Sesión de ${session.patientName}`);
         const medicationHTML = session.medicationNotes
           ? `<h6><i class="fas fa-pills mr-2 text-primary"></i>Medicación</h6><p class="session-detail-medication"></p><hr>`
           : "";
@@ -6088,13 +6090,11 @@
             .join("");
 
         $("#sessionDetailBody").html(`
-          <form id="sessionEditForm" novalidate>
-            <p class="text-muted mb-3"><i class="fas fa-user mr-1"></i>Paciente: <strong>${
-              session.patientName
-            }</strong></p>
+          <form id="sessionEditForm">
+            <p class="text-muted mb-3"><i class="fas fa-user mr-1"></i>Paciente: <strong id="editSessionPatientName"></strong></p>
             <div class="form-row">
               <div class="form-group col-md-6">
-                <label for="editSessionClinicalDate">Fecha clínica</label>
+                <label for="editSessionClinicalDate">Fecha clínica <span class="text-danger" aria-hidden="true">*</span></label>
                 <input type="date" class="form-control" id="editSessionClinicalDate" required />
               </div>
               <div class="form-group col-md-6">
@@ -6108,7 +6108,7 @@
             <div class="form-row">
               <div class="form-group col-md-6">
                 <label for="editSessionDurationMinutes">Duración clínica (minutos)</label>
-                <input type="number" class="form-control" id="editSessionDurationMinutes" min="1" max="480" step="1" />
+                <input type="text" class="form-control" id="editSessionDurationMinutes" inputmode="numeric" autocomplete="off" placeholder="Ej: 45" />
               </div>
               <div class="form-group col-md-6">
                 <label for="editSessionCareModality">Modalidad</label>
@@ -6119,7 +6119,7 @@
               </div>
             </div>
             <div class="form-group">
-              <label for="editSessionContent">Contenido de la sesión</label>
+              <label for="editSessionContent">Contenido de la sesión <span class="text-danger" aria-hidden="true">*</span></label>
               <textarea class="form-control" id="editSessionContent" rows="6" required></textarea>
             </div>
             <div class="form-group">
@@ -6147,7 +6147,9 @@
           </form>
         `);
 
-        // Populate values through the DOM API so note text is never interpreted as HTML.
+        // Populate values through the DOM API so patient name and note text are
+        // never interpreted as HTML.
+        $("#editSessionPatientName").text(session.patientName || "Paciente");
         $("#editSessionClinicalDate").val(session.clinicalDate || "");
         $("#editSessionDurationMinutes").val(session.durationMinutes ?? "");
         $("#editSessionContent").val(session.cleanNote || "");
@@ -6155,9 +6157,12 @@
         $("#editSessionMood").val(session.moodAssessment == null ? "" : String(session.moodAssessment));
         $("#editSessionRequiresFollowUp").prop("checked", Boolean(session.requiresFollowUp));
 
+        // Submit-driven so validation is consistent with the new-note form.
+        $("#sessionEditForm").on("submit", saveSessionEdit);
+
         $("#sessionDetailFooter").html(`
           <button type="button" class="btn btn-secondary" onclick="cancelSessionEdit()">Cancelar</button>
-          <button type="button" class="btn btn-success" id="saveSessionEditBtn" onclick="saveSessionEdit()">
+          <button type="submit" form="sessionEditForm" class="btn btn-success" id="saveSessionEditBtn">
             💾 Guardar cambios
           </button>
         `);
@@ -6168,66 +6173,111 @@
         if (session) renderSessionDetailView(session);
       }
 
-      function saveSessionEdit() {
+      // Re-render the sessions list using the currently selected patient/date
+      // filters so saving an edit never resets them.
+      function renderSessionsPreservingFilters() {
+        if ($("#sessionPatientFilter").length) {
+          applySessionFilters();
+        }
+      }
+
+      function saveSessionEdit(event) {
+        if (event) event.preventDefault();
         const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
         if (!session) return;
 
-        const cleanNote = $("#editSessionContent").val().trim();
-        const durationRaw = $("#editSessionDurationMinutes").val().trim();
-        const durationMinutes = durationRaw === "" ? null : Number.parseInt(durationRaw, 10);
+        const cleanNote = ($("#editSessionContent").val() || "").trim();
+        const clinicalDate = ($("#editSessionClinicalDate").val() || "").trim();
+        const durationRaw = ($("#editSessionDurationMinutes").val() || "").trim();
         const moodRaw = $("#editSessionMood").val();
 
+        // Empty date must fail loudly instead of silently keeping the old one.
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(clinicalDate)) {
+          notificaciones.advertencia(
+            "Fecha requerida",
+            "Elegí una fecha clínica válida; no puede quedar vacía."
+          );
+          return;
+        }
         if (!cleanNote) {
           notificaciones.advertencia("Contenido requerido", "La nota clínica no puede quedar vacía.");
           return;
         }
-        if (durationRaw !== "" && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 480)) {
-          notificaciones.advertencia("Duración inválida", "La duración clínica debe estar entre 1 y 480 minutos.");
-          return;
+        // Duration is optional, but if present it must be a whole number of
+        // minutes: reject decimals ("45.9") and exponential notation ("4e2").
+        let durationMinutes = null;
+        if (durationRaw !== "") {
+          if (!/^\d+$/.test(durationRaw)) {
+            notificaciones.advertencia(
+              "Duración inválida",
+              "La duración debe ser un número entero de minutos, sin decimales."
+            );
+            return;
+          }
+          durationMinutes = Number.parseInt(durationRaw, 10);
+          if (durationMinutes < 1 || durationMinutes > 480) {
+            notificaciones.advertencia(
+              "Duración fuera de rango",
+              "La duración clínica debe estar entre 1 y 480 minutos."
+            );
+            return;
+          }
         }
 
         const payload = {
-          clinicalDate: $("#editSessionClinicalDate").val() || session.clinicalDate,
+          clinicalDate,
           sessionType: $("#editSessionType").val(),
           durationMinutes,
           careModality: $("#editSessionCareModality").val(),
           cleanNote,
-          medicationNotes: $("#editSessionMedication").val().trim() || null,
+          medicationNotes: ($("#editSessionMedication").val() || "").trim() || null,
           moodAssessment: moodRaw === "" ? null : Number.parseInt(moodRaw, 10),
           requiresFollowUp: $("#editSessionRequiresFollowUp").is(":checked"),
         };
 
         const token = localStorage.getItem("authToken");
+        const targetId = session.id;
         const $btn = $("#saveSessionEditBtn");
         const originalText = $btn.html();
         $btn.html('<i class="fas fa-spinner fa-spin"></i> Guardando...').prop("disabled", true);
 
         $.ajax({
-          url: `/api/sessions/${session.id}`,
+          url: `/api/sessions/${targetId}`,
           method: "PATCH",
           headers: { Authorization: `Bearer ${token}` },
           contentType: "application/json",
           data: JSON.stringify(payload),
           success: function (updated) {
-            const index = appData.sessions.findIndex((s) => s.id === session.id);
-            if (index !== -1) {
+            const idx = appData.sessions.findIndex((s) => s.id === targetId);
+            if (idx !== -1) {
               // Preserve patientName, which the list endpoint resolves via relation.
-              appData.sessions[index] = {
-                ...appData.sessions[index],
+              appData.sessions[idx] = {
+                ...appData.sessions[idx],
                 ...updated,
-                patientName: updated.patientName || appData.sessions[index].patientName,
+                patientName: updated.patientName || appData.sessions[idx].patientName,
               };
             }
-            currentSessionDetailId = session.id;
-            renderSessionDetailView(appData.sessions[index] || updated);
+            // Only touch the modal if it is still showing the session we saved,
+            // so a late response for A cannot overwrite an open session B.
+            const stillShowing =
+              currentSessionDetailId === targetId && $("#sessionDetailModal").hasClass("show");
+            if (stillShowing && idx !== -1) {
+              renderSessionDetailView(appData.sessions[idx]);
+            }
             refreshDashboardViews();
-            loadSessionsData();
+            renderSessionsPreservingFilters();
             notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
           },
           error: function (xhr) {
-            $btn.html(originalText).prop("disabled", false);
+            // Restore the button only if this same edit form is still on screen.
+            if (currentSessionDetailId === targetId && document.getElementById("saveSessionEditBtn")) {
+              $btn.html(originalText).prop("disabled", false);
+            }
             const msg =
-              xhr.responseJSON?.message || xhr.responseJSON?.error || "No se pudo guardar la sesión.";
+              xhr.responseJSON?.details?.[0]?.msg ||
+              xhr.responseJSON?.message ||
+              xhr.responseJSON?.error ||
+              "No se pudo guardar la sesión.";
             notificaciones.error("Error", msg);
           },
         });
