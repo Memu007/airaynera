@@ -129,6 +129,8 @@ async function main() {
     token = reg.data.token;
     const patient = await api('POST', '/api/patients', { name: 'Paciente Uno', dni: '40555666' });
     const patientId = String(patient.data.id);
+    const otherPatient = await api('POST', '/api/patients', { name: 'Paciente Dos', dni: '40777888' });
+    const otherPatientId = String(otherPatient.data.id);
 
     console.log('\n1️⃣  Full edit persists and survives reload');
     {
@@ -202,6 +204,7 @@ async function main() {
 
       const invalidBodies = [
         ['invalid sessionType', { sessionType: 'therapy' }],
+        ['null sessionType', { sessionType: null }],
         ['invalid careModality', { careModality: 'telepathy' }],
         ['mood above range', { moodAssessment: 9 }],
         ['mood below range', { moodAssessment: 0 }],
@@ -210,9 +213,14 @@ async function main() {
         ['duration above range', { durationMinutes: 500 }],
         ['duration zero', { durationMinutes: 0 }],
         ['malformed date', { clinicalDate: '2026/07/10' }],
+        ['literal not-a-date', { clinicalDate: 'not-a-date' }],
+        ['impossible calendar date', { clinicalDate: '2026-02-31' }],
+        ['string false followup', { requiresFollowUp: 'false' }],
         ['non-boolean followup', { requiresFollowUp: 'yes' }],
         ['numeric followup', { requiresFollowUp: 1 }],
         ['oversized note', { cleanNote: 'x'.repeat(10001) }],
+        ['non-string note', { cleanNote: false }],
+        ['oversized medication', { medicationNotes: 'x'.repeat(5001) }],
       ];
 
       let all400 = true;
@@ -287,6 +295,34 @@ async function main() {
       const after = await getSession(id);
       test('duration cleared to null', after.durationMinutes === null);
       test('mood cleared to null', after.moodAssessment === null);
+    }
+
+    console.log('\n6️⃣  Patient cannot be reassigned through PATCH');
+    {
+      const created = await api('POST', '/api/sessions', {
+        patientId,
+        cleanNote: 'Pertenece al paciente uno.',
+        durationMinutes: 30,
+        careModality: 'inPerson',
+        clinicalDate: '2026-07-10',
+      });
+      const id = created.data.id;
+
+      const byCamel = await api('PATCH', `/api/sessions/${id}`, {
+        patientId: otherPatientId,
+        cleanNote: 'Intento de robo camelCase.',
+      });
+      test('reassign via patientId is rejected (400)', byCamel.status === 400);
+
+      const bySnake = await api('PATCH', `/api/sessions/${id}`, {
+        pacienteId: otherPatientId,
+        cleanNote: 'Intento de robo snake.',
+      });
+      test('reassign via pacienteId is rejected (400)', bySnake.status === 400);
+
+      const after = await getSession(id);
+      test('session still belongs to the original patient', after.patientId === patientId);
+      test('rejected reassign did not change the note', after.cleanNote === 'Pertenece al paciente uno.');
     }
 
     console.log(`\n════════════════════════════════════════`);

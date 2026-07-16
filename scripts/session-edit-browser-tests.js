@@ -45,25 +45,64 @@ function test(name, condition) {
   }
 }
 
-function resolveChromium() {
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
+// Resolve a browser across environments (Linux CI, macOS dev, custom paths)
+// so the suite is reproducible on a clean checkout, not just this container.
+function chromiumExecutableCandidates() {
   const candidates = [];
+  const explicit = process.env.PLAYWRIGHT_CHROMIUM_PATH || process.env.CHROMIUM_PATH;
+  if (explicit) candidates.push(explicit);
+
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
   try {
     for (const dir of fs.readdirSync(root)) {
-      if (dir.startsWith('chromium-')) {
-        candidates.push(path.join(root, dir, 'chrome-linux', 'chrome'));
-      }
+      if (!dir.startsWith('chromium')) continue;
+      candidates.push(
+        path.join(root, dir, 'chrome-linux', 'chrome'),
+        path.join(root, dir, 'chrome-linux', 'headless_shell'),
+        path.join(root, dir, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium')
+      );
     }
   } catch (_) {
-    // no browsers dir
+    // no managed browsers dir
   }
-  return candidates.find((p) => {
+
+  candidates.push(
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium'
+  );
+  return candidates;
+}
+
+async function launchBrowser() {
+  const executablePath = chromiumExecutableCandidates().find((p) => {
     try {
-      return fs.existsSync(p);
+      return p && fs.existsSync(p);
     } catch (_) {
       return false;
     }
   });
+  if (executablePath) {
+    console.log(`Using browser binary: ${executablePath}`);
+    return chromium.launch({ executablePath });
+  }
+  // Fall back to an installed browser via channel (e.g. Chrome on CI/macOS).
+  for (const channel of ['chrome', 'chromium', 'msedge']) {
+    try {
+      const b = await chromium.launch({ channel });
+      console.log(`Using installed browser channel: ${channel}`);
+      return b;
+    } catch (_) {
+      // try next channel
+    }
+  }
+  throw new Error(
+    'No Chromium/Chrome found. Set PLAYWRIGHT_CHROMIUM_PATH to a browser binary, ' +
+      'install Google Chrome, or provide a Playwright browser under PLAYWRIGHT_BROWSERS_PATH.'
+  );
 }
 
 function findAvailablePort() {
@@ -112,13 +151,6 @@ const VENDOR_BY_NAME = {
 };
 
 async function main() {
-  const executablePath = resolveChromium();
-  if (!executablePath) {
-    console.error('No Chromium binary found (looked under PLAYWRIGHT_BROWSERS_PATH).');
-    console.error('Install a browser or set PLAYWRIGHT_BROWSERS_PATH, then retry.');
-    process.exit(1);
-  }
-
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aira-session-edit-browser-'));
   const port = await findAvailablePort();
   const base = `http://127.0.0.1:${port}`;
@@ -173,8 +205,9 @@ async function main() {
       .data.token;
     const pAna = String((await api('POST', '/api/patients', { name: 'Ana Alfa', dni: '40000001' })).data.id);
     const pBruno = String((await api('POST', '/api/patients', { name: 'Bruno Beta', dni: '40000002' })).data.id);
-    const htmlName = '<b>Bold</b> Paciente';
+    const htmlName = 'Paciente <Equipo>';
     const pHtml = String((await api('POST', '/api/patients', { name: htmlName, dni: '40000003' })).data.id);
+    const pDate = String((await api('POST', '/api/patients', { name: 'Delia Delta', dni: '40000004' })).data.id);
 
     const mkSession = async (patientId, extra) =>
       String((await api('POST', '/api/sessions', {
@@ -186,13 +219,16 @@ async function main() {
         ...extra,
       })).data.id);
 
+    const htmlNote = 'Nota <script>peligrosa</script> clínica';
     const a1 = await mkSession(pAna, { cleanNote: 'Nota A uno', moodAssessment: 3, medicationNotes: 'Clonazepam 0.5mg' });
     const a2 = await mkSession(pAna, { cleanNote: 'Nota A dos', moodAssessment: 4, durationMinutes: 30 });
     const b1 = await mkSession(pBruno, { cleanNote: 'Nota de Bruno', moodAssessment: 5, durationMinutes: 60 });
-    const h1 = await mkSession(pHtml, { cleanNote: 'Nota HTML' });
+    const h1 = await mkSession(pHtml, { cleanNote: htmlNote });
+    const dOld = await mkSession(pDate, { cleanNote: 'Sesión vieja de Delia', clinicalDate: '2026-01-05' });
+    const dNew = await mkSession(pDate, { cleanNote: 'Sesión nueva de Delia', clinicalDate: '2026-07-10' });
 
     // ---- Launch the browser ----
-    browser = await chromium.launch({ executablePath });
+    browser = await launchBrowser();
     const page = await browser.newPage();
 
     // Serve CDN scripts from local vendor copies (sandboxed browser, no egress).
@@ -218,7 +254,11 @@ async function main() {
         patchCount += 1;
         if (delayPatchForId && req.url().endsWith(`/api/sessions/${delayPatchForId}`)) {
           delayPatchForId = null;
+          // Let the server persist immediately (preserving write order), then
+          // hold only the *response* so a later save can land in between.
+          const response = await route.fetch();
           await new Promise((r) => setTimeout(r, 1500));
+          return route.fulfill({ response });
         }
       }
       return route.continue();
@@ -347,6 +387,53 @@ async function main() {
     test('A save still persisted on the server', a2Saved.cleanNote === 'A2-LATE');
     await closeModal();
 
+    // ---- 5b. A newer save (A-v2) wins over a delayed older save (A-v1) ----
+    console.log('\n5️⃣b Newer save on the same session wins over a delayed older one');
+    await openDetail(a1);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'A1-v1');
+    delayPatchForId = a1; // server persists v1 now, but its response is held ~1.5s
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(300); // let v1 reach and persist on the server
+    await openDetail(a1); // reopen the SAME session while v1's response is held
+    await enterEdit();
+    await page.fill('#editSessionContent', 'A1-v2');
+    await page.click('#saveSessionEditBtn');
+    await page.waitForFunction(
+      () => document.querySelector('#sessionEditForm') === null,
+      { timeout: 8000 }
+    );
+    await page.waitForTimeout(1800); // let v1's delayed response arrive and be ignored
+    const aaBody = await bodyText();
+    test('UI shows A-v2 after the late A-v1 response', /A1-v2/.test(aaBody) && !/A1-v1/.test(aaBody));
+    const aaDb = await getSession(a1);
+    test('DB keeps A-v2 after the late A-v1 response', aaDb.cleanNote === 'A1-v2');
+    await closeModal();
+
+    // ---- 5c. Names and notes render literally in the session list ----
+    console.log('\n5️⃣c Session cards render names and notes as text, not HTML');
+    await page.evaluate(() => window.showSection && window.showSection('sessions'));
+    await page.waitForTimeout(200);
+    await page.selectOption('#sessionPatientFilter', pHtml);
+    await page.waitForTimeout(300);
+    const cardProbe = await page.evaluate(() => {
+      const list = document.querySelector('#sessionsList');
+      return {
+        text: list.textContent,
+        injectedTag: !!list.querySelector('script, b, img'),
+      };
+    });
+    test('card shows patient name literally', cardProbe.text.includes('Paciente <Equipo>'));
+    test('card shows clinical note literally', cardProbe.text.includes('Nota <script>peligrosa</script> clínica'));
+    test('no tag injected from name/note in the list', cardProbe.injectedTag === false);
+    // And the dashboard recent list must escape too.
+    await page.evaluate(() => window.showSection && window.showSection('dashboard'));
+    await page.waitForTimeout(300);
+    const dashInjected = await page.evaluate(
+      () => !!document.querySelector('#recentSessionsList script, #recentSessionsList b, #recentSessionsList img')
+    );
+    test('no tag injected from name/note on the dashboard', dashInjected === false);
+
     // ---- 6. Filters survive saving an edit ----
     console.log('\n6️⃣  Patient filter survives an edit save');
     await page.evaluate(() => window.showSection && window.showSection('sessions'));
@@ -368,6 +455,34 @@ async function main() {
     const cardsAfter = await page.locator('#sessionsList .session-card').count();
     test('patient filter still selected after save', filterStillSet === pAna);
     test('list still filtered to Ana after save', cardsAfter === 2);
+
+    // ---- 6b. Date filter survives saving an edit ----
+    console.log('\n6️⃣b Date filter survives an edit save');
+    await page.selectOption('#sessionPatientFilter', pDate);
+    await page.fill('#startDate', '2026-07-01');
+    await page.evaluate(() => window.applySessionFilters && window.applySessionFilters());
+    await page.waitForTimeout(200);
+    const dateCardsBefore = await page.locator('#sessionsList .session-card').count();
+    test('date filter shows only the recent Delia session', dateCardsBefore === 1);
+    await openDetail(dNew);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'Delia nueva editada');
+    await page.click('#saveSessionEditBtn');
+    await page.waitForFunction(
+      () => document.querySelector('#sessionEditForm') === null,
+      { timeout: 8000 }
+    );
+    await closeModal();
+    const dateFilterKept = await page.evaluate(() => ({
+      patient: document.querySelector('#sessionPatientFilter').value,
+      start: document.querySelector('#startDate').value,
+    }));
+    const dateCardsAfter = await page.locator('#sessionsList .session-card').count();
+    test('patient filter kept after date-filtered save', dateFilterKept.patient === pDate);
+    test('start-date filter kept after save', dateFilterKept.start === '2026-07-01');
+    test('date-filtered list still shows one card after save', dateCardsAfter === 1);
+    await page.fill('#startDate', '');
+    await page.evaluate(() => window.applySessionFilters && window.applySessionFilters());
 
     // ---- 7. Session cards open with Enter and Space ----
     console.log('\n7️⃣  Keyboard opens session cards (Enter and Space)');

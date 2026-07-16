@@ -5398,14 +5398,14 @@
                   session.id
                 }')">
                     <div class="patient-avatar mr-3 patient-avatar-small">
-                        ${session.patientName[0]}
+                        ${escapeHtml((session.patientName || "?")[0])}
                     </div>
                     <div class="flex-grow-1">
                         <div class="d-flex align-items-center justify-content-between">
                             <div>
-                                <h6 class="mb-0 font-weight-bold patient-name-heading">${
+                                <h6 class="mb-0 font-weight-bold patient-name-heading">${escapeHtml(
                                   session.patientName
-                                }</h6>
+                                )}</h6>
                                 <div class="session-meta mt-1">
                                     <span><i class="fas fa-calendar-alt mr-1"></i> ${parseClinicalDate(
                                       session.clinicalDate
@@ -5423,7 +5423,7 @@
                                ${followupBadge}
                             </div>
                         </div>
-                        <p class="session-summary text-clamp-3">${session.cleanNote}</p>
+                        <p class="session-summary text-clamp-3">${escapeHtml(session.cleanNote)}</p>
                     </div>
                 </div>`;
           })
@@ -5482,21 +5482,21 @@
                             <div class="d-flex justify-content-between align-items-start">
                                 <div class="d-flex align-items-center mb-3">
                                     <div class="patient-avatar mr-3">${
-                                      patient.name[0]
+                                      escapeHtml((patient.name || "?")[0])
                                     }</div>
                                     <div>
                                         <h5 class="card-title mb-0">${
-                                          patient.name
+                                          escapeHtml(patient.name)
                                         }</h5>
-                                        <small class="text-muted">DNI: ****${patient.dni.slice(
+                                        <small class="text-muted">DNI: ****${escapeHtml(String(patient.dni || "").slice(
                                           -4
-                                        )}</small>
+                                        ))}</small>
                                     </div>
                                 </div>
                                 ${statusBadge}
                             </div>
                             <p class="text-muted"><i class="fas fa-briefcase-medical mr-2"></i> ${
-                              patient.insurance
+                              escapeHtml(patient.insurance)
                             }</p>
                             <div class="mt-auto d-flex justify-content-end">
                                 <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); viewPatientSessions('${
@@ -5630,11 +5630,11 @@
                         <div class="card-body d-flex flex-column">
                             <div class="d-flex align-items-center mb-3">
                                 <div class="patient-avatar mr-3">${
-                                  session.patientName[0]
+                                  escapeHtml((session.patientName || "?")[0])
                                 }</div>
                                 <div class="flex-grow-1">
                                     <h5 class="card-title mb-0 font-weight-bold patient-name-heading">${
-                                      session.patientName
+                                      escapeHtml(session.patientName)
                                     }</h5>
                                     <small class="text-muted">${parseClinicalDate(
                                       session.clinicalDate
@@ -5648,7 +5648,7 @@
               session.source === "whatsapp" ? "Wpp" : "Web"
             }</span>
                             </div>
-                            <p class="card-text text-muted mb-3 flex-grow-1 text-clamp-3">${session.cleanNote}</p>
+                            <p class="card-text text-muted mb-3 flex-grow-1 text-clamp-3">${escapeHtml(session.cleanNote)}</p>
                             <div class="d-flex align-items-center justify-content-between mt-auto">
                                 <div class="text-muted small">
                                     <i class="fas fa-smile mr-1"></i> Estado: ${formatMoodAssessment(
@@ -5719,7 +5719,7 @@
             const patientFilterOptions =
               '<option value="all">Todos los pacientes</option>' +
               appData.patients
-                .map((p) => `<option value="${p.id}">${p.name}</option>`)
+                .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
                 .join("");
             $("#sessionPatientFilter").html(patientFilterOptions);
             renderSessions(
@@ -5976,11 +5976,11 @@
           .map(
             (s) =>
               `<li class="list-group-item d-flex justify-content-between align-items-center"><div><strong>${
-                s.patientName
-              }</strong><small class="d-block text-muted">${s.cleanNote.substring(
+                escapeHtml(s.patientName)
+              }</strong><small class="d-block text-muted">${escapeHtml(String(s.cleanNote || "").substring(
                 0,
                 40
-              )}...</small></div><span class="badge badge-primary badge-pill">${parseClinicalDate(
+              ))}...</small></div><span class="badge badge-primary badge-pill">${parseClinicalDate(
                 s.clinicalDate
               ).toLocaleDateString("es-AR")}</span></li>`
           )
@@ -6009,7 +6009,21 @@
         phone: "Teléfono",
       };
 
+      // Escape user-controlled text before it goes into an HTML string, so a
+      // name or note like "Paciente <Equipo>" renders literally instead of
+      // being parsed as markup.
+      function escapeHtml(value) {
+        return String(value ?? "").replace(
+          /[&<>"']/g,
+          (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch])
+        );
+      }
+
       let currentSessionDetailId = null;
+      // Monotonic save counter per session id: a response is only applied if it
+      // is still the latest save issued for that session, so an older save
+      // (A-v1) cannot overwrite a newer one (A-v2) when it responds late.
+      const sessionSaveSeq = {};
 
       function showSessionDetail(sessionId) {
         const session = appData.sessions.find((s) => s.id === sessionId);
@@ -6237,6 +6251,8 @@
 
         const token = localStorage.getItem("authToken");
         const targetId = session.id;
+        const saveSeq = (sessionSaveSeq[targetId] || 0) + 1;
+        sessionSaveSeq[targetId] = saveSeq;
         const $btn = $("#saveSessionEditBtn");
         const originalText = $btn.html();
         $btn.html('<i class="fas fa-spinner fa-spin"></i> Guardando...').prop("disabled", true);
@@ -6248,6 +6264,8 @@
           contentType: "application/json",
           data: JSON.stringify(payload),
           success: function (updated) {
+            // Ignore a response that a newer save for this session superseded.
+            if (sessionSaveSeq[targetId] !== saveSeq) return;
             const idx = appData.sessions.findIndex((s) => s.id === targetId);
             if (idx !== -1) {
               // Preserve patientName, which the list endpoint resolves via relation.
@@ -6269,6 +6287,8 @@
             notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
           },
           error: function (xhr) {
+            // Ignore a response that a newer save for this session superseded.
+            if (sessionSaveSeq[targetId] !== saveSeq) return;
             // Restore the button only if this same edit form is still on screen.
             if (currentSessionDetailId === targetId && document.getElementById("saveSessionEditBtn")) {
               $btn.html(originalText).prop("disabled", false);
@@ -6295,7 +6315,7 @@
             ? `<span class="badge badge-success">Activo</span>`
             : `<span class="badge badge-secondary">Inactivo</span>`;
 
-        $("#patientDetailTitle").html(`${patient.name} ${statusBadge}`);
+        $("#patientDetailTitle").html(`${escapeHtml(patient.name)} ${statusBadge}`);
         $("#patientDetailBody").html(`
                 <p><strong>DNI:</strong> ${patient.dni}</p>
                 <p><strong>Obra Social:</strong> ${patient.insurance}</p>
@@ -6348,7 +6368,7 @@
       function renderNewSessionPatientOptions(selectedPatientId = "") {
         const patients = activePatients();
         const patientOptions = patients
-          .map((patient) => `<option value="${patient.id}">${patient.name}</option>`)
+          .map((patient) => `<option value="${escapeHtml(patient.id)}">${escapeHtml(patient.name)}</option>`)
           .join("");
         const emptyOption = patients.length
           ? '<option value="">Seleccionar paciente activo</option>'
@@ -6815,7 +6835,7 @@
               if ($("#sessionPatient").length) {
                   console.log("📝 Updating session patient dropdown with active patients");
                   const allPatientOptions = appData.patients
-                    .map((p) => `<option value="${p.id}">${p.name}</option>`)
+                    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
                     .join("");
                   if (!currentWebAudioDraftId && !currentWebAudioUploadController) {
                     renderNewSessionPatientOptions();

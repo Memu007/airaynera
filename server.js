@@ -190,17 +190,28 @@ function normalizeSessionInput(req, res, next) {
   if (input.clinicalDate !== undefined || input.fecha !== undefined) {
     normalized.clinicalDate = firstDefined(input.clinicalDate, input.fecha);
   }
-  if (requestedType !== undefined || isCreate) {
-    const type = requestedType || "individual";
-    normalized.sessionType = SESSION_TYPE_ALIASES[type] || type;
+  // Defaults are only injected when creating. On PATCH the raw value (including
+  // null / false / an invalid type) must survive so the validator can reject it
+  // instead of it being silently coerced into a default.
+  if (requestedType !== undefined) {
+    const aliased = requestedType != null ? SESSION_TYPE_ALIASES[requestedType] : undefined;
+    normalized.sessionType = aliased || requestedType;
+  } else if (isCreate) {
+    normalized.sessionType = "individual";
   }
   if (input.durationMinutes !== undefined || input.duracion !== undefined) {
     normalized.durationMinutes = firstDefined(input.durationMinutes, input.duracion);
   }
-  if (input.careModality !== undefined || isCreate) {
-    normalized.careModality = firstDefined(input.careModality, "unspecified");
+  if (input.careModality !== undefined) {
+    normalized.careModality = input.careModality;
+  } else if (isCreate) {
+    normalized.careModality = "unspecified";
   }
-  if (cleanNote !== undefined || isCreate) normalized.cleanNote = cleanNote || "";
+  if (cleanNote !== undefined) {
+    normalized.cleanNote = cleanNote;
+  } else if (isCreate) {
+    normalized.cleanNote = "";
+  }
   if (isCreate && (input.rawTranscript !== undefined || input.transcription !== undefined)) {
     normalized.rawTranscript = firstDefined(input.rawTranscript, input.transcription);
   }
@@ -223,6 +234,54 @@ function normalizeSessionInput(req, res, next) {
     );
   }
   req.body = normalized;
+  next();
+}
+
+// A real calendar date, not just the YYYY-MM-DD shape: rejects 2026-02-31.
+function isRealCalendarDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+// One clinical-field contract shared by POST and PATCH so both reject the same
+// out-of-contract values instead of coercing them. Patient identity and the
+// audio evidence fields are handled per route.
+function clinicalSessionValidators() {
+  return [
+    body("clinicalDate").optional().custom(isRealCalendarDate)
+      .withMessage("La fecha clínica debe existir en el calendario (YYYY-MM-DD)"),
+    body("sessionType").optional().isIn(["individual", "group", "family", "couple", "other"])
+      .withMessage("Tipo de sesión inválido"),
+    body("careModality").optional().isIn(["inPerson", "video", "phone", "unspecified"])
+      .withMessage("Modalidad inválida"),
+    body("durationMinutes").optional({ nullable: true }).isInt({ min: 1, max: 480 })
+      .withMessage("La duración debe ser un entero entre 1 y 480"),
+    body("moodAssessment").optional({ nullable: true }).isInt({ min: 1, max: 5 })
+      .withMessage("El ánimo debe ser un entero entre 1 y 5"),
+    body("cleanNote").optional().isString().withMessage("La nota debe ser texto")
+      .isLength({ max: 10000 }).withMessage("La nota supera el máximo permitido"),
+    body("medicationNotes").optional({ nullable: true }).isString().withMessage("La medicación debe ser texto")
+      .isLength({ max: 5000 }).withMessage("La medicación supera el máximo permitido"),
+    body("requiresFollowUp").optional().custom((value) => typeof value === "boolean")
+      .withMessage("El seguimiento debe ser un booleano"),
+  ];
+}
+
+// A session's patient can never be reassigned through PATCH.
+function rejectPatientReassignment(req, res, next) {
+  const body = req.body || {};
+  if (body.patientId !== undefined || body.pacienteId !== undefined) {
+    return res.status(400).json({
+      error: "PATIENT_REASSIGNMENT_NOT_ALLOWED",
+      message: "No se puede reasignar el paciente de una sesión existente",
+    });
+  }
   next();
 }
 
@@ -498,14 +557,11 @@ app.get('/api/sessions', authMiddleware, (req, res) => {
     }
 });
 
-app.post('/api/sessions', 
+app.post('/api/sessions',
     authMiddleware,
     normalizeSessionInput,
     body('patientId').notEmpty().withMessage('patientId es requerido'),
-    body('sessionType').optional().isString().isIn(['individual', 'group', 'family', 'couple', 'other']),
-    body('durationMinutes').optional().isInt({ min: 1, max: 480 }).withMessage('Duración debe ser 1-480 minutos'),
-    body('cleanNote').optional().isString().isLength({ max: 10000 }),
-    body('moodAssessment').optional().isInt({ min: 1, max: 5 }),
+    ...clinicalSessionValidators(),
     handleValidationErrors,
     (req, res) => {
     try {
@@ -522,20 +578,16 @@ app.post('/api/sessions',
 
 app.patch('/api/sessions/:id',
     authMiddleware,
+    rejectPatientReassignment,
     normalizeSessionInput,
-    body('clinicalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('La fecha clínica debe tener formato YYYY-MM-DD'),
-    body('sessionType').optional().isIn(['individual', 'group', 'family', 'couple', 'other']).withMessage('Tipo de sesión inválido'),
-    body('careModality').optional().isIn(['inPerson', 'video', 'phone', 'unspecified']).withMessage('Modalidad inválida'),
-    body('durationMinutes').optional({ nullable: true }).isInt({ min: 1, max: 480 }).withMessage('La duración debe ser un entero entre 1 y 480'),
-    body('moodAssessment').optional({ nullable: true }).isInt({ min: 1, max: 5 }).withMessage('El ánimo debe ser un entero entre 1 y 5'),
-    body('cleanNote').optional().isString().isLength({ max: 10000 }).withMessage('La nota supera el máximo permitido'),
-    body('medicationNotes').optional({ nullable: true }).isString().isLength({ max: 5000 }).withMessage('La medicación supera el máximo permitido'),
-    body('requiresFollowUp').optional().custom((value) => typeof value === 'boolean').withMessage('El seguimiento debe ser un booleano'),
+    ...clinicalSessionValidators(),
     handleValidationErrors,
     (req, res) => {
     try {
         const changes = { ...req.body };
-        if (changes.patientId !== undefined) changes.pacienteId = changes.patientId;
+        // Patient identity is never mutable through PATCH (guarded above too).
+        delete changes.patientId;
+        delete changes.pacienteId;
         const updated = sql.updateSession(req.user.id, req.params.id, changes);
         if (updated) {
             res.json(normalizeSession(updated));
