@@ -2,6 +2,38 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Endurecimiento de la edición de sesiones
+
+### Objetivo
+
+Cerrar la revisión de la edición de sesiones: el camino feliz funcionaba pero faltaban validación de contrato, borrado de medicación, robustez de formulario, manejo de concurrencia, conservación de filtros, accesibilidad por teclado y pruebas que cubrieran todo esto.
+
+### Trabajo realizado
+
+- **Borrado de medicación:** `services/sqlite.js` (`updateSession`) distinguía mal "campo ausente" de "vaciado explícito" por usar `??`; ahora vaciar la medicación persiste `NULL` y desaparece de la ficha.
+- **Validación del `PATCH /api/sessions/:id`:** se agregó el mismo contrato que el POST —fecha `YYYY-MM-DD`, tipos y modalidades permitidos, duración entera 1–480, ánimo 1–5 o nulo, booleano real para seguimiento y límites de texto—; un cuerpo fuera de contrato devuelve `400` y no persiste.
+- **Formulario de edición:** pasó a guardarse por submit; rechaza duración decimal (`45.9`) y exponencial (`4e2`) en lugar de truncarlas, exige fecha no vacía en vez de conservar la anterior en silencio y valida en el mismo handler.
+- **Carrera A/B:** la respuesta de una edición se vincula al `id` guardado; sólo redibuja la modal si sigue mostrando esa sesión, así una respuesta tardía de A no reemplaza el contenido de una B abierta. Título y cuerpo se renderizan juntos para que nunca queden desalineados.
+- **Filtros:** guardar una edición ya no llama a `loadSessionsData` (que reseteaba el filtro); reaplica los filtros de paciente y fecha vigentes.
+- **Teclado y XSS:** las tarjetas ya abrían con Enter y Espacio (handler delegado); se agregó cobertura. El nombre del paciente en el formulario se inserta con `.text()`, nunca interpolado como HTML.
+
+### Pruebas agregadas (versionadas)
+
+- `scripts/session-edit-tests.js` (headless, dentro de `npm test`): edición completa con persistencia tras recarga, borrado de medicación a `NULL`, doce cuerpos inválidos que devuelven `400` sin persistir, inmutabilidad de `rawTranscript`/`inputType`/`audioDurationSeconds` y limpieza de campos anulables.
+- `scripts/session-edit-browser-tests.js` (Chromium por `playwright-core`, `npm run test:session-edit:browser`, fuera de `npm test` porque necesita navegador y los assets `vendor/`): edición completa con recarga real, borrado de medicación, rechazo de duración decimal/exponencial y de fecha vacía sin enviar PATCH, respuesta tardía de A que no altera la B abierta, conservación de filtros, apertura por teclado y nombre de paciente como texto.
+- Se agregó `playwright-core` como `devDependency`; `npm audit` sigue en 0 vulnerabilidades.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **23/23** de edición de sesión, salida con código 0 (Node.js 22).
+- `npm run test:session-edit:browser`: **28/28** en Chromium real, sin errores de página.
+- `npm run lint` (`check:syntax` + `test:ui-contract`): aprobado; 25 archivos Node y 2 scripts embebidos.
+- `npm audit`: 0 vulnerabilidades.
+
+### Pendiente explícito
+
+- El commit local `536c11c` (arreglo Gemini `user_input`, sus pruebas y el reporte 0/40) **no está publicado ni es alcanzable** desde este entorno. No se reconstruyó ni se fabricó su reporte; queda a la espera de que se empuje al remoto para integrarlo y reconciliar `AUDIO_PROVIDER_BENCHMARK`, `HANDOFF` y `WORKLOG`.
+
 ## 2026-07-16 — Edición visible de sesiones guardadas
 
 ### Objetivo

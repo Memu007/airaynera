@@ -12,6 +12,7 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Último hito funcional: `74a6ba3` (`add gemini audio worker integration`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
 - Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline ya acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite; sigue desactivado por defecto y no se hizo una llamada real porque este entorno no tiene clave. El smoke sintético de 40 WAV quedó generado y validado offline. La batería funcional aprobó 129/129.
+- Pendiente bloqueado: el arreglo de Gemini `user_input` vive en un commit local `536c11c` que **no está publicado** en `Memu007/airaynera` y no es alcanzable desde este entorno (no aparece en ninguna rama, reflog ni objeto suelto). No se reconstruyó ni se inventó su reporte de corrida 0/40. Para integrarlo hay que empujar ese commit al remoto y reconciliar `HANDOFF`, `WORKLOG` y `AUDIO_PROVIDER_BENCHMARK`.
 - Próximo objetivo: configurar `GEMINI_API_KEY` localmente, ejecutar el smoke integrado y conservar el reporte. Después corresponde preparar el corpus humano decisorio y comparar los mismos bytes con otros proveedores antes de aprobar uso clínico. Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
@@ -60,6 +61,11 @@ Registro web
 - La landing distingue funciones disponibles, simuladas y en desarrollo; registro ya no atraviesa un pago ficticio y las operaciones de perfil sin persistencia están desactivadas.
 - Las notas sin evaluación anímica muestran `Sin registrar` en lugar de valores indefinidos.
 - Una sesión guardada se edita desde su ficha: la modal de detalle ofrece **Editar**, precarga los campos clínicos explícitos y persiste con `PATCH /api/sessions/:id`; `rawTranscript`, `inputType` y `audioDurationSeconds` permanecen inmutables porque el formulario no los envía y el normalizador del servidor los ignora en PATCH.
+- El `PATCH /api/sessions/:id` valida el mismo contrato que el POST: fecha `YYYY-MM-DD`, tipos y modalidades permitidos, duración entera de 1 a 480, ánimo 1–5 o nulo, booleano real para seguimiento y límites de texto; un cuerpo fuera de contrato devuelve `400` y no persiste.
+- Vaciar la medicación persiste `NULL` y desaparece de la ficha; `updateSession` distingue "campo ausente" de "vaciado explícito".
+- El formulario de edición usa submit y validación consistente: rechaza duración decimal o exponencial (no la trunca), exige fecha no vacía en lugar de conservar la anterior y valida en el mismo handler.
+- Una respuesta tardía de la sesión A ya no puede sobrescribir una sesión B abierta: la respuesta se vincula al `id` guardado y sólo redibuja la modal si sigue mostrando esa sesión; título y cuerpo se renderizan juntos.
+- Guardar una edición conserva los filtros de paciente y fecha; las tarjetas de sesión abren con Enter y Espacio; el nombre del paciente se muestra como texto, nunca interpolado como HTML en el formulario.
 - Queda pendiente una bandeja para recuperar borradores fuera del modal.
 
 ### WhatsApp
@@ -117,7 +123,9 @@ Registro web
 
 - Las dependencias quedaron instaladas con `npm ci`.
 - `npm test` ahora levanta un servidor y una base SQLite temporales, ejecuta las pruebas y limpia el entorno al terminar.
-- La batería integral actual aprobó 129 de 129 pruebas funcionales con Node.js 20, además de migración, vínculo, conversación, audio sintético y worker de uploads.
+- La batería integral actual aprobó 129/129 pruebas funcionales más 23/23 de edición de sesión (`scripts/session-edit-tests.js`), incluida en `npm test`; el total sale con código 0 en Node.js 22.
+- `scripts/session-edit-tests.js` cubre edición completa con persistencia tras recarga, borrado de medicación a `NULL`, doce cuerpos fuera de contrato que devuelven `400` sin persistir, inmutabilidad de `rawTranscript`/`inputType`/`audioDurationSeconds` y limpieza de campos anulables.
+- `scripts/session-edit-browser-tests.js` (Chromium por `playwright-core`, fuera de `npm test`) aprobó 28/28: edición completa con recarga real, borrado de medicación, rechazo de duración decimal/exponencial y fecha vacía sin enviar PATCH, respuesta tardía de A que no altera la B abierta, conservación de filtros, apertura por teclado (Enter y Espacio) y nombre de paciente renderizado como texto. Sirve los assets CDN desde `vendor/` porque el navegador no tiene salida de red.
 - `scripts/ui-contract-tests.js` verifica los campos clínicos explícitos y que seguimiento no se derive del ánimo.
 - La suite del worker cubre límite streamed, expiración integral, carrera después del snapshot y recuperación desde un segundo proceso real.
 - `scripts/gemini-provider-tests.js` cubre contrato HTTP sin red, estado `ACTIVE`, JSON estructurado, retries seguros, abort, shutdown, heartbeat y fencing contra un resultado asíncrono obsoleto.
