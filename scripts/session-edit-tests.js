@@ -358,6 +358,8 @@ async function main() {
         ['non-integer', 'not-a-number'],
         ['decimal', '1.5'],
         ['negative', '-1'],
+        ['zero', '0'],
+        ['huge/unsafe', '99999999999999999999'],
         ['blank', '   '],
       ]) {
         const bad = await api('PATCH', `/api/sessions/${id}`, { cleanNote: 'x' }, { 'If-Match': value });

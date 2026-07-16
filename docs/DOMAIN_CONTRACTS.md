@@ -81,12 +81,12 @@ El recorrido de texto está implementado en web y WhatsApp simulado. La web acep
 - `revision` es un entero que empieza en `1` y se incrementa en cada edición exitosa. Es la unidad de concurrencia optimista de la sesión.
 - La edición exige la precondición `If-Match: <revision>`:
   - falta la cabecera → `428 REVISION_REQUIRED` y no cambia nada (un cliente viejo o sin cabecera no puede sobrescribir a ciegas);
-  - cabecera presente pero no entera positiva → `400 INVALID_REVISION`;
+  - cabecera presente pero no un entero positivo seguro (`Number.isSafeInteger && > 0`; `0` y números enormes incluidos) → `400 INVALID_REVISION`;
   - revisión distinta de la actual → `409 REVISION_CONFLICT` con el cuerpo `{ error, message, session }` (la sesión vigente), sin sobrescribir.
 - Una edición sin ningún campo editable (`{}`, `[]` o sólo campos ignorados como `rawTranscript`) devuelve `400 EMPTY_PATCH` y **no** incrementa `revision`.
 - El paciente nunca se reasigna: `patientId`/`pacienteId` en el cuerpo devuelve `400 PATIENT_REASSIGNMENT_NOT_ALLOWED`.
 - Contrato de tipos estricto (mismo para POST y PATCH): fecha de calendario real `YYYY-MM-DD`, tipos/modalidades por lista, duración entera 1–480 o nula, ánimo 1–5 o nulo, seguimiento booleano real, límites de nota (10000) y medicación (5000). Arrays y objetos se rechazan antes de cualquier coerción; un `patientId` objeto es `400`, nunca `500`. `inputType`, `rawTranscript` y `audioDurationSeconds` se validan al crear y son inmutables en PATCH.
-- Cliente: los guardados de una misma sesión se serializan (última edición pendiente gana con la revisión fresca); el formulario no se cierra hasta confirmar; ante `409` se conserva íntegra "mi versión" junto a la del servidor con opciones de reintentar/editar/usar la del servidor; una respuesta perdida se reconcilia consultando la sesión y, si ya se aplicó, adoptando su revisión y enviando la pendiente; se advierte antes de cerrar/recargar con trabajo sin confirmar.
+- Cliente: cada edición tiene una secuencia monotónica y un único emisor, de modo que sólo el payload más nuevo se envía/sobrevive (ni tras agotar reintentos un payload viejo pisa a uno nuevo; al rendirse, la versión más nueva se persiste en `localStorage` y no queda una edición pendiente en un estado inconsistente). El formulario no se cierra hasta confirmar. Ante `409` se muestra el conflicto campo por campo (servidor vs mía), persistido para reabrir/recargar, con: **Reintentar** (merge de 3 vías: sólo los campos que cambié respecto de mi base, sin pisar los que tocó el otro cliente), **Editar mi versión** o **Usar la del servidor**; las acciones se deshabilitan durante un reintento en curso. Una respuesta perdida se reconcilia consultando la sesión y, si ya se aplicó, adoptando su revisión y enviando la pendiente. Se advierte antes de cerrar/recargar con formulario modificado o conflicto pendiente.
 
 ## SessionDraft
 

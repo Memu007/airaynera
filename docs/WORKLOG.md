@@ -2,6 +2,39 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Cola por secuencia, conflicto multicampo y recuperación agotada
+
+### Objetivo
+
+Cerrar los bloqueantes de una quinta auditoría adversarial sobre `e960352`. Nota honesta: las entradas anteriores describían avances de concurrencia, pero recién con los casos de abajo en verde la edición concurrente queda cubierta; ninguna entrada previa debe leerse como "concurrencia cerrada".
+
+### Prioridad 1 — se podía perder la versión más nueva
+
+- Repro confirmado: con la red caída durante más de cuatro reintentos quedaba una `pending` (v2) coexistiendo con `inFlight=false`; al guardar v3 la respuesta vieja de la cola hacía que la base terminara en v2.
+- Cada edición ahora lleva una **secuencia monotónica**; la ranura `pending` guarda sólo la más nueva y un único `pump` es el emisor, así un payload viejo no puede sobrevivir ni pisar a uno nuevo.
+- Al agotar `recoverLostSave` ya no queda `pending` con `inFlight=false`: la más nueva se guarda en `localStorage` y se limpia `pending`. Prueba nueva de navegador: 5 PATCH abortados + guardar v3 → interfaz y base terminan en **v3**.
+
+### Prioridad 2 — conflicto recuperable y completo
+
+- El panel de conflicto muestra servidor vs usuario para **los ocho campos editables**, con diferencias resaltadas.
+- **Reintentar** hace un merge de 3 vías: envía sólo los campos que cambié respecto de mi base de edición, sin pisar un campo que tocó el otro cliente.
+- El conflicto se **persiste** (`localStorage`): cerrar y reabrir la ficha, y recargar la página, lo vuelven a mostrar.
+- `beforeunload` advierte con formulario modificado o conflicto pendiente.
+- Las acciones de conflicto se deshabilitan mientras un reintento está en curso.
+- Pruebas nuevas: conflicto multicampo, cerrar/reabrir, recargar, "Editar mi versión", "Usar la del servidor" y deshabilitado durante el reintento.
+
+### Prioridad 3
+
+- La revisión se valida como entero positivo seguro (`Number.isSafeInteger(revision) && revision > 0`): `0` y números enormes/inseguros dan `400`.
+- HANDOFF: SHA del último hito (`48383a1`), fecha y descripción; cifras reales.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **130/130** de edición de sesión, salida con código 0.
+- `npm run test:session-edit:browser`: **64/64** en Chromium real, sin errores de página.
+- `npm run lint`: aprobado. `git diff --check`: limpio. `npm audit`: 0 vulnerabilidades.
+- Gemini real: no ejecutado (sin credencial); proveedor por defecto `fake`.
+
 ## 2026-07-16 — Precondición obligatoria, UI de conflicto y recuperación
 
 ### Objetivo

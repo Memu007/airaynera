@@ -250,11 +250,15 @@ async function main() {
     let delayResponseForId = null; // server persists now; response held
     let holdRequestForId = null; // request reaches the server late
     let abortResponseForId = null; // server persists now; response is dropped
+    let failPatchesForId = null; // every PATCH to this id fails before reaching the server
     await page.route('**/api/sessions/*', async (route) => {
       const req = route.request();
       if (req.method() === 'PATCH') {
         patchCount += 1;
         const url = req.url();
+        if (failPatchesForId && url.endsWith(`/api/sessions/${failPatchesForId}`)) {
+          return route.abort(); // never reaches the server (network down)
+        }
         if (abortResponseForId && url.endsWith(`/api/sessions/${abortResponseForId}`)) {
           abortResponseForId = null;
           // Let the server apply the edit, hold long enough for a v2 to queue,
@@ -564,6 +568,131 @@ async function main() {
     test('the other client change is shown and not overwritten', /AJENO-PEND/.test(pendConflictBody));
     const pendDb = await getSession(b1);
     test('server still holds the other client change', pendDb.cleanNote === 'AJENO-PEND');
+    await closeModal();
+
+    // ---- 5i. Exhausted recovery must not let an older payload win over v3 ----
+    console.log('\n5️⃣i After 5 failed retries + a new save, the newest (v3) wins');
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    await openDetail(a2);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'EXH-v1');
+    failPatchesForId = a2; // every PATCH to a2 fails (network down) → recovery exhausts
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(200);
+    await page.fill('#editSessionContent', 'EXH-v2'); // queued, then abandoned on exhaustion
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(1500); // let the retries exhaust (>4 attempts)
+    failPatchesForId = null; // "connection back"
+    await page.fill('#editSessionContent', 'EXH-v3'); // newest save after recovery gave up
+    await page.click('#saveSessionEditBtn');
+    const exhDb = await getSessionEventually(a2, (s) => s.cleanNote === 'EXH-v3', 10000);
+    test('DB ends at v3 after exhausted recovery', exhDb.cleanNote === 'EXH-v3');
+    await page.waitForTimeout(500);
+    const exhBody = await bodyText();
+    test('UI ends at v3 (not the older v2) after exhausted recovery',
+      /EXH-v3/.test(exhBody) && !/EXH-v2/.test(exhBody) && !/EXH-v1/.test(exhBody));
+    await closeModal();
+
+    // ---- 5j. Multi-field conflict: full diff, persistence, and actions ----
+    console.log('\n5️⃣j Conflict shows every field, survives reopen/reload, and its actions work');
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    const beforeMulti = await getSession(a1);
+    await openDetail(a1);
+    await enterEdit();
+    // My multi-field edit.
+    await page.fill('#editSessionContent', 'NOTA MIA');
+    await page.fill('#editSessionDurationMinutes', '77');
+    await page.selectOption('#editSessionType', 'family');
+    await page.selectOption('#editSessionMood', '2');
+    // Another client changes a DIFFERENT field (modality) first.
+    await fetch(`${base}/api/sessions/${a1}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'If-Match': String(beforeMulti.revision),
+      },
+      body: JSON.stringify({ careModality: 'video' }),
+    });
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.request().method() === 'PATCH' && r.url().includes(`/api/sessions/${a1}`),
+        { timeout: 8000 }
+      ),
+      page.click('#saveSessionEditBtn'),
+    ]);
+    await page.waitForTimeout(300);
+    const multiProbe = await page.evaluate(() => ({
+      rows: document.querySelectorAll('#sessionDetailBody table tbody tr').length,
+      text: document.querySelector('#sessionDetailBody').textContent,
+      hasRetry: !!document.querySelector('#conflictRetryBtn'),
+    }));
+    test('conflict shows all 8 editable fields', multiProbe.rows === 8);
+    test('conflict shows my note and duration', /NOTA MIA/.test(multiProbe.text) && /77 min/.test(multiProbe.text));
+    test('conflict shows the other client field (modality video)', /Videollamada/.test(multiProbe.text));
+
+    // Close and reopen → the conflict is shown again.
+    await closeModal();
+    await openDetail(a1);
+    await page.waitForTimeout(200);
+    const reopenText = await bodyText();
+    test('reopening the ficha re-shows the conflict', /NOTA MIA/.test(reopenText) && !!(await page.locator('#conflictRetryBtn').count()));
+
+    // Reload the page → the conflict is restored from persistence.
+    await closeModal();
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    await openDetail(a1);
+    await page.waitForTimeout(200);
+    const afterReloadConflict = await page.locator('#conflictRetryBtn').count();
+    test('conflict survives a full page reload', afterReloadConflict === 1);
+
+    // Retry with my version: a slow response lets us see the actions disabled,
+    // and the 3-way merge keeps the other client's modality change.
+    delayResponseForId = a1;
+    await page.click('#conflictRetryBtn');
+    await page.waitForTimeout(250);
+    const disabledDuringRetry = await page.evaluate(
+      () => document.querySelector('#conflictRetryBtn')?.disabled === true
+    );
+    test('conflict actions are disabled during an in-flight retry', disabledDuringRetry === true);
+    const merged = await getSessionEventually(
+      a1,
+      (s) => s.cleanNote === 'NOTA MIA' && s.durationMinutes === 77,
+      8000
+    );
+    test('retry persists my changed fields', merged.cleanNote === 'NOTA MIA' && merged.durationMinutes === 77);
+    test('retry did not clobber the other client field (3-way merge)', merged.careModality === 'video');
+    await closeModal();
+
+    // "Usar la del servidor" discards my version and shows the server one.
+    await openDetail(a2);
+    const a2Before = await getSession(a2);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'DESCARTAR');
+    await fetch(`${base}/api/sessions/${a2}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'If-Match': String(a2Before.revision),
+      },
+      body: JSON.stringify({ cleanNote: 'GANA SERVIDOR' }),
+    });
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.request().method() === 'PATCH' && r.url().includes(`/api/sessions/${a2}`),
+        { timeout: 8000 }
+      ),
+      page.click('#saveSessionEditBtn'),
+    ]);
+    await page.waitForTimeout(300);
+    await page.click('#conflictUseServerBtn');
+    await page.waitForTimeout(300);
+    const useServerText = await bodyText();
+    test('"usar la del servidor" shows the server version', /GANA SERVIDOR/.test(useServerText) && !/DESCARTAR/.test(useServerText));
     await closeModal();
 
     // ---- 5c. Names and notes render literally in the session list ----
