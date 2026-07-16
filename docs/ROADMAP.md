@@ -1,6 +1,6 @@
 # Roadmap del MVP de AIRA
 
-Última actualización: 2026-07-15.
+Última actualización: 2026-07-16.
 
 Estado general: vertical web, texto por WhatsApp simulado y carga de archivo real desde la web aprobados localmente. El archivo se almacena temporalmente y se procesa en un worker SQLite. Gemini ya está implementado como proveedor opt-in, pero la corrida real y el benchmark humano siguen pendientes; también faltan descarga desde Meta y Meta real.
 
@@ -15,7 +15,9 @@ Base técnica
 → Flujo completo con texto
 → Audio web y WhatsApp
 → Nota clínica editable
-→ Piloto
+→ Piloto de AIRA Notas
+→ Google Calendar, si pasa el gate de uso
+→ Discovery de AIRA Seguimiento
 ```
 
 La integración se valida primero con texto. El audio se agrega después como otra forma de producir el mismo borrador. Esto permite separar problemas de identidad, estado y persistencia de los problemas de descarga y transcripción.
@@ -31,8 +33,25 @@ La integración se valida primero con texto. El audio se agrega después como ot
 | 4. Audio | Audio web/WhatsApp → transcripción → borrador | 5–8 días |
 | 5. Nota clínica | Estructuración y edición multicanal | 3–5 días |
 | 6. Piloto | Prueba con profesionales y métricas | 1–2 semanas iniciales |
+| 7. Calendar condicional | Sesiones terminadas sin nota desde la agenda existente | 3–5 días después del gate |
+| H1. Seguimiento | Discovery y prototipo; no implementación comprometida | Después de validar el núcleo |
 
 Las estimaciones no incluyen posibles demoras de configuración o aprobación de Meta.
+
+## Prioridad de producto vigente
+
+El orden después del estado actual es:
+
+1. bandeja de borradores y conflictos fuera del modal;
+2. grabación directa desde web móvil;
+3. probe/smoke real de Gemini y benchmark humano comparable;
+4. un formato de nota validado, copiar/exportar e instrumentación;
+5. piloto de AIRA Notas con cinco psicólogos;
+6. Google Calendar V1 si al menos 3 de 5 pilotos lo usan;
+7. Meta real como canal de entrada sólo si el núcleo demuestra hábito;
+8. discovery de seguimiento de medicación con psiquiatras, sin construirlo antes de su gate.
+
+La fuente de verdad para posicionamiento, mercado, precio y gates es [`PRODUCT.md`](PRODUCT.md).
 
 ## Etapa 0 — Base técnica
 
@@ -284,6 +303,54 @@ Criterios iniciales:
 - 100% de pacientes seleccionados explícitamente.
 - Al menos 85% de notas con correcciones menores.
 - Registro del tiempo de edición por nota.
+
+Gate comercial y de hábito:
+
+- Al menos 60% de las sesiones elegibles pasan por AIRA.
+- Al menos 80% de los borradores se confirman dentro de 24 horas.
+- La edición mediana demora menos de dos minutos.
+- Cero pérdidas, asociaciones al paciente incorrecto o contenido clínico material inventado.
+- Al menos 3 de 5 participantes aceptan pagar el precio completo.
+
+## Etapa 7 — Google Calendar condicional
+
+Objetivo: usar la agenda que el profesional ya tiene para reducir pasos del flujo post-sesión, sin construir otra agenda.
+
+Gate de entrada:
+
+- Al menos 3 de los 5 participantes del piloto usa Google Calendar para sus turnos.
+
+V1:
+
+- Conexión de solo lectura y selección de calendario.
+- Bandeja de sesiones terminadas sin nota.
+- Vínculo evento–paciente confirmado por el profesional antes de reutilizarlo.
+- Paciente, fecha y duración precargados al iniciar la nota.
+- Estado pendiente/documentada y recordatorio opcional al profesional.
+
+Fuera de esta etapa:
+
+- Agenda propia.
+- Reservas, disponibilidad, Meet, recurrencias y reprogramaciones.
+- Recordatorios de turno al paciente.
+- Sincronización bidireccional.
+
+Criterio de continuidad:
+
+> Al menos 60% de los pilotos conecta Calendar y la integración aumenta en 15 puntos porcentuales la cobertura de documentación o reduce de forma clara el tiempo hasta iniciar la nota.
+
+## Hipótesis H1 — AIRA Seguimiento
+
+Objetivo de discovery: determinar si psiquiatras pagarían por configurar recordatorios de medicación y revisar autoinformes antes de la consulta siguiente.
+
+Esta hipótesis no es parte del MVP ni autoriza implementación. Primero requiere:
+
+1. cinco entrevistas con psiquiatras;
+2. al menos tres compromisos de uso semanal y pago adicional;
+3. validación de una plantilla discreta con Meta o un BSP;
+4. prototipo probado sin activar indicaciones reales.
+
+Si pasa esos gates, el piloto posterior se limita a dos psiquiatras, 10 a 15 adultos, cuatro semanas y esquemas estables. El psiquiatra confirma todos los datos; la IA nunca activa dosis u horarios. `Tomada` se presenta como autoinforme y la V1 no ofrece monitoreo 24/7 ni alertas clínicas en tiempo real.
 
 ## Arquitectura recomendada
 

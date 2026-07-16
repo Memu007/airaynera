@@ -2,6 +2,36 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Posicionamiento, Calendar, precio y seguimiento futuro
+
+### Objetivo
+
+Convertir la discusión estratégica y la revisión competitiva en documentación versionada para que el producto no dependa de la memoria de una conversación.
+
+### Decisiones registradas
+
+- Se ratificó el foco original: AIRA optimiza la carga post-sesión mediante texto o audio breve del profesional. No es diagnóstico, grabación ambiental ni historia clínica integral.
+- Se definió la categoría comercial como **asistente de cierre clínico post-sesión por voz** y el beachhead como psicólogos clínicos independientes de Argentina. Psiquiatría queda como segunda cohorte.
+- La revisión adversarial confirmó que `audio → nota` no es diferenciador suficiente: Brauni ofrece un recorrido similar; Psik, MentalGest, Upheal y Mentalyc cubren partes relevantes. El diferencial a validar es flujo móvil breve, no grabar al paciente, español clínico local, revisión obligatoria, integración liviana y precio proporcional al uso.
+- Google Calendar quedó aprobado como capa de contexto del núcleo, no como agenda propia. La V1 propuesta es de solo lectura: sesiones terminadas sin nota, vínculo evento–paciente confirmado y carga con paciente/fecha/duración precargados. Se implementa después del núcleo si al menos 3 de 5 pilotos usan Calendar.
+- Se creó la hipótesis futura **AIRA Seguimiento** para psiquiatría: indicación confirmada → recordatorio discreto → autoinforme → resumen para la próxima consulta. No forma parte del MVP y no debe implementarse antes de entrevistas, voluntad de pago y validación de plantillas con Meta.
+- Se dejó explícito que la IA nunca activa dosis u horarios, que `Tomada` es autoinforme y que la primera versión no ofrece monitoreo 24/7 ni consejo clínico automático.
+- Hipótesis de precio local: 10 notas confirmadas sin cargo; luego `0,05 UP` por nota con tope mensual de `3 UP`. Calendar se incluye en AIRA Notas; Seguimiento se cobraría aparte por paciente activo. El precio queda sujeto a costos reales y margen mínimo de 70%.
+- Gate del primer piloto: cinco psicólogos, dos semanas, 60% de sesiones elegibles documentadas, 80% de borradores confirmados en 24 horas, edición mediana menor a dos minutos, 85% con correcciones menores, cero errores críticos y 3 de 5 dispuestos a pagar.
+
+### Archivos
+
+- `docs/PRODUCT.md`: fuente de verdad completa para posicionamiento, mercado, arquitectura del producto, Calendar, Seguimiento, precio, orden y gates.
+- `docs/ROADMAP.md`: secuencia actualizada, etapa Calendar condicional y discovery de Seguimiento.
+- `docs/HANDOFF.md`: resumen operativo y siguiente objetivo alineados.
+- `docs/DOMAIN_CONTRACTS.md`: sin cambios intencionalmente; no se documentaron contratos de funciones todavía no implementadas.
+
+### Verificación
+
+- Revisión cruzada de enlaces, términos y consistencia entre PRODUCT, ROADMAP y HANDOFF.
+- `git diff --check` como gate documental.
+- No se modificó código ni se ejecutaron pruebas funcionales porque el hito es exclusivamente documental.
+
 ## 2026-07-16 — Cola por secuencia, conflicto multicampo y recuperación agotada
 
 ### Objetivo

@@ -11,8 +11,9 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
 - Último hito funcional: `48383a1` (`fix newest-version loss: seq-based save queue + full conflict UI`), publicado en `main` el 2026-07-16: cierra la concurrencia de edición (cola por secuencia, sin pérdida de la versión más nueva; conflicto multicampo persistente con reintento por merge de 3 vías; recuperación de respuesta perdida; precondición `If-Match` obligatoria con entero seguro).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
+- Estrategia de producto: `docs/PRODUCT.md` quedó actualizada como fuente de verdad para posicionamiento, mercado, precio, Google Calendar, piloto y la hipótesis futura de seguimiento por WhatsApp. El núcleo continúa siendo documentación post-sesión; no se amplió el MVP a diagnóstico, agenda integral ni monitoreo del paciente.
 - Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite, desactivado por defecto. Una credencial temporal autenticó el modelo; la primera corrida real detectó y corrigió un shape inválido de `user_input` (integrado desde `536c11c`), y queda pendiente repetir el probe/smoke. El smoke sintético de 40 WAV quedó generado y validado offline. La edición de sesión ahora tiene control de concurrencia real (revisión optimista + serialización en cliente). La batería aprobó **129/129** funcionales más **130/130** de contrato/concurrencia de edición (`npm test`), y **64/64** en navegador real.
-- Próximo objetivo: repetir el probe y el smoke integrado después de corregir el shape `user_input` detectado por la primera corrida real. Después corresponde preparar el corpus humano decisorio y comparar los mismos bytes con otros proveedores antes de aprobar uso clínico. Meta real se incorpora después y solamente cuando existan credenciales.
+- Próximo objetivo: cerrar la bandeja de borradores y la grabación directa desde web móvil; repetir el probe/smoke de Gemini y preparar el corpus humano decisorio; agregar copiar/exportar e instrumentación; pilotear AIRA Notas con cinco psicólogos. Google Calendar se implementa como contexto de solo lectura si el piloto confirma uso. Meta real y seguimiento de medicación quedan detrás de gates separados.
 
 ## Dirección del producto acordada
 
@@ -25,6 +26,19 @@ El paciente tampoco se deduce del audio: se selecciona explícitamente desde la 
 Toda entrada crea primero un borrador. La sesión definitiva se crea solamente después de **Guardar**.
 
 La web es la fuente de verdad y WhatsApp es un canal adicional sobre los mismos datos.
+
+## Dirección estratégica validada el 2026-07-16
+
+- Posicionamiento: **asistente de cierre clínico post-sesión por voz**.
+- Promesa: convertir un relato breve del profesional en una nota revisable sin grabar al paciente ni decidir por el profesional.
+- Beachhead: psicólogos clínicos independientes de Argentina; psiquiatría queda como segunda cohorte.
+- La ventaja no puede ser sólo `audio → nota`: competidores directos ya ofrecen recorridos similares. AIRA debe ganar por flujo móvil breve, español clínico local, revisión obligatoria, integración liviana y precio proporcional al uso.
+- Google Calendar está aprobado como capa de contexto, no como agenda propia: sesiones terminadas sin nota, vínculo evento–paciente confirmado y carga precargada. Se profundiza si al menos 3 de 5 pilotos lo usan y mejora la documentación.
+- `AIRA Seguimiento` es una hipótesis futura para psiquiatría, no un compromiso de implementación. El valor sería cerrar el circuito entre indicación confirmada, recordatorio discreto y resumen de autoinforme; nunca activar dosis u horarios desde IA.
+- Hipótesis local de precio: primeras 10 notas sin cargo; luego `0,05 UP` por nota confirmada con tope de `3 UP` mensuales. Fallos y borradores no confirmados no se cobran. Debe validarse con costos y pago real.
+- Gate del primer piloto: 5 psicólogos durante 2 semanas; al menos 60% de sesiones elegibles documentadas, 80% de borradores confirmados en 24 horas, edición mediana menor a 2 minutos, 85% con correcciones menores, cero errores críticos y al menos 3 dispuestos a pagar el precio completo.
+
+El detalle, la evidencia competitiva y los límites están en [`docs/PRODUCT.md`](PRODUCT.md). `DOMAIN_CONTRACTS.md` no cambió porque Calendar y Seguimiento todavía no son contratos implementados.
 
 ## Recorrido objetivo
 
