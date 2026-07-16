@@ -2,6 +2,34 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Edición visible de sesiones guardadas
+
+### Objetivo
+
+Cerrar el pendiente de la ficha web: permitir editar una sesión ya guardada desde su propia modal de detalle sin salir del recorrido clínico, respetando los campos inmutables.
+
+### Trabajo realizado
+
+- La modal `#sessionDetailModal` pasó de ser solo lectura a tener un pie dinámico: el modo vista ofrece **Editar** y **Cerrar**; el modo edición ofrece **Cancelar** y **Guardar cambios**.
+- `renderSessionDetailView` redibuja el detalle e inserta el texto clínico con `.text()`, de modo que la nota, la medicación y la transcripción original nunca se interpretan como HTML.
+- `enterSessionEditMode` arma un formulario con los mismos controles clínicos explícitos que la carga nueva —fecha clínica, tipo, duración, modalidad, contenido, medicación, evaluación anímica opcional y un checkbox independiente de seguimiento— y precarga los valores por la API del DOM, no por interpolación.
+- `saveSessionEdit` valida contenido y duración en el cliente, envía `PATCH /api/sessions/:id`, actualiza `appData` en el lugar conservando `patientName`, refresca dashboard y lista, y vuelve a la vista de solo lectura.
+- El paciente se muestra fijo: la edición no reasigna la sesión a otra persona.
+- `rawTranscript`, `inputType` y `audioDurationSeconds` no se envían desde el formulario; además el normalizador del servidor ya los ignora en PATCH, por lo que permanecen inmutables.
+- El seguimiento sigue siendo una decisión explícita del checkbox y no se deriva del ánimo.
+
+### Verificaciones
+
+- `npm run check:syntax`: aprobado, incluidos los scripts embebidos de `index.html`.
+- `npm run test:ui-contract`: aprobado; los campos clínicos explícitos y la no derivación del seguimiento siguen intactos.
+- `npm test`: 129/129 pruebas funcionales aprobadas, más migración, vínculo, conversación, audio sintético y worker de uploads.
+- Verificación en navegador real (Chromium + Playwright contra un servidor efímero con SQLite temporal): se sembró una sesión por API, se abrió la ficha haciendo clic en la tarjeta, se comprobó que el formulario precarga contenido, duración y fecha, se editaron todos los campos y, tras Guardar, la consulta `GET /api/sessions` confirmó la persistencia de contenido, duración, tipo, modalidad, ánimo, seguimiento y medicación, con `inputType` conservado y sin errores de página.
+
+### Próximo paso
+
+1. Construir la bandeja para recuperar borradores fuera del modal (último pendiente de la ficha web).
+2. Retomar el smoke real de Gemini cuando exista `GEMINI_API_KEY` en el entorno.
+
 ## 2026-07-15 — Gemini detrás del worker asíncrono
 
 ### Objetivo

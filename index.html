@@ -3623,10 +3623,8 @@
           <div class="modal-body" id="sessionDetailBody">
             <!-- Session details will be populated here -->
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" data-dismiss="modal">
-              Cerrar
-            </button>
+          <div class="modal-footer" id="sessionDetailFooter">
+            <!-- Footer buttons are rendered per view/edit mode -->
           </div>
         </div>
       </div>
@@ -5990,44 +5988,249 @@
         listEl.html(html);
       }
 
+      const SESSION_MOOD_LABELS = {
+        1: "😢 Muy bajo",
+        2: "😕 Bajo",
+        3: "😐 Neutral",
+        4: "🙂 Bueno",
+        5: "😊 Muy bueno",
+      };
+      const SESSION_TYPE_LABELS = {
+        individual: "Individual",
+        group: "Grupal",
+        family: "Familiar",
+        couple: "Pareja",
+        other: "Otra",
+      };
+      const CARE_MODALITY_LABELS = {
+        unspecified: "Sin especificar",
+        inPerson: "Presencial",
+        video: "Videollamada",
+        phone: "Teléfono",
+      };
+
+      let currentSessionDetailId = null;
+
       function showSessionDetail(sessionId) {
         const session = appData.sessions.find((s) => s.id === sessionId);
         if (!session) return;
-        const moodEmojis = {
-          1: "😢 Muy bajo",
-          2: "😕 Bajo",
-          3: "😐 Neutral",
-          4: "🙂 Bueno",
-          5: "😊 Muy bueno",
-        };
-
+        currentSessionDetailId = sessionId;
         $("#sessionDetailTitle").text(`Sesión de ${session.patientName}`);
+        renderSessionDetailView(session);
+        $("#sessionDetailModal").modal("show");
+      }
 
+      function renderSessionDetailView(session) {
         const medicationHTML = session.medicationNotes
-          ? `<h6><i class="fas fa-pills mr-2 text-primary"></i>Medicación</h6><p>${session.medicationNotes}</p><hr>`
+          ? `<h6><i class="fas fa-pills mr-2 text-primary"></i>Medicación</h6><p class="session-detail-medication"></p><hr>`
           : "";
+        const followupHTML = session.requiresFollowUp
+          ? `<span class="badge badge-warning ml-2">Requiere seguimiento</span>`
+          : "";
+        const transcriptHTML =
+          session.inputType === "audio" && session.rawTranscript
+            ? `<hr><h6><i class="fas fa-microphone mr-2 text-primary"></i>Transcripción original</h6><p class="text-muted session-detail-transcript"></p>`
+            : "";
 
-        const detailHTML = `
-                <h5><i class="fas fa-clipboard-list mr-2 text-primary"></i>Resumen de la Sesión</h5>
-                <p>${session.cleanNote}</p>
+        const $body = $("#sessionDetailBody");
+        $body.html(`
+                <h5><i class="fas fa-clipboard-list mr-2 text-primary"></i>Resumen de la Sesión${followupHTML}</h5>
+                <p class="session-detail-note"></p>
                 <hr>
                 ${medicationHTML}
                 <div class="row">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <h6><i class="fas fa-smile mr-2 text-primary"></i>Estado Anímico</h6>
-                        <p>${moodEmojis[session.moodAssessment] || "Sin registrar"}</p>
+                        <p>${SESSION_MOOD_LABELS[session.moodAssessment] || "Sin registrar"}</p>
                     </div>
-                    <div class="col-md-6">
-                        <h6><i class="fas fa-calendar-alt mr-2 text-primary"></i>Fecha y Hora</h6>
-                        <p>${parseClinicalDate(session.clinicalDate).toLocaleDateString(
-                          "es-AR"
-                        )}</p>
+                    <div class="col-md-4">
+                        <h6><i class="fas fa-calendar-alt mr-2 text-primary"></i>Fecha clínica</h6>
+                        <p>${parseClinicalDate(session.clinicalDate).toLocaleDateString("es-AR")}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6><i class="fas fa-user-friends mr-2 text-primary"></i>Tipo y modalidad</h6>
+                        <p>${SESSION_TYPE_LABELS[session.sessionType] || session.sessionType} · ${
+                          CARE_MODALITY_LABELS[session.careModality] || session.careModality
+                        }${
+                          session.durationMinutes ? ` · ${session.durationMinutes} min` : ""
+                        }</p>
                     </div>
                 </div>
-            `;
+                ${transcriptHTML}
+            `);
+        // Set free-text via .text() so clinical notes are never parsed as HTML.
+        $body.find(".session-detail-note").text(session.cleanNote || "Sin contenido");
+        if (session.medicationNotes) {
+          $body.find(".session-detail-medication").text(session.medicationNotes);
+        }
+        if (transcriptHTML) {
+          $body.find(".session-detail-transcript").text(session.rawTranscript);
+        }
 
-        $("#sessionDetailBody").html(detailHTML);
-        $("#sessionDetailModal").modal("show");
+        $("#sessionDetailFooter").html(`
+          <button type="button" class="btn btn-outline-primary" onclick="enterSessionEditMode()">
+            <i class="fas fa-pen mr-1"></i>Editar
+          </button>
+          <button type="button" class="btn btn-primary" data-dismiss="modal">Cerrar</button>
+        `);
+      }
+
+      function enterSessionEditMode() {
+        const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
+        if (!session) return;
+
+        const optionList = (labels, selected) =>
+          Object.entries(labels)
+            .map(
+              ([value, label]) =>
+                `<option value="${value}"${value === String(selected) ? " selected" : ""}>${label}</option>`
+            )
+            .join("");
+
+        $("#sessionDetailBody").html(`
+          <form id="sessionEditForm" novalidate>
+            <p class="text-muted mb-3"><i class="fas fa-user mr-1"></i>Paciente: <strong>${
+              session.patientName
+            }</strong></p>
+            <div class="form-row">
+              <div class="form-group col-md-6">
+                <label for="editSessionClinicalDate">Fecha clínica</label>
+                <input type="date" class="form-control" id="editSessionClinicalDate" required />
+              </div>
+              <div class="form-group col-md-6">
+                <label for="editSessionType">Tipo de sesión</label>
+                <select class="form-control" id="editSessionType">${optionList(
+                  SESSION_TYPE_LABELS,
+                  session.sessionType
+                )}</select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group col-md-6">
+                <label for="editSessionDurationMinutes">Duración clínica (minutos)</label>
+                <input type="number" class="form-control" id="editSessionDurationMinutes" min="1" max="480" step="1" />
+              </div>
+              <div class="form-group col-md-6">
+                <label for="editSessionCareModality">Modalidad</label>
+                <select class="form-control" id="editSessionCareModality">${optionList(
+                  CARE_MODALITY_LABELS,
+                  session.careModality
+                )}</select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="editSessionContent">Contenido de la sesión</label>
+              <textarea class="form-control" id="editSessionContent" rows="6" required></textarea>
+            </div>
+            <div class="form-group">
+              <label for="editSessionMedication">Medicación (opcional)</label>
+              <textarea class="form-control" id="editSessionMedication" rows="2"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="editSessionMood">Estado anímico (opcional)</label>
+              <select class="form-control" id="editSessionMood">
+                <option value="">Sin registrar</option>
+                <option value="1">😢 1 - Muy bajo</option>
+                <option value="2">😕 2 - Bajo</option>
+                <option value="3">😐 3 - Neutral</option>
+                <option value="4">🙂 4 - Bueno</option>
+                <option value="5">😊 5 - Muy bueno</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <div class="custom-control custom-checkbox">
+                <input type="checkbox" class="custom-control-input" id="editSessionRequiresFollowUp" />
+                <label class="custom-control-label" for="editSessionRequiresFollowUp">Requiere seguimiento</label>
+              </div>
+              <small class="form-text text-muted">Marcá esta opción sólo cuando sea una decisión clínica explícita.</small>
+            </div>
+          </form>
+        `);
+
+        // Populate values through the DOM API so note text is never interpreted as HTML.
+        $("#editSessionClinicalDate").val(session.clinicalDate || "");
+        $("#editSessionDurationMinutes").val(session.durationMinutes ?? "");
+        $("#editSessionContent").val(session.cleanNote || "");
+        $("#editSessionMedication").val(session.medicationNotes || "");
+        $("#editSessionMood").val(session.moodAssessment == null ? "" : String(session.moodAssessment));
+        $("#editSessionRequiresFollowUp").prop("checked", Boolean(session.requiresFollowUp));
+
+        $("#sessionDetailFooter").html(`
+          <button type="button" class="btn btn-secondary" onclick="cancelSessionEdit()">Cancelar</button>
+          <button type="button" class="btn btn-success" id="saveSessionEditBtn" onclick="saveSessionEdit()">
+            💾 Guardar cambios
+          </button>
+        `);
+      }
+
+      function cancelSessionEdit() {
+        const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
+        if (session) renderSessionDetailView(session);
+      }
+
+      function saveSessionEdit() {
+        const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
+        if (!session) return;
+
+        const cleanNote = $("#editSessionContent").val().trim();
+        const durationRaw = $("#editSessionDurationMinutes").val().trim();
+        const durationMinutes = durationRaw === "" ? null : Number.parseInt(durationRaw, 10);
+        const moodRaw = $("#editSessionMood").val();
+
+        if (!cleanNote) {
+          notificaciones.advertencia("Contenido requerido", "La nota clínica no puede quedar vacía.");
+          return;
+        }
+        if (durationRaw !== "" && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 480)) {
+          notificaciones.advertencia("Duración inválida", "La duración clínica debe estar entre 1 y 480 minutos.");
+          return;
+        }
+
+        const payload = {
+          clinicalDate: $("#editSessionClinicalDate").val() || session.clinicalDate,
+          sessionType: $("#editSessionType").val(),
+          durationMinutes,
+          careModality: $("#editSessionCareModality").val(),
+          cleanNote,
+          medicationNotes: $("#editSessionMedication").val().trim() || null,
+          moodAssessment: moodRaw === "" ? null : Number.parseInt(moodRaw, 10),
+          requiresFollowUp: $("#editSessionRequiresFollowUp").is(":checked"),
+        };
+
+        const token = localStorage.getItem("authToken");
+        const $btn = $("#saveSessionEditBtn");
+        const originalText = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin"></i> Guardando...').prop("disabled", true);
+
+        $.ajax({
+          url: `/api/sessions/${session.id}`,
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+          contentType: "application/json",
+          data: JSON.stringify(payload),
+          success: function (updated) {
+            const index = appData.sessions.findIndex((s) => s.id === session.id);
+            if (index !== -1) {
+              // Preserve patientName, which the list endpoint resolves via relation.
+              appData.sessions[index] = {
+                ...appData.sessions[index],
+                ...updated,
+                patientName: updated.patientName || appData.sessions[index].patientName,
+              };
+            }
+            currentSessionDetailId = session.id;
+            renderSessionDetailView(appData.sessions[index] || updated);
+            refreshDashboardViews();
+            loadSessionsData();
+            notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
+          },
+          error: function (xhr) {
+            $btn.html(originalText).prop("disabled", false);
+            const msg =
+              xhr.responseJSON?.message || xhr.responseJSON?.error || "No se pudo guardar la sesión.";
+            notificaciones.error("Error", msg);
+          },
+        });
       }
 
       function showPatientDetail(patientId) {

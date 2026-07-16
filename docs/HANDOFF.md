@@ -2,7 +2,7 @@
 
 Este es el documento operativo que debe leerse primero al retomar el proyecto.
 
-Última actualización: 2026-07-15.
+Última actualización: 2026-07-16.
 
 ## Estado actual
 
@@ -59,7 +59,8 @@ Registro web
 - El selector de nuevas notas muestra solamente pacientes activos y el backend aplica la misma regla.
 - La landing distingue funciones disponibles, simuladas y en desarrollo; registro ya no atraviesa un pago ficticio y las operaciones de perfil sin persistencia están desactivadas.
 - Las notas sin evaluación anímica muestran `Sin registrar` en lugar de valores indefinidos.
-- Quedan pendientes la edición visible general de sesiones y una bandeja para recuperar borradores fuera del modal.
+- Una sesión guardada se edita desde su ficha: la modal de detalle ofrece **Editar**, precarga los campos clínicos explícitos y persiste con `PATCH /api/sessions/:id`; `rawTranscript`, `inputType` y `audioDurationSeconds` permanecen inmutables porque el formulario no los envía y el normalizador del servidor los ignora en PATCH.
+- Queda pendiente una bandeja para recuperar borradores fuera del modal.
 
 ### WhatsApp
 
