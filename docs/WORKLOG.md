@@ -2,6 +2,39 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-16 — Modelo por intento: reverts, merge, recuperación y guardas
+
+### Objetivo
+
+Cerrar los bloqueantes de una sexta auditoría adversarial sobre `e3b7171`. Honestidad: la concurrencia de edición se declara cubierta **sólo** por los casos de aceptación de abajo, ahora en verde; ninguna entrada previa debe leerse como cierre definitivo.
+
+### Bloqueantes resueltos
+
+1. **Modelo por intento.** Cada guardado es un registro `{seq, desired, base, appliedBase, wireDelta, revision}`. Se acabó el `editBase` global: la base del delta se **resetea en cada éxito**, así una v2 creada después de v1 compara su intención contra v1 y un **revert** de campo se envía (delta no vacío). Un delta vacío es no-op.
+2. **"Editar mi versión" hace merge.** Diffea contra la base **original** del conflicto (no reenvía los ocho campos stale). Repro en verde: servidor cambia sólo modalidad→video, usuario cambia sólo nota, conflicto → Editar mi versión → Guardar → nota del usuario + modalidad video.
+3. **Recuperación local real.** Persiste snapshot completo + base + revisión + secuencia por **pestaña** (`tabId` en `sessionStorage`); se ofrece al abrir la ficha con Reintentar/Descartar; no guarda sólo el delta; dos pestañas no se borran entre sí.
+4. **No se limpia el conflicto hasta éxito o "Usar servidor".** Ante `400/500/red/segundo 409` reaparecen los ocho campos con acciones habilitadas.
+5. **Respuesta perdida durante merge parcial.** Se compara el servidor contra el estado completo esperado `appliedBase + wireDelta`, no contra el delta ralo.
+6. **Formularios sucios protegidos** al cerrar con X/backdrop y al recargar, incluso inválidos (fecha/nota vacías, duración incorrecta).
+
+### Pruebas nuevas de navegador (obligatorias, todas en verde)
+
+- v1 cambia A, v2 revierte A, tercero cambia B, `409` + retry → v2 y la B del tercero.
+- Editar mi versión no pisa el campo remoto.
+- Cinco PATCH abortados **contados** + recarga + recuperación de la versión completa.
+- Conflicto → retry → respuesta perdida.
+- Conflicto → retry → segundo `409`.
+- Cerrar/reabrir formulario sucio **inválido**.
+- Dos pestañas con recuperaciones distintas.
+- Cancelar durante una solicitud en curso.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **130/130** de edición de sesión, salida con código 0.
+- `npm run test:session-edit:browser`: **80/80** en Chromium real, sin errores de página.
+- `npm run lint`: aprobado. `git diff --check`: limpio. `npm audit`: 0 vulnerabilidades.
+- Gemini real: no ejecutado (sin credencial); proveedor por defecto `fake`.
+
 ## 2026-07-16 — Roles, desacuerdo y revisión multiagente
 
 ### Objetivo
@@ -80,7 +113,6 @@ Convertir la discusión estratégica y la revisión competitiva en documentació
 - Revisión cruzada de enlaces, términos y consistencia entre PRODUCT, ROADMAP y HANDOFF.
 - `git diff --check` como gate documental.
 - No se modificó código ni se ejecutaron pruebas funcionales porque el hito es exclusivamente documental.
-
 ## 2026-07-16 — Cola por secuencia, conflicto multicampo y recuperación agotada
 
 ### Objetivo

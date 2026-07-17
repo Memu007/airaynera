@@ -288,6 +288,12 @@ async function main() {
 
     const pageErrors = [];
     page.on('pageerror', (e) => pageErrors.push(String(e)));
+    // Auto-accept confirm() dialogs (e.g. the dirty-close guard); track the last.
+    const dialogs = [];
+    page.on('dialog', (d) => {
+      dialogs.push(d.message());
+      d.accept().catch(() => {});
+    });
 
     await page.addInitScript((t) => localStorage.setItem('authToken', t), token);
     await page.goto(base + '/', { waitUntil: 'load' });
@@ -326,6 +332,24 @@ async function main() {
       ]);
       return resp;
     };
+    // Simulate a different client editing the session (fresh revision).
+    const otherClient = async (id, body) => {
+      const s = await getSession(id);
+      return fetch(`${base}/api/sessions/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'If-Match': String(s.revision),
+        },
+        body: JSON.stringify(body),
+      });
+    };
+    const waitPatch = (id) =>
+      page.waitForResponse(
+        (r) => r.request().method() === 'PATCH' && r.url().includes(`/api/sessions/${id}`),
+        { timeout: 8000 }
+      );
     const getSessionEventually = async (id, predicate, timeoutMs = 6000) => {
       const start = Date.now();
       let last = null;
@@ -693,6 +717,208 @@ async function main() {
     await page.waitForTimeout(300);
     const useServerText = await bodyText();
     test('"usar la del servidor" shows the server version', /GANA SERVIDOR/.test(useServerText) && !/DESCARTAR/.test(useServerText));
+    await closeModal();
+
+    // ==== Mandatory concurrency acceptance tests (fresh sessions) ====
+    // Use a dedicated patient so they don't change pAna's session count (§6).
+    const pMand = String((await api('POST', '/api/patients', { name: 'Marta Mand', dni: '40000005' })).data.id);
+    const mk = (extra) =>
+      mkSession(pMand, { cleanNote: 'base', durationMinutes: 45, careModality: 'inPerson', moodAssessment: 3, ...extra });
+    const tRev = await mk({ cleanNote: 'REV-N0' });
+    const tEdit = await mk({ cleanNote: 'EDIT-BASE' });
+    const tRec = await mk({ cleanNote: 'rec-base' });
+    const tLost = await mk({ cleanNote: 'lost-base' });
+    const t2c = await mk({ cleanNote: '2c-base' });
+    const tDirty = await mk({ cleanNote: 'dirty-base' });
+    const tCancel = await mk({ cleanNote: 'cancel-base' });
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+
+    // ---- 5k. v1 changes A, v2 reverts A, third changes B, 409+retry → v2 & third's B ----
+    console.log('\n5️⃣k Revert + third-party change: retry keeps my revert and their field');
+    await openDetail(tRev);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'REV-N1'); // v1 changes the note
+    await saveEdit(tRev);
+    await getSessionEventually(tRev, (s) => s.cleanNote === 'REV-N1');
+    await openDetail(tRev);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'REV-N0'); // v2 reverts the note
+    await otherClient(tRev, { careModality: 'video' }); // third changes a different field
+    await Promise.all([waitPatch(tRev), page.click('#saveSessionEditBtn')]); // 409
+    await page.waitForTimeout(300);
+    await Promise.all([waitPatch(tRev), page.click('#conflictRetryBtn')]);
+    const revDone = await getSessionEventually(
+      tRev,
+      (s) => s.cleanNote === 'REV-N0' && s.careModality === 'video',
+      8000
+    );
+    test('revert wins and third-party field is kept', revDone.cleanNote === 'REV-N0' && revDone.careModality === 'video');
+    await closeModal();
+
+    // ---- 5l. "Editar mi versión" merges (does not clobber the remote field) ----
+    console.log('\n5️⃣l Editar mi versión merges without clobbering the remote field');
+    await openDetail(tEdit);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'EDIT-MINE'); // I change only the note
+    await otherClient(tEdit, { careModality: 'phone' }); // other changes only modality
+    await Promise.all([waitPatch(tEdit), page.click('#saveSessionEditBtn')]); // 409
+    await page.waitForTimeout(300);
+    await page.click('#conflictEditBtn'); // "Editar mi versión"
+    await page.waitForSelector('#sessionEditForm', { timeout: 5000 });
+    const prefilledMine = await page.evaluate(() => document.querySelector('#editSessionContent').value);
+    test('edit-my-version prefills my text', prefilledMine === 'EDIT-MINE');
+    await Promise.all([waitPatch(tEdit), page.click('#saveSessionEditBtn')]);
+    const editDone = await getSessionEventually(
+      tEdit,
+      (s) => s.cleanNote === 'EDIT-MINE' && s.careModality === 'phone',
+      8000
+    );
+    test('edit-my-version keeps my note and the remote modality', editDone.cleanNote === 'EDIT-MINE' && editDone.careModality === 'phone');
+    await closeModal();
+
+    // ---- 5m. Counted 5 aborted PATCH, reload, recover the FULL version ----
+    console.log('\n5️⃣m Five aborted PATCH, reload, and recover the full version');
+    await openDetail(tRec);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'RECOVER-ME');
+    await page.fill('#editSessionDurationMinutes', '99');
+    patchCount = 0;
+    failPatchesForId = tRec;
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(2000); // let recovery exhaust
+    test('at least 5 PATCH attempts were made', patchCount >= 5);
+    failPatchesForId = null;
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    await openDetail(tRec);
+    await page.waitForTimeout(200);
+    const recBody = await bodyText();
+    const hasRecoveryBtn = (await page.locator('#recoveryRetryBtn').count()) === 1;
+    test('recovery panel appears after reload with my note', /RECOVER-ME/.test(recBody) && hasRecoveryBtn);
+    await Promise.all([waitPatch(tRec), page.click('#recoveryRetryBtn')]);
+    const recDone = await getSessionEventually(
+      tRec,
+      (s) => s.cleanNote === 'RECOVER-ME' && s.durationMinutes === 99,
+      8000
+    );
+    test('recovered full version persists (note + duration)', recDone.cleanNote === 'RECOVER-ME' && recDone.durationMinutes === 99);
+    await closeModal();
+
+    // ---- 5n. Conflict → retry → lost response is recovered ----
+    console.log('\n5️⃣n Conflict → retry → lost response recovers');
+    await openDetail(tLost);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'LOST-RETRY');
+    await otherClient(tLost, { careModality: 'video' });
+    await Promise.all([waitPatch(tLost), page.click('#saveSessionEditBtn')]); // 409
+    await page.waitForTimeout(300);
+    abortResponseForId = tLost; // the retry applies but its response is dropped
+    await page.click('#conflictRetryBtn');
+    const lostRetry = await getSessionEventually(
+      tLost,
+      (s) => s.cleanNote === 'LOST-RETRY' && s.careModality === 'video',
+      10000
+    );
+    test('retry after a lost response ends correctly merged', lostRetry.cleanNote === 'LOST-RETRY' && lostRetry.careModality === 'video');
+    await closeModal();
+
+    // ---- 5o. Conflict → retry → second 409 re-shows the conflict, enabled ----
+    console.log('\n5️⃣o Conflict → retry → a second 409 re-shows the conflict enabled');
+    await openDetail(t2c);
+    await enterEdit();
+    await page.fill('#editSessionContent', '2C-MINE');
+    await otherClient(t2c, { careModality: 'video' });
+    await Promise.all([waitPatch(t2c), page.click('#saveSessionEditBtn')]); // 1st 409
+    await page.waitForTimeout(300);
+    await otherClient(t2c, { moodAssessment: 5 }); // other client moves again → retry will 409
+    await Promise.all([waitPatch(t2c), page.click('#conflictRetryBtn')]); // 2nd 409
+    await page.waitForTimeout(300);
+    const secondConflict = await page.evaluate(() => ({
+      hasTable: document.querySelectorAll('#sessionDetailBody table tbody tr').length === 8,
+      retryEnabled: document.querySelector('#conflictRetryBtn') && !document.querySelector('#conflictRetryBtn').disabled,
+      text: document.querySelector('#sessionDetailBody').textContent,
+    }));
+    test('second 409 re-shows all 8 fields', secondConflict.hasTable);
+    test('second 409 leaves actions enabled', secondConflict.retryEnabled === true);
+    test('second 409 keeps my text', /2C-MINE/.test(secondConflict.text));
+    await page.click('#conflictUseServerBtn');
+    await closeModal();
+
+    // ---- 5p. Closing a dirty, INVALID form warns ----
+    console.log('\n5️⃣p Closing a dirty (invalid) form warns');
+    await openDetail(tDirty);
+    await enterEdit();
+    await page.fill('#editSessionContent', ''); // invalid + dirty
+    const dialogsBefore = dialogs.length;
+    await page.click('#sessionDetailModal .modal-header .close'); // the X
+    await page.waitForTimeout(300);
+    test('closing a dirty invalid form asks for confirmation', dialogs.length > dialogsBefore);
+    // dialog auto-accepted → modal closed
+    await page.waitForFunction(() => !document.querySelector('#sessionDetailModal.show'), { timeout: 5000 });
+
+    // ---- 5q. Two tabs keep separate recovery records ----
+    console.log('\n5️⃣q Two tabs do not erase each other\'s recovery');
+    // This tab: leave a recovery record for tCancel via exhausted aborts.
+    await openDetail(tCancel);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'TAB1-REC');
+    failPatchesForId = tCancel;
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(2000);
+    failPatchesForId = null;
+    const tab1Keys = await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => k.startsWith('aira:pending:'))
+    );
+    test('this tab persisted a recovery record', tab1Keys.some((k) => k.includes(`:${tCancel}:`)));
+    // A second tab (its own sessionStorage → own tabId) must not see/erase it.
+    const page2 = await browser.newPage();
+    await page2.route('**/cdnjs.cloudflare.com/**', (route) => {
+      const baseName = route.request().url().split('/').pop().split('?')[0];
+      const local = VENDOR_BY_NAME[baseName];
+      if (local && fs.existsSync(path.join(ROOT_DIR, local))) {
+        return route.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(path.join(ROOT_DIR, local)) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/javascript', body: '' });
+    });
+    await page2.addInitScript((t) => localStorage.setItem('authToken', t), token);
+    await page2.goto(base + '/', { waitUntil: 'load' });
+    await page2.waitForSelector('.session-card', { timeout: 15000 });
+    await page2.evaluate((id) => window.showSessionDetail(id), tCancel);
+    await page2.waitForSelector('#sessionDetailModal.show', { timeout: 5000 });
+    await page2.waitForTimeout(200);
+    const tab2SeesRecovery = (await page2.locator('#recoveryRetryBtn').count()) > 0;
+    test('a second tab does not show this tab\'s recovery', tab2SeesRecovery === false);
+    const tab1KeysAfter = await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => k.startsWith('aira:pending:'))
+    );
+    test('the second tab did not erase this tab\'s record', tab1KeysAfter.some((k) => k.includes(`:${tCancel}:`)));
+    await page2.close();
+    // Clean up this tab's recovery so it doesn't affect later sections.
+    await page.evaluate((id) => {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('aira:pending:') && k.includes(`:${id}:`))
+        .forEach((k) => localStorage.removeItem(k));
+    }, tCancel);
+    await closeModal();
+
+    // ---- 5r. Cancel during an in-flight save leaves a consistent state ----
+    console.log('\n5️⃣r Cancel during an in-flight save is handled gracefully');
+    await openDetail(tRev);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'CANCEL-INFLIGHT');
+    delayResponseForId = tRev; // hold the response
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(200);
+    await page.click('#sessionDetailFooter .btn-secondary'); // Cancelar while in flight
+    await page.waitForTimeout(1800); // let the held response arrive
+    const cancelDb = await getSessionEventually(tRev, (s) => s.cleanNote === 'CANCEL-INFLIGHT', 8000);
+    test('the in-flight save still completed on the server', cancelDb.cleanNote === 'CANCEL-INFLIGHT');
+    const cancelState = await page.evaluate(() => ({
+      hasForm: !!document.querySelector('#sessionEditForm'),
+      hasConflict: !!document.querySelector('#conflictRetryBtn'),
+    }));
+    test('after cancel + response the modal is not stuck in a form/conflict', !cancelState.hasForm && !cancelState.hasConflict);
     await closeModal();
 
     // ---- 5c. Names and notes render literally in the session list ----
