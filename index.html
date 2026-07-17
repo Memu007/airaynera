@@ -6027,7 +6027,7 @@
       const sessionSaveState = {};
 
       // Warn before leaving/reloading while a session save is still in flight or
-      // pending, so an unconfirmed edit is not silently lost.
+      // pending, or with an unsaved (even invalid) edit in the form.
       window.addEventListener("beforeunload", (event) => {
         if (sessionHasWorkInFlight()) {
           event.preventDefault();
@@ -6036,19 +6036,33 @@
         }
       });
 
+      // Confirm before closing the detail modal (X or backdrop) when the edit
+      // form has unsaved changes — even if those changes are currently invalid.
+      $(document).on("hide.bs.modal", "#sessionDetailModal", function (event) {
+        if (window.__airaForceCloseDetail) return;
+        if (isEditFormDirty()) {
+          if (!window.confirm("Tenés cambios sin guardar en esta sesión. ¿Cerrar y descartarlos?")) {
+            event.preventDefault();
+          }
+        }
+      });
+
       function showSessionDetail(sessionId) {
         const session = appData.sessions.find((s) => s.id === sessionId);
         if (!session) return;
         currentSessionDetailId = sessionId;
-        // A pending conflict (in memory, or persisted across a reload) is shown
-        // again instead of the plain read-only view.
+        // A pending conflict (in memory or persisted across a reload) is shown
+        // again; otherwise a persisted unsaved edit (lost/aborted save) offers
+        // recovery; otherwise the plain read-only view.
         const st = getSaveState(sessionId);
         if (!st.conflict) {
           const persisted = loadPersistedConflict(sessionId);
-          if (persisted && persisted.myVersion) st.conflict = persisted;
+          if (persisted && persisted.desired) st.conflict = persisted;
         }
         if (st.conflict) {
           renderSessionConflict(sessionId);
+        } else if (loadPendingRecord(sessionId)) {
+          renderSessionRecovery(sessionId, loadPendingRecord(sessionId));
         } else {
           renderSessionDetailView(session);
         }
@@ -6113,7 +6127,7 @@
         `);
       }
 
-      function enterSessionEditMode(prefill) {
+      function enterSessionEditMode(prefill, baseSnapshot) {
         const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
         if (!session) return;
         // When recovering from a conflict we prefill "my version" over the
@@ -6200,7 +6214,12 @@
 
         // Remember the version this edit started from, for the 3-way conflict
         // retry and the dirty-form guard.
-        getSaveState(session.id).editBase = snapshotEditable(source);
+        // Delta base: for a conflict "edit my version" this is the ORIGINAL
+        // pre-divergence base, so a save merges (only my changed fields);
+        // otherwise it is the loaded session. editBaseRaw powers dirty detection.
+        const st = getSaveState(session.id);
+        st.editBase = baseSnapshot || snapshotEditable(source);
+        st.editBaseRaw = rawFormSnapshot();
 
         // Submit-driven so validation is consistent with the new-note form.
         $("#sessionEditForm").on("submit", saveSessionEdit);
@@ -6214,9 +6233,22 @@
       }
 
       function cancelSessionEdit() {
-        const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
-        const st = sessionSaveState[currentSessionDetailId];
-        if (st) st.editBase = null;
+        const id = currentSessionDetailId;
+        const st = sessionSaveState[id];
+        // If we were editing "my version" of a conflict, cancelling returns to
+        // the conflict (it is only cleared on success or "usar la del servidor").
+        if (st && st.editingConflict && st.conflict) {
+          st.editingConflict = false;
+          st.editBase = null;
+          st.editBaseRaw = null;
+          renderSessionConflict(id);
+          return;
+        }
+        if (st) {
+          st.editBase = null;
+          st.editBaseRaw = null;
+        }
+        const session = appData.sessions.find((s) => s.id === id);
         if (session) renderSessionDetailView(session);
       }
 
@@ -6239,16 +6271,37 @@
         "requiresFollowUp",
       ];
 
+      // A stable per-tab id (survives reload of the same tab; distinct per tab)
+      // so two tabs never clobber each other's local recovery records.
+      function airaTabId() {
+        try {
+          let id = sessionStorage.getItem("aira:tabId");
+          if (!id) {
+            id =
+              (window.crypto && window.crypto.randomUUID && window.crypto.randomUUID()) ||
+              `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            sessionStorage.setItem("aira:tabId", id);
+          }
+          return id;
+        } catch (_) {
+          return "no-tab";
+        }
+      }
+      const AIRA_TAB = airaTabId();
+
       function getSaveState(id) {
         return (
           sessionSaveState[id] ||
           (sessionSaveState[id] = {
             inFlight: false,
-            pending: null, // { payload, seq } — always the newest queued edit
+            pending: null, // { desired, seq } — always the newest queued edit
             latestSeq: 0,
-            conflict: null,
+            current: null, // the attempt currently in flight
+            conflict: null, // { desired, base, wireDelta, seq }
+            editingConflict: false,
             netAttempts: 0,
-            editBase: null,
+            editBase: null, // last applied/loaded full snapshot (delta base)
+            editBaseRaw: null, // raw form snapshot for dirty detection
             retrying: false,
           })
         );
@@ -6260,40 +6313,84 @@
         return out;
       }
 
-      // Unsaved work = a save in flight/pending, a pending conflict, or a dirty
-      // edit form. Used by the beforeunload guard.
+      // Only the fields whose value differs from the base (the minimal change
+      // set to send, so a concurrent change to an untouched field is preserved).
+      function computeDelta(desired, base) {
+        const delta = {};
+        for (const f of EDITABLE_FIELDS) {
+          if ((desired[f] ?? null) !== (base[f] ?? null)) delta[f] = desired[f] ?? null;
+        }
+        return delta;
+      }
+
+      // Read the edit form WITHOUT validating, for dirty detection (must catch
+      // invalid states too: empty date, empty note, bad duration).
+      function rawFormSnapshot() {
+        if (!document.getElementById("sessionEditForm")) return null;
+        const durationRaw = ($("#editSessionDurationMinutes").val() || "").trim();
+        const moodRaw = $("#editSessionMood").val();
+        return {
+          clinicalDate: ($("#editSessionClinicalDate").val() || "").trim(),
+          sessionType: $("#editSessionType").val(),
+          durationMinutes: durationRaw,
+          careModality: $("#editSessionCareModality").val(),
+          cleanNote: ($("#editSessionContent").val() || "").trim(),
+          medicationNotes: ($("#editSessionMedication").val() || "").trim(),
+          moodAssessment: moodRaw,
+          requiresFollowUp: $("#editSessionRequiresFollowUp").is(":checked"),
+        };
+      }
+
+      function isEditFormDirty() {
+        const st = sessionSaveState[currentSessionDetailId];
+        if (!st || !st.editBaseRaw) return false;
+        const now = rawFormSnapshot();
+        if (!now) return false;
+        return JSON.stringify(now) !== JSON.stringify(st.editBaseRaw);
+      }
+
+      // Unsaved work anywhere = a save in flight/pending, a pending conflict, or a
+      // dirty edit form (even if the form is currently invalid).
       function sessionHasWorkInFlight() {
         const busy = Object.values(sessionSaveState).some(
           (s) => s && (s.inFlight || s.pending || s.conflict)
         );
-        if (busy) return true;
-        if (document.getElementById("sessionEditForm")) {
-          const st = sessionSaveState[currentSessionDetailId];
-          const base = st && st.editBase;
-          const now = readSessionEditForm(true);
-          if (now && base && !payloadsEqual(now, base)) return true;
-        }
-        return false;
+        return busy || isEditFormDirty();
       }
 
-      function persistUnsaved(id, payload) {
+      // --- Local persistence (per tab), for recovery after a lost/aborted save.
+      function pendingKey(id) {
+        return `aira:pending:${id}:${AIRA_TAB}`;
+      }
+      function persistPendingRecord(id, record) {
         try {
-          localStorage.setItem(`aira:unsaved:${id}`, JSON.stringify(payload));
+          localStorage.setItem(pendingKey(id), JSON.stringify(record));
         } catch (_) {}
       }
-      function clearUnsaved(id) {
+      function loadPendingRecord(id) {
         try {
-          localStorage.removeItem(`aira:unsaved:${id}`);
+          const raw = localStorage.getItem(pendingKey(id));
+          return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+          return null;
+        }
+      }
+      function clearPendingRecord(id) {
+        try {
+          localStorage.removeItem(pendingKey(id));
         } catch (_) {}
+      }
+      function conflictKey(id) {
+        return `aira:conflict:${id}:${AIRA_TAB}`;
       }
       function persistConflict(id, conflict) {
         try {
-          localStorage.setItem(`aira:conflict:${id}`, JSON.stringify(conflict));
+          localStorage.setItem(conflictKey(id), JSON.stringify(conflict));
         } catch (_) {}
       }
       function loadPersistedConflict(id) {
         try {
-          const raw = localStorage.getItem(`aira:conflict:${id}`);
+          const raw = localStorage.getItem(conflictKey(id));
           return raw ? JSON.parse(raw) : null;
         } catch (_) {
           return null;
@@ -6301,11 +6398,11 @@
       }
       function clearPersistedConflict(id) {
         try {
-          localStorage.removeItem(`aira:conflict:${id}`);
+          localStorage.removeItem(conflictKey(id));
         } catch (_) {}
       }
 
-      // Read the edit form and validate. Returns a payload, or null when
+      // Read the edit form and validate. Returns a full payload, or null when
       // invalid (showing a warning unless silent).
       function readSessionEditForm(silent) {
         const cleanNote = ($("#editSessionContent").val() || "").trim();
@@ -6366,73 +6463,94 @@
         if (event) event.preventDefault();
         const session = appData.sessions.find((s) => s.id === currentSessionDetailId);
         if (!session) return;
-        const payload = readSessionEditForm(false);
-        if (!payload) return;
-        // Do NOT close or destroy the form here: it stays until the save is
-        // confirmed, so nothing is lost if the request fails or conflicts.
+        const desired = readSessionEditForm(false);
+        if (!desired) return;
+        // Do NOT close or destroy the form: it stays until the save confirms.
         markSavingIndicator(true);
-        enqueueSessionSave(session.id, payload);
+        enqueueSessionSave(session.id, desired);
       }
 
-      // Every edit gets a monotonic seq. The pending slot always holds the newest
-      // edit, and pumpSaveQueue is the ONLY sender, so an older payload can never
-      // survive or overwrite a newer one.
-      function enqueueSessionSave(targetId, payload) {
+      // Each edit gets a monotonic seq. Only the newest desired snapshot survives
+      // in the pending slot, and pumpSaveQueue is the ONLY sender.
+      function enqueueSessionSave(targetId, desired) {
         const state = getSaveState(targetId);
         state.latestSeq += 1;
-        state.pending = { payload, seq: state.latestSeq };
+        state.pending = { desired, seq: state.latestSeq };
         pumpSaveQueue(targetId);
       }
 
       function pumpSaveQueue(targetId) {
         const state = getSaveState(targetId);
         if (state.inFlight || !state.pending) return;
-        const { payload, seq } = state.pending;
+        const { desired, seq } = state.pending;
         state.pending = null;
+        const session = appData.sessions.find((s) => s.id === targetId);
+        // Base for the delta: the last applied/loaded snapshot. Reset on each
+        // success, so a v2 that reverts a field diffs against v1 and is sent.
+        const base = state.editBase || snapshotEditable(session);
+        const wireDelta = computeDelta(desired, base);
+        if (Object.keys(wireDelta).length === 0) {
+          // Nothing changed → no-op (avoid an EMPTY_PATCH 400).
+          finishSaveChain(targetId, desired, true);
+          return;
+        }
+        const attempt = {
+          seq,
+          desired,
+          base,
+          appliedBase: snapshotEditable(session), // server state the delta lands on
+          wireDelta,
+          revision: session && session.revision != null ? session.revision : null,
+          fromConflict: false,
+        };
         state.inFlight = true;
         state.netAttempts = 0;
-        sendSessionSave(targetId, payload, seq);
+        state.current = attempt;
+        persistPendingRecord(targetId, {
+          desired,
+          base,
+          revision: attempt.revision,
+          seq,
+          tab: AIRA_TAB,
+        });
+        sendAttempt(targetId, attempt);
       }
 
-      function sendSessionSave(targetId, payload, seq) {
+      function sendAttempt(targetId, attempt) {
         const state = getSaveState(targetId);
         const token = localStorage.getItem("authToken");
-        const current = appData.sessions.find((s) => s.id === targetId);
-        const baseRevision = current && current.revision != null ? String(current.revision) : null;
-
+        const headers = { Authorization: `Bearer ${token}` };
+        if (attempt.revision != null) headers["If-Match"] = String(attempt.revision);
         $.ajax({
           url: `/api/sessions/${targetId}`,
           method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            ...(baseRevision != null ? { "If-Match": baseRevision } : {}),
-          },
+          headers,
           contentType: "application/json",
-          data: JSON.stringify(payload),
+          data: JSON.stringify(attempt.wireDelta),
           success: function (updated) {
             state.inFlight = false;
             state.netAttempts = 0;
+            state.current = null;
+            clearPendingRecord(targetId);
             applyServerSession(targetId, updated);
-            if (state.pending) {
-              pumpSaveQueue(targetId); // a newer edit is queued → send it next
-            } else {
-              finishSaveChain(targetId, payload);
-            }
+            state.editBase = snapshotEditable(appData.sessions.find((s) => s.id === targetId));
+            if (attempt.fromConflict || state.conflict) clearSessionConflict(targetId);
+            if (state.pending) pumpSaveQueue(targetId);
+            else finishSaveChain(targetId, attempt.desired, false);
           },
           error: function (xhr) {
             if (xhr.status === 409) {
               state.inFlight = false;
-              handleSaveConflict(targetId, payload, xhr.responseJSON && xhr.responseJSON.session);
+              state.current = null;
+              handleSaveConflict(targetId, attempt, xhr.responseJSON && xhr.responseJSON.session);
               return;
             }
             if (xhr.status === 0) {
-              // Response lost: keep the slot "in flight" (so a concurrent edit
-              // queues as pending) while we find out whether it applied.
-              recoverLostSave(targetId, payload, seq, baseRevision);
+              recoverLostSave(targetId, attempt);
               return;
             }
             state.inFlight = false;
-            // 400/428/500 etc.: keep the form and its content, surface the error.
+            state.current = null;
             markSavingIndicator(false);
             const msg =
               xhr.responseJSON?.details?.[0]?.msg ||
@@ -6440,7 +6558,13 @@
               xhr.responseJSON?.error ||
               "No se pudo guardar la sesión.";
             notificaciones.error("Error", msg);
-            if (state.pending) pumpSaveQueue(targetId);
+            if (attempt.fromConflict && state.conflict) {
+              // Keep the conflict recoverable: re-show it with enabled actions.
+              state.retrying = false;
+              renderSessionConflict(targetId);
+            } else if (state.pending) {
+              pumpSaveQueue(targetId);
+            }
           },
         });
       }
@@ -6467,47 +6591,58 @@
         });
       }
 
-      function serverMatchesPayload(server, payload) {
-        return payloadsEqual(snapshotEditable(server), payload);
-      }
-
-      // Recover from a lost response: if the server already contains our edit,
-      // adopt its revision and continue with the pending edit; otherwise resend.
-      // On giving up, no pending may coexist with inFlight=false — the newest is
-      // stashed locally instead.
-      function recoverLostSave(targetId, payload, seq, baseRevision) {
+      // Lost response: compare the server to the FULL expected state after
+      // applying our delta (base + wireDelta), not to the sparse delta.
+      function recoverLostSave(targetId, attempt) {
         const state = getSaveState(targetId);
-        state.inFlight = true; // hold the slot so a concurrent edit queues as pending
+        state.inFlight = true;
         state.netAttempts = (state.netAttempts || 0) + 1;
         if (state.netAttempts > 4) {
           state.inFlight = false;
-          const newest = state.pending ? state.pending.payload : payload;
-          state.pending = null; // no pending may linger while not in flight
-          persistUnsaved(targetId, newest);
+          state.current = null;
           markSavingIndicator(false);
+          // Keep the newest full version locally (not just the delta), recoverable.
+          const newest = state.pending ? state.pending.desired : attempt.desired;
+          state.pending = null;
+          persistPendingRecord(targetId, {
+            desired: newest,
+            base: attempt.base,
+            revision: attempt.revision,
+            seq: attempt.seq,
+            tab: AIRA_TAB,
+          });
           notificaciones.error(
             "Sin conexión",
-            "No pudimos confirmar el guardado. Guardamos tu versión localmente; reintentá cuando tengas conexión."
+            "No pudimos confirmar el guardado. Guardamos tu versión localmente; abrí la ficha para reintentar o descartar."
           );
+          if (attempt.fromConflict && state.conflict) {
+            state.retrying = false;
+            renderSessionConflict(targetId);
+          }
           return;
         }
         fetchSessionFresh(targetId, (server) => {
           if (!server) {
-            sendSessionSave(targetId, payload, seq); // retry; slot already in flight
+            sendAttempt(targetId, attempt);
             return;
           }
-          const base = Number(baseRevision);
-          if (server.revision === base + 1 && serverMatchesPayload(server, payload)) {
+          const expectedFull = { ...attempt.appliedBase, ...attempt.wireDelta };
+          if (server.revision === attempt.revision + 1 && payloadsEqual(snapshotEditable(server), expectedFull)) {
             state.netAttempts = 0;
             state.inFlight = false;
+            state.current = null;
+            clearPendingRecord(targetId);
             applyServerSession(targetId, server);
+            state.editBase = snapshotEditable(appData.sessions.find((s) => s.id === targetId));
+            if (attempt.fromConflict || state.conflict) clearSessionConflict(targetId);
             if (state.pending) pumpSaveQueue(targetId);
-            else finishSaveChain(targetId, payload);
-          } else if (server.revision === base) {
-            sendSessionSave(targetId, payload, seq); // never reached the server
+            else finishSaveChain(targetId, attempt.desired, false);
+          } else if (server.revision === attempt.revision) {
+            sendAttempt(targetId, attempt); // never reached the server
           } else {
             state.inFlight = false;
-            handleSaveConflict(targetId, payload, server); // someone else advanced it
+            state.current = null;
+            handleSaveConflict(targetId, attempt, server);
           }
         });
       }
@@ -6523,14 +6658,9 @@
         }
       }
 
-      // Called once a save chain settles with no pending work. Closes the form
-      // to read-only only if the user has NOT kept typing past what was saved.
-      function finishSaveChain(targetId, savedPayload) {
+      function finishSaveChain(targetId, savedDesired, noChange) {
         const state = getSaveState(targetId);
         state.retrying = false;
-        state.editBase = null;
-        clearUnsaved(targetId);
-        clearPersistedConflict(targetId);
         markSavingIndicator(false);
         refreshDashboardViews();
         renderSessionsPreservingFilters();
@@ -6542,27 +6672,35 @@
             renderSessionDetailView(fresh);
           } else {
             const currentAttempt = readSessionEditForm(true);
-            if (payloadsEqual(currentAttempt, savedPayload)) {
+            if (payloadsEqual(currentAttempt, savedDesired)) {
+              state.editBase = null;
+              state.editBaseRaw = null;
               renderSessionDetailView(fresh); // clean: safe to close
             }
-            // else: unsaved changes present → keep the form open
+            // else: the user kept typing → keep the form open
           }
         }
-        notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
+        if (noChange) {
+          notificaciones.info("Sin cambios", "No había cambios para guardar.");
+        } else {
+          notificaciones.exito("Sesión actualizada", "Los cambios se guardaron en la ficha.");
+        }
       }
 
-      // On 409 keep the user's latest version (never lose a pending edit) and show
-      // it beside the server version, field by field, so they can retry, edit or
-      // discard. The conflict is persisted so closing/reloading re-shows it.
-      function handleSaveConflict(targetId, attemptedPayload, serverSession) {
+      // On 409 keep the user's newest version and show it beside the server one,
+      // field by field. The conflict base is the pre-divergence snapshot, so a
+      // retry merges (only my changed fields) and never clobbers untouched ones.
+      function handleSaveConflict(targetId, attempt, serverSession) {
         const state = getSaveState(targetId);
         state.retrying = false;
         markSavingIndicator(false);
-        const myVersion = state.pending ? state.pending.payload : attemptedPayload;
+        const desired = state.pending ? state.pending.desired : attempt.desired;
         state.pending = null;
-        const editBase = state.editBase || snapshotEditable(serverSession);
-        state.conflict = { myVersion, editBase };
+        const base = attempt.base;
+        const wireDelta = computeDelta(desired, base);
+        state.conflict = { desired, base, wireDelta, seq: attempt.seq };
         persistConflict(targetId, state.conflict);
+        clearPendingRecord(targetId);
         if (serverSession) applyServerSession(targetId, serverSession);
         refreshDashboardViews();
         renderSessionsPreservingFilters();
@@ -6597,7 +6735,7 @@
       function renderSessionConflict(targetId) {
         const state = getSaveState(targetId);
         const server = appData.sessions.find((s) => s.id === targetId);
-        const mine = state.conflict && state.conflict.myVersion;
+        const mine = state.conflict && state.conflict.desired;
         if (!server || !mine) return;
         const rows = conflictFieldRows(server, mine);
         const rowsHtml = rows
@@ -6648,7 +6786,9 @@
       function clearSessionConflict(id) {
         const state = getSaveState(id);
         state.conflict = null;
+        state.editingConflict = false;
         state.editBase = null;
+        state.editBaseRaw = null;
         clearPersistedConflict(id);
       }
 
@@ -6662,44 +6802,90 @@
       function editMyConflictVersion() {
         const id = currentSessionDetailId;
         const state = getSaveState(id);
-        const mine = state.conflict && state.conflict.myVersion;
-        state.conflict = null;
-        clearPersistedConflict(id);
-        enterSessionEditMode(mine || undefined);
+        const conflict = state.conflict;
+        if (!conflict) return;
+        // Keep the conflict (blocker: not cleared until success / use-server) and
+        // edit "my version" against the ORIGINAL conflict base so a save merges.
+        state.editingConflict = true;
+        enterSessionEditMode(conflict.desired, conflict.base);
       }
 
       function retryMyConflictVersion() {
         const id = currentSessionDetailId;
         const state = getSaveState(id);
-        if (state.retrying) return;
+        if (state.retrying || state.inFlight) return;
         const conflict = state.conflict;
         if (!conflict) return;
+        if (Object.keys(conflict.wireDelta).length === 0) {
+          // My net change is empty vs the base → nothing to merge; use server.
+          useServerVersion();
+          return;
+        }
         state.retrying = true;
         $("#conflictRetryBtn, #conflictEditBtn, #conflictUseServerBtn").prop("disabled", true);
         $("#conflictRetryBtn").html('<i class="fas fa-spinner fa-spin"></i> Reintentando…');
+        const server = appData.sessions.find((s) => s.id === id);
+        const attempt = {
+          seq: conflict.seq,
+          desired: conflict.desired,
+          base: conflict.base,
+          appliedBase: snapshotEditable(server), // merge lands on the current server
+          wireDelta: conflict.wireDelta,
+          revision: server && server.revision != null ? server.revision : null,
+          fromConflict: true,
+        };
+        state.inFlight = true;
+        state.netAttempts = 0;
+        state.current = attempt;
+        persistPendingRecord(id, {
+          desired: conflict.desired,
+          base: conflict.base,
+          revision: attempt.revision,
+          seq: conflict.seq,
+          tab: AIRA_TAB,
+        });
+        sendAttempt(id, attempt);
+      }
 
-        // 3-way: send only the fields I actually changed from my edit base, so a
-        // concurrent change to a field I never touched is not clobbered.
-        const base = conflict.editBase;
-        const mine = conflict.myVersion;
-        let delta = {};
-        if (base) {
-          for (const f of EDITABLE_FIELDS) {
-            if ((mine[f] ?? null) !== (base[f] ?? null)) delta[f] = mine[f];
-          }
-        } else {
-          delta = { ...mine };
-        }
-        state.conflict = null;
-        clearPersistedConflict(id);
-        if (Object.keys(delta).length === 0) {
-          // Nothing of mine to write → adopt the server version.
-          state.retrying = false;
+      // Local recovery panel shown when a persisted unsaved record exists for
+      // this session/tab (e.g. after a lost save + reload).
+      function renderSessionRecovery(targetId, record) {
+        const $body = $("#sessionDetailBody");
+        const d = record.desired || {};
+        $body.html(`
+          <div class="alert alert-info" role="alert">
+            <i class="fas fa-history mr-1"></i>
+            Recuperamos una edición que no llegó a confirmarse. Podés reintentarla o descartarla.
+          </div>
+          <h6 class="text-muted">Tu versión sin confirmar</h6>
+          <p class="recovery-note"></p>
+        `);
+        $body.find(".recovery-note").text(d.cleanNote || "Sin contenido");
+        $("#sessionDetailFooter").html(`
+          <button type="button" class="btn btn-outline-secondary" id="recoveryDiscardBtn" onclick="discardRecovery()">Descartar</button>
+          <button type="button" class="btn btn-warning" id="recoveryRetryBtn" onclick="retryRecovery()">Reintentar guardado</button>
+        `);
+      }
+
+      function retryRecovery() {
+        const id = currentSessionDetailId;
+        const record = loadPendingRecord(id);
+        if (!record) {
           const fresh = appData.sessions.find((s) => s.id === id);
           if (fresh) renderSessionDetailView(fresh);
           return;
         }
-        enqueueSessionSave(id, delta);
+        const state = getSaveState(id);
+        state.editBase = record.base || snapshotEditable(appData.sessions.find((s) => s.id === id));
+        clearPendingRecord(id);
+        enqueueSessionSave(id, record.desired);
+      }
+
+      function discardRecovery() {
+        const id = currentSessionDetailId;
+        clearPendingRecord(id);
+        const fresh = appData.sessions.find((s) => s.id === id);
+        if (fresh) renderSessionDetailView(fresh);
       }
 
       function showPatientDetail(patientId) {
