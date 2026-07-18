@@ -192,6 +192,7 @@ async function main() {
     await waitForHealth(`${base}/health`, server);
     token = (await api('POST', '/api/auth/register', { dni: '30222333', pin: '1234', name: 'Dra. Móvil' })).data.token;
     const patientId = String((await api('POST', '/api/patients', { name: 'Paco Fake', dni: '41000001' })).data.id);
+    const patientB = String((await api('POST', '/api/patients', { name: 'Bruna Fake', dni: '41000002' })).data.id);
 
     browser = await launchBrowser();
     const context = await browser.newContext({ permissions: ['microphone'] });
@@ -200,15 +201,19 @@ async function main() {
     await context.addInitScript(() => {
       window.__micActive = false;
       window.__micStops = 0;
+      window.__micAcquires = 0; // successful getUserMedia() resolutions
       window.__denyMic = false;
+      window.__micDelayMs = 0; // simulate a slow permission prompt
       const md = navigator.mediaDevices;
       if (md && md.getUserMedia) {
         const orig = md.getUserMedia.bind(md);
         md.getUserMedia = async (constraints) => {
+          if (window.__micDelayMs) await new Promise((r) => setTimeout(r, window.__micDelayMs));
           if (window.__denyMic) {
             const err = new Error('Permission denied'); err.name = 'NotAllowedError'; throw err;
           }
           const stream = await orig(constraints);
+          window.__micAcquires += 1;
           window.__micActive = true;
           stream.getTracks().forEach((t) => {
             const stop = t.stop.bind(t);
@@ -383,6 +388,87 @@ async function main() {
     await page.waitForTimeout(300);
     test('closing with an unsent recording asks for confirmation', dialogs.length > dialogsBefore);
 
+    // ---- 8. A failed upload keeps patient + clinical data pinned; retry keeps A ----
+    console.log('\n8️⃣  Failed upload keeps the patient locked; retry stays on the same patient');
+    const before8 = await sessionCount();
+    await openAudioModal();
+    await record(900);
+    let fail8 = true;
+    await page.route('**/api/audio-drafts/upload**', (route) => {
+      if (fail8) { fail8 = false; return route.abort(); }
+      return route.continue();
+    });
+    await page.click('#prepareWebAudioBtn'); // fails
+    await page.waitForTimeout(700);
+    const lockedAfterFail = await page.evaluate(() => ({
+      patientDisabled: document.querySelector('#sessionPatient').disabled === true,
+      dateDisabled: document.querySelector('#sessionClinicalDate').disabled === true,
+      patientValue: document.querySelector('#sessionPatient').value,
+      stillHasTake: !document.querySelector('#rerecordAudioBtn').classList.contains('d-none'),
+    }));
+    test('patient stays locked after a failed upload', lockedAfterFail.patientDisabled === true);
+    test('clinical date stays locked after a failed upload', lockedAfterFail.dateDisabled === true);
+    test('the recording is still available to retry', lockedAfterFail.stillHasTake === true);
+    // A locked select cannot be changed by the user (blocks switching to B).
+    test('the patient cannot be switched while locked', lockedAfterFail.patientDisabled === true && lockedAfterFail.patientValue === patientId);
+    await page.unroute('**/api/audio-drafts/upload**');
+    await page.click('#prepareWebAudioBtn'); // retry
+    await page.waitForFunction(() => (document.querySelector('#sessionContent').value || '').length > 0, { timeout: 12000 });
+    await page.fill('#sessionContent', 'Nota tras subida fallida (paciente A).');
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/confirm') && r.request().method() === 'POST', { timeout: 10000 }),
+      page.click("#newSessionForm button[type='submit']"),
+    ]);
+    await page.waitForTimeout(400);
+    const retained = ((await api('GET', '/api/sessions')).data.sessions || []).find((s) => s.cleanNote === 'Nota tras subida fallida (paciente A).');
+    test('retry adds exactly one session', (await sessionCount()) === before8 + 1);
+    test('the retried session kept patient A', retained && String(retained.patientId) === patientId);
+
+    // ---- 9. Double taps during acquisition acquire the mic only once ----
+    console.log('\n9️⃣  Double taps during a slow permission prompt acquire the mic once');
+    await openAudioModal();
+    await page.evaluate(() => { window.__micAcquires = 0; window.__micDelayMs = 400; });
+    await page.evaluate(() => { window.startWebAudioRecording(); window.startWebAudioRecording(); }); // two rapid taps
+    await page.waitForSelector('#stopAudioBtn:not(.d-none)', { timeout: 5000 });
+    const acquires = await page.evaluate(() => window.__micAcquires);
+    test('a double tap acquires the mic only once', acquires === 1);
+    await page.evaluate(() => { window.__micDelayMs = 0; });
+    await page.click('#stopAudioBtn');
+    await page.waitForSelector('#rerecordAudioBtn:not(.d-none)', { timeout: 5000 });
+    await forceCloseModal();
+
+    // ---- 10. A pending acquisition invalidated (switch to text) stops the late stream ----
+    console.log('\n🔟 Switching to text during acquisition stops the late-arriving stream');
+    await openAudioModal();
+    await page.evaluate(() => { window.__micAcquires = 0; window.__micStops = 0; window.__micDelayMs = 500; });
+    await page.evaluate(() => window.startWebAudioRecording()); // acquisition pending
+    await page.waitForTimeout(50);
+    await page.evaluate(() => { const r = document.querySelector('#sessionInputText'); r.checked = true; window.setSessionInputMode('text'); }); // invalidate
+    await page.waitForTimeout(800); // let the delayed getUserMedia resolve
+    const lateStream = await page.evaluate(() => ({ acquires: window.__micAcquires, stops: window.__micStops, active: window.__micActive, recording: !document.querySelector('#stopAudioBtn') || document.querySelector('#stopAudioBtn').classList.contains('d-none') }));
+    test('a late-resolving stream is stopped, not used', lateStream.acquires === 1 && lateStream.stops >= 1 && lateStream.active === false);
+    test('no recording started after the invalidated request', lateStream.recording === true);
+    await page.evaluate(() => { window.__micDelayMs = 0; });
+    await forceCloseModal();
+
+    // ---- 11. Logout tears down an active recording (recorder/tracks/local audio) ----
+    console.log('\n1️⃣1️⃣ Logout stops the recorder, releases the mic and creates no session');
+    const before11 = await sessionCount();
+    await openAudioModal();
+    await record(700); // a recorded take exists (mic already released on stop)
+    await page.evaluate(() => { window.__micStops = 0; });
+    // Start a fresh recording so the mic is actively open at logout time.
+    await page.click('#rerecordAudioBtn');
+    await page.waitForSelector('#stopAudioBtn:not(.d-none)', { timeout: 5000 });
+    const activeBeforeLogout = await page.evaluate(() => window.__micActive);
+    await page.evaluate(() => window.logout());
+    await page.waitForFunction(() => !localStorage.getItem('authToken'), { timeout: 6000 });
+    await page.waitForTimeout(200);
+    const afterLogout = await page.evaluate(() => ({ active: window.__micActive, stops: window.__micStops }));
+    test('the mic was open during recording before logout', activeBeforeLogout === true);
+    test('logout stops the recorder and releases the mic', afterLogout.active === false && afterLogout.stops >= 1);
+    test('logout created no session', (await sessionCount()) === before11);
+
     test('no uncaught page errors during the run', pageErrors.length === 0);
     if (pageErrors.length) console.log('   page errors:', pageErrors.join(' | '));
 
@@ -395,11 +481,26 @@ async function main() {
     if (serverLogs.length) console.error('\nServer output:\n' + serverLogs.slice(-40).join(''));
     process.exitCode = 1;
   } finally {
-    if (browser) await browser.close();
-    if (!server.killed) server.kill('SIGTERM');
-    if (!worker.killed) worker.kill('SIGTERM');
+    if (browser) await browser.close().catch(() => {});
+    // Actually wait for the server and worker to exit; force-kill as a bounded
+    // fallback so the runner never hangs on a lingering child process.
+    await Promise.all([stopProcess(server), stopProcess(worker)]);
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
+}
+
+// Terminate a child process and resolve only once it has actually exited.
+// SIGTERM first, then SIGKILL after a bounded wait, then give up after another.
+function stopProcess(proc) {
+  return new Promise((resolve) => {
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) return resolve();
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    proc.once('exit', finish);
+    try { proc.kill('SIGTERM'); } catch (_) { return finish(); }
+    setTimeout(() => { if (!done) { try { proc.kill('SIGKILL'); } catch (_) {} } }, 3000);
+    setTimeout(finish, 6000); // hard cap so cleanup never blocks forever
+  });
 }
 
 main().catch((error) => {

@@ -196,7 +196,7 @@ received → transcribing → structuring → ready → confirmed
 - El worker renueva el lease mientras espera un proveedor asíncrono y aborta si pierde ownership o recibe shutdown.
 - Toda persistencia del resultado exige el fencing token vigente; una respuesta tardía no puede escribir.
 
-La configuración predeterminada es `AUDIO_TRANSCRIBER=fake` y `NOTE_CLEANER=fake`. `AUDIO_TRANSCRIBER=gemini` selecciona el adaptador real únicamente para uploads y exige `GEMINI_API_KEY`; los fixtures siempre usan fake. La transcripción se conserva en `rawTranscript` y la limpieza continúa separada. Todavía no existen grabación web ni descarga desde Meta.
+La configuración predeterminada es `AUDIO_TRANSCRIBER=fake` y `NOTE_CLEANER=fake`. `AUDIO_TRANSCRIBER=gemini` selecciona el adaptador real únicamente para uploads y exige `GEMINI_API_KEY`; los fixtures siempre usan fake. La transcripción se conserva en `rawTranscript` y la limpieza continúa separada. La grabación directa desde web móvil ya existe y usa el mismo endpoint de upload (ver arriba); la descarga desde Meta todavía no.
 
 El adaptador Gemini acepta WAV, MP3/MPEG, AAC, OGG y MP4/M4A. WebM sigue siendo válido para el almacenamiento neutral, pero Gemini lo rechaza hasta agregar normalización de formato. La falla queda persistida; el audio debe convertirse y cargarse nuevamente antes de reintentar con Gemini.
 

@@ -73,12 +73,14 @@ async function main() {
     check('unknown container is rejected', unknown && unknown.code === 'UNSUPPORTED_AUDIO_TYPE');
 
     // 5. The 25 MB-style size limit is enforced and leaves no partial file.
+    const filesBeforeOversize = fs.readdirSync(process.env.AUDIO_UPLOAD_DIR).length;
     process.env.AUDIO_UPLOAD_MAX_BYTES = '16';
     let oversize = null;
     try { await storeStream(store, webmBytes('a recording that exceeds the tiny limit'), 'audio/webm'); }
     catch (e) { oversize = e; }
     check('oversize recording is rejected', oversize && oversize.code === 'AUDIO_FILE_TOO_LARGE');
-    check('no partial file left after an oversize reject', fs.readdirSync(process.env.AUDIO_UPLOAD_DIR).length >= 0);
+    const filesAfterOversize = fs.readdirSync(process.env.AUDIO_UPLOAD_DIR).length;
+    check('no partial file left after an oversize reject', filesAfterOversize === filesBeforeOversize);
     delete process.env.AUDIO_UPLOAD_MAX_BYTES;
 
     // 6. End-to-end: a webm recording becomes a ready draft via the fake

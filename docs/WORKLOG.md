@@ -58,7 +58,14 @@ Que el profesional grabe una nota post-sesión desde el celular y la envíe por 
 ### Verificaciones (resultados exactos)
 
 - `npm test`: **129/129** funcionales + **130/130** de edición + **15/15** de grabación móvil (`scripts/mobile-recording-tests.js`), salida con código 0.
-- `npm run test:mobile-recording:browser`: **18/18** en Chromium con micrófono simulado (`--use-fake-device-for-media-stream`): grabar→usar→nota `fake`→confirmar→persistir tras recargar; micrófono liberado al detener; permiso denegado sin borrador/sesión y con alternativas; regrabar descarta la toma previa; preparar deshabilitado durante la subida; respuesta perdida + reintento sin duplicar; cerrar con grabación sin enviar advierte.
+- `npm run test:mobile-recording:browser`: **30/30** en Chromium con micrófono simulado (`--use-fake-device-for-media-stream`): grabar→usar→nota `fake`→confirmar→persistir tras recargar; micrófono liberado al detener; permiso denegado sin borrador/sesión y con alternativas; regrabar descarta la toma previa; preparar deshabilitado durante la subida; respuesta perdida + reintento sin duplicar; cerrar con grabación sin enviar advierte; **subida fallida deja paciente/datos bloqueados y el reintento conserva el paciente**; doble toque en adquisición lenta adquiere una vez; adquisición invalidada detiene el stream tardío; y logout apaga recorder/micrófono, libera el audio local y no crea sesión. El runner sale con código 0 (espera server/worker con `SIGKILL` acotado de respaldo).
+
+### Ronda de verificación (correcciones tras auditoría)
+
+- **B1:** en `prepareWebAudioDraft`, la falla de subida ya **no** desbloquea los campos si queda una grabación sin enviar (`!currentWebAudioDraftId && !hasUnsentRecording()`), así el reintento sigue atado al mismo paciente.
+- **B2:** `startWebAudioRecording` deshabilita dobles toques con `webAudioAcquiringMic`; cada pedido lleva un `webAudioMicRequestId` monotónico; si se invalida mientras `getUserMedia` está pendiente (cerrar modal, cambiar a texto, logout, nueva toma), el stream que resuelve tarde se detiene de inmediato. `logout` aborta la subida, detiene recorder/tracks, libera el blob y limpia los punteros de borrador.
+- **B3:** el runner de navegador ahora espera realmente el `exit` de server y worker con `SIGTERM`→`SIGKILL` acotado, y exige salida 0 (antes imprimía el total pero no terminaba).
+- **Fixes:** aserción de limpieza por archivo grande ahora compara conteo antes/después (ya no es siempre verdadera); `DOMAIN_CONTRACTS` corregido (la grabación web ya existe y usa el mismo upload); `HANDOFF` apunta a los commits móviles como último hito.
 - `npm run test:session-edit:browser`: **108/108** (sin regresiones). `npm run lint`: aprobado. `git diff --check`: limpio.
 - `AUDIO_TRANSCRIBER=fake` por defecto. Gemini real: no ejecutado (sin credencial).
 
