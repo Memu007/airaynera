@@ -4808,11 +4808,18 @@
             currentUser = null;
             isDemoMode = false;
             $("#dni, #pin").val("");
-            
+
+            // Drop any in-memory unsaved edit state and empty the tray so a next
+            // login in the same tab can never see the previous account's work.
+            try {
+              Object.keys(sessionSaveState).forEach((k) => delete sessionSaveState[k]);
+            } catch (_) {}
+
             // Clear storage
             localStorage.removeItem('authToken');
             localStorage.removeItem('currentUser');
             sessionStorage.removeItem('currentUser');
+            renderDraftsTray();
           }, 300);
         }, 1000);
       }
@@ -6310,6 +6317,30 @@
       }
       const AIRA_TAB = airaTabId();
 
+      // A per-account scope derived from the auth token (JWT `sub`) so one
+      // professional's local drafts/conflicts/recoveries are never read under
+      // another account, even in the same browser tab. Falls back to "anon".
+      function accountScope() {
+        try {
+          const token = localStorage.getItem("authToken");
+          if (!token) return "anon";
+          const part = token.split(".")[1];
+          if (!part) return "anon";
+          const json = JSON.parse(
+            decodeURIComponent(
+              atob(part.replace(/-/g, "+").replace(/_/g, "/"))
+                .split("")
+                .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+                .join("")
+            )
+          );
+          const id = json.sub != null ? json.sub : json.userId;
+          return id != null && id !== "" ? String(id) : "anon";
+        } catch (_) {
+          return "anon";
+        }
+      }
+
       function getSaveState(id) {
         return (
           sessionSaveState[id] ||
@@ -6381,7 +6412,7 @@
 
       // --- Local persistence (per tab), for recovery after a lost/aborted save.
       function pendingKey(id) {
-        return `aira:pending:${id}:${AIRA_TAB}`;
+        return `aira:pending:${accountScope()}:${id}:${AIRA_TAB}`;
       }
       function persistPendingRecord(id, record) {
         try {
@@ -6402,7 +6433,7 @@
         } catch (_) {}
       }
       function conflictKey(id) {
-        return `aira:conflict:${id}:${AIRA_TAB}`;
+        return `aira:conflict:${accountScope()}:${id}:${AIRA_TAB}`;
       }
       function persistConflict(id, conflict) {
         try {
@@ -6428,22 +6459,28 @@
       // so the tray and the modal always agree. A session in conflict outranks a
       // plain pending draft for the same id.
       function collectTrayItems() {
+        // Only scan keys for the CURRENT account and tab, so another account's
+        // records (same browser) are never read here.
+        const cPrefix = `aira:conflict:${accountScope()}:`;
+        const pPrefix = `aira:pending:${accountScope()}:`;
         const suffix = `:${AIRA_TAB}`;
         const conflicts = new Set();
         const drafts = new Set();
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
           if (!key || !key.endsWith(suffix)) continue;
-          if (key.startsWith("aira:conflict:")) {
-            conflicts.add(key.slice("aira:conflict:".length, -suffix.length));
-          } else if (key.startsWith("aira:pending:")) {
-            drafts.add(key.slice("aira:pending:".length, -suffix.length));
+          if (key.startsWith(cPrefix)) {
+            conflicts.add(key.slice(cPrefix.length, -suffix.length));
+          } else if (key.startsWith(pPrefix)) {
+            drafts.add(key.slice(pPrefix.length, -suffix.length));
           }
         }
         const items = [];
         conflicts.forEach((id) => {
           const rec = loadPersistedConflict(id);
-          if (rec && rec.desired) items.push({ id, type: "conflict", record: rec });
+          if (rec && rec.desired) {
+            items.push({ id, type: "conflict", record: rec, accessible: sessionIsAccessible(id) });
+          }
         });
         drafts.forEach((id) => {
           if (conflicts.has(id)) return; // conflict already represents this session
@@ -6453,9 +6490,28 @@
           const live = sessionSaveState[id];
           if (live && live.inFlight) return;
           const rec = loadPendingRecord(id);
-          if (rec && rec.desired) items.push({ id, type: "draft", record: rec });
+          if (rec && rec.desired) {
+            items.push({ id, type: "draft", record: rec, accessible: sessionIsAccessible(id) });
+          }
         });
         return items;
+      }
+
+      // A local record whose session is not among the loaded, accessible
+      // sessions (deleted or not owned) can never open a detail view; the tray
+      // shows it only as a discardable entry so it is never a dead card.
+      function sessionIsAccessible(id) {
+        return appData.sessions.some((s) => s.id === id);
+      }
+
+      // Discard an orphaned local record straight from the tray.
+      function discardTrayRecord(id, type) {
+        if (type === "conflict") {
+          clearSessionConflict(id);
+        } else {
+          clearPendingRecord(id);
+        }
+        renderDraftsTray();
       }
 
       function renderDraftsTray() {
@@ -6470,17 +6526,30 @@
         }
         const html = items
           .map((item) => {
-            const session = appData.sessions.find((s) => s.id === item.id);
-            const patientName = (session && session.patientName) || "Paciente";
-            const note = (item.record.desired && item.record.desired.cleanNote) || "";
-            const preview = note.length > 90 ? `${note.slice(0, 90)}…` : note;
             const isConflict = item.type === "conflict";
             const badge = isConflict
               ? '<span class="badge badge-warning">Conflicto de edición</span>'
               : '<span class="badge badge-info">Borrador sin confirmar</span>';
+            if (!item.accessible) {
+              // Session deleted or not accessible → never openable; offer only a
+              // discard so the entry can always be cleared (no dead card).
+              return `
+                <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2 drafts-tray-row">
+                  <div class="mr-3 text-truncate">
+                    <div class="font-weight-bold text-truncate text-muted drafts-tray-patient">Sesión no disponible</div>
+                    <div class="small text-muted text-truncate drafts-tray-note"></div>
+                  </div>
+                  <div class="text-right flex-shrink-0">
+                    <div class="mb-1">${badge}</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary drafts-tray-discard" data-session-id="${escapeHtml(
+                      item.id
+                    )}" data-type="${item.type}">Descartar</button>
+                  </div>
+                </div>`;
+            }
             const cta = isConflict ? "Revisar conflicto" : "Reintentar o descartar";
             return `
-              <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2 drafts-tray-item" role="button" tabindex="0" data-session-id="${escapeHtml(
+              <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2 drafts-tray-row drafts-tray-item" role="button" tabindex="0" data-session-id="${escapeHtml(
                 item.id
               )}">
                 <div class="mr-3 text-truncate">
@@ -6496,13 +6565,16 @@
           .join("");
         $list.html(html);
         // Fill free text via .text() so patient names / notes are never parsed as HTML.
-        $list.find(".drafts-tray-item").each(function (idx) {
+        $list.find(".drafts-tray-row").each(function (idx) {
           const item = items[idx];
           const session = appData.sessions.find((s) => s.id === item.id);
-          const patientName = (session && session.patientName) || "Paciente";
           const note = (item.record.desired && item.record.desired.cleanNote) || "";
           const preview = note.length > 90 ? `${note.slice(0, 90)}…` : note;
-          $(this).find(".drafts-tray-patient").text(patientName);
+          if (item.accessible) {
+            $(this)
+              .find(".drafts-tray-patient")
+              .text((session && session.patientName) || "Paciente");
+          }
           $(this)
             .find(".drafts-tray-note")
             .text(preview || "Sin nota");
@@ -6526,6 +6598,11 @@
           e.preventDefault();
           openTrayItem($(this).attr("data-session-id"));
         }
+      });
+      // Discard an orphaned (unopenable) entry directly from the tray.
+      $(document).on("click", ".drafts-tray-discard", function (e) {
+        e.stopPropagation();
+        discardTrayRecord($(this).attr("data-session-id"), $(this).attr("data-type"));
       });
 
       // Read the edit form and validate. Returns a full payload, or null when
