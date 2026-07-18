@@ -2721,6 +2721,26 @@
               </div>
             </div>
 
+            <!-- Drafts & conflicts tray (unsaved work surfaced outside the modal) -->
+            <div class="row mb-4" id="draftsTrayRow" style="display: none">
+              <div class="col-12">
+                <div class="card border-warning" id="draftsTrayCard">
+                  <div class="card-body">
+                    <h5 class="font-weight-bold mb-1">
+                      <i class="fas fa-inbox mr-2 text-warning"></i>Trabajo sin
+                      confirmar
+                    </h5>
+                    <p class="text-muted small mb-3">
+                      Estas ediciones quedaron pendientes en este dispositivo.
+                      Abrí cada una para reintentar, revisar el conflicto o
+                      descartar.
+                    </p>
+                    <div id="draftsTrayList"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Stats Cards -->
             <div class="row mb-4">
               <div class="col-xl-3 col-md-6 mb-4">
@@ -5357,6 +5377,7 @@
 
         loadRecentSessions();
         populateTodaysSessionsModal(sessionsTodayList);
+        renderDraftsTray();
       }
 
       function hasMoodAssessment(value) {
@@ -6402,6 +6423,111 @@
         } catch (_) {}
       }
 
+      // --- Drafts & conflicts tray (surfaces unsaved work outside the modal).
+      // Reads the same per-tab localStorage records that showSessionDetail uses,
+      // so the tray and the modal always agree. A session in conflict outranks a
+      // plain pending draft for the same id.
+      function collectTrayItems() {
+        const suffix = `:${AIRA_TAB}`;
+        const conflicts = new Set();
+        const drafts = new Set();
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key || !key.endsWith(suffix)) continue;
+          if (key.startsWith("aira:conflict:")) {
+            conflicts.add(key.slice("aira:conflict:".length, -suffix.length));
+          } else if (key.startsWith("aira:pending:")) {
+            drafts.add(key.slice("aira:pending:".length, -suffix.length));
+          }
+        }
+        const items = [];
+        conflicts.forEach((id) => {
+          const rec = loadPersistedConflict(id);
+          if (rec && rec.desired) items.push({ id, type: "conflict", record: rec });
+        });
+        drafts.forEach((id) => {
+          if (conflicts.has(id)) return; // conflict already represents this session
+          // A pending record whose save is still in flight in THIS tab is not
+          // stuck; only surface records that outlive an active attempt (e.g. a
+          // lost/exhausted save, or anything persisted before a reload).
+          const live = sessionSaveState[id];
+          if (live && live.inFlight) return;
+          const rec = loadPendingRecord(id);
+          if (rec && rec.desired) items.push({ id, type: "draft", record: rec });
+        });
+        return items;
+      }
+
+      function renderDraftsTray() {
+        const $row = $("#draftsTrayRow");
+        const $list = $("#draftsTrayList");
+        if (!$row.length || !$list.length) return;
+        const items = collectTrayItems();
+        if (items.length === 0) {
+          $row.hide();
+          $list.empty();
+          return;
+        }
+        const html = items
+          .map((item) => {
+            const session = appData.sessions.find((s) => s.id === item.id);
+            const patientName = (session && session.patientName) || "Paciente";
+            const note = (item.record.desired && item.record.desired.cleanNote) || "";
+            const preview = note.length > 90 ? `${note.slice(0, 90)}…` : note;
+            const isConflict = item.type === "conflict";
+            const badge = isConflict
+              ? '<span class="badge badge-warning">Conflicto de edición</span>'
+              : '<span class="badge badge-info">Borrador sin confirmar</span>';
+            const cta = isConflict ? "Revisar conflicto" : "Reintentar o descartar";
+            return `
+              <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2 drafts-tray-item" role="button" tabindex="0" data-session-id="${escapeHtml(
+                item.id
+              )}">
+                <div class="mr-3 text-truncate">
+                  <div class="font-weight-bold text-truncate drafts-tray-patient"></div>
+                  <div class="small text-muted text-truncate drafts-tray-note"></div>
+                </div>
+                <div class="text-right flex-shrink-0">
+                  <div class="mb-1">${badge}</div>
+                  <span class="small text-primary"><i class="fas fa-arrow-right mr-1"></i>${cta}</span>
+                </div>
+              </div>`;
+          })
+          .join("");
+        $list.html(html);
+        // Fill free text via .text() so patient names / notes are never parsed as HTML.
+        $list.find(".drafts-tray-item").each(function (idx) {
+          const item = items[idx];
+          const session = appData.sessions.find((s) => s.id === item.id);
+          const patientName = (session && session.patientName) || "Paciente";
+          const note = (item.record.desired && item.record.desired.cleanNote) || "";
+          const preview = note.length > 90 ? `${note.slice(0, 90)}…` : note;
+          $(this).find(".drafts-tray-patient").text(patientName);
+          $(this)
+            .find(".drafts-tray-note")
+            .text(preview || "Sin nota");
+        });
+        $row.show();
+      }
+
+      function openTrayItem(sessionId) {
+        if (!sessionId) return;
+        // If the session is not in memory yet, still route through showSessionDetail,
+        // which no-ops safely when the session is missing.
+        showSessionDetail(sessionId);
+      }
+
+      // Delegated handlers: click / keyboard-activate a tray entry.
+      $(document).on("click", ".drafts-tray-item", function () {
+        openTrayItem($(this).attr("data-session-id"));
+      });
+      $(document).on("keydown", ".drafts-tray-item", function (e) {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+          e.preventDefault();
+          openTrayItem($(this).attr("data-session-id"));
+        }
+      });
+
       // Read the edit form and validate. Returns a full payload, or null when
       // invalid (showing a warning unless silent).
       function readSessionEditForm(silent) {
@@ -6619,6 +6745,7 @@
             state.retrying = false;
             renderSessionConflict(targetId);
           }
+          renderDraftsTray();
           return;
         }
         fetchSessionFresh(targetId, (server) => {
@@ -6790,6 +6917,7 @@
         state.editBase = null;
         state.editBaseRaw = null;
         clearPersistedConflict(id);
+        renderDraftsTray();
       }
 
       function useServerVersion() {
@@ -6886,6 +7014,7 @@
         clearPendingRecord(id);
         const fresh = appData.sessions.find((s) => s.id === id);
         if (fresh) renderSessionDetailView(fresh);
+        renderDraftsTray();
       }
 
       function showPatientDetail(patientId) {
