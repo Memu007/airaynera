@@ -3884,7 +3884,24 @@
                 </div>
               </div>
               <div id="webAudioUploadSection" class="border rounded p-3 mb-3 d-none">
-                <label for="webAudioFile">Archivo de audio</label>
+                <div id="webAudioRecordBlock" class="mb-3">
+                  <label class="d-block mb-1">Grabar desde este dispositivo</label>
+                  <div class="d-flex align-items-center flex-wrap">
+                    <button type="button" id="recordAudioBtn" class="btn btn-outline-primary mr-2 mb-1" onclick="startWebAudioRecording()">
+                      <i class="fas fa-microphone mr-1"></i>Grabar
+                    </button>
+                    <button type="button" id="stopAudioBtn" class="btn btn-danger mr-2 mb-1 d-none" onclick="stopWebAudioRecording()">
+                      <i class="fas fa-stop mr-1"></i>Detener
+                    </button>
+                    <button type="button" id="rerecordAudioBtn" class="btn btn-outline-secondary mr-2 mb-1 d-none" onclick="rerecordWebAudio()">
+                      Regrabar
+                    </button>
+                    <span id="recordTimer" class="badge badge-danger align-self-center mb-1 d-none" role="timer" aria-live="off">00:00</span>
+                  </div>
+                  <audio id="recordPlayback" class="w-100 mt-2 d-none" controls preload="metadata"></audio>
+                  <div id="recordHint" class="small text-muted mt-1" role="status"></div>
+                </div>
+                <label for="webAudioFile">O elegí un archivo de audio</label>
                 <input
                   type="file"
                   id="webAudioFile"
@@ -4463,6 +4480,15 @@
       let currentWebAudioPollAttempts = 0;
       let currentWebAudioPollFailures = 0;
       let currentWebAudioUploadController = null;
+      // Direct in-browser recording (mobile web). The recorded audio feeds the
+      // SAME upload pipeline as a chosen file; nothing here creates a draft/job.
+      let webAudioMediaRecorder = null;
+      let webAudioMediaStream = null;
+      let webAudioRecordedChunks = [];
+      let webAudioRecordedFile = null; // the recorded File pending upload
+      let webAudioRecordedUrl = null; // object URL for playback (revoked on cleanup)
+      let webAudioRecordTimer = null;
+      let webAudioRecordStartMs = 0;
       const pendingWebAudioUploadStorageKey = "aira.pendingWebAudioUpload";
       const maxWebAudioPollAttempts = 240;
       const maxWebAudioPollFailures = 3;
@@ -6055,9 +6081,14 @@
       const sessionSaveState = {};
 
       // Warn before leaving/reloading while a session save is still in flight or
-      // pending, or with an unsaved (even invalid) edit in the form.
+      // pending, with an unsaved (even invalid) edit in the form, or with an
+      // audio recording/upload that has not been sent yet.
       window.addEventListener("beforeunload", (event) => {
-        if (sessionHasWorkInFlight()) {
+        if (
+          sessionHasWorkInFlight() ||
+          (typeof hasUnsentRecording === "function" && hasUnsentRecording()) ||
+          currentWebAudioUploadController
+        ) {
           event.preventDefault();
           event.returnValue = "";
           return "";
@@ -6072,6 +6103,20 @@
           if (!window.confirm("Tenés cambios sin guardar en esta sesión. ¿Cerrar y descartarlos?")) {
             event.preventDefault();
           }
+        }
+      });
+
+      // Confirm before closing the new-session modal while an audio recording
+      // has not been sent yet; on close, release the mic + local recording.
+      $(document).on("hide.bs.modal", "#newSessionModal", function (event) {
+        if (window.__airaForceCloseNewSession) return;
+        if (typeof hasUnsentRecording === "function" && hasUnsentRecording()) {
+          if (!window.confirm("Tenés una grabación sin enviar. ¿Cerrar y descartarla?")) {
+            event.preventDefault();
+            return;
+          }
+          clearRecordedWebAudio();
+          if (!currentWebAudioDraftId) $(webAudioLockedFields).prop("disabled", false);
         }
       });
 
@@ -7193,6 +7238,8 @@
         currentWebAudioPollAttempts = 0;
         currentWebAudioPollFailures = 0;
         $("#prepareWebAudioBtn").prop("disabled", false).text("Subir y preparar nota");
+        clearRecordedWebAudio(); // fresh modal: no leftover recording, mic off
+        $("#recordHint").text("");
         $(webAudioLockedFields).prop("disabled", false);
         $("#webAudioFile").val("");
         $("#sessionClinicalDate").val(localDateKey());
@@ -7218,15 +7265,18 @@
 
       function setSessionInputMode(mode, options = {}) {
         const audio = mode === "audio";
-        const hasPendingAudio = Boolean(currentWebAudioDraftId || currentWebAudioUploadController);
+        const hasPendingAudio = Boolean(
+          currentWebAudioDraftId || currentWebAudioUploadController || hasUnsentRecording()
+        );
         if (!audio && options.discard !== false && hasPendingAudio) {
           const confirmed = window.confirm(
-            "Hay un borrador de audio en curso. ¿Querés descartarlo y cambiar a una nota de texto?"
+            "Hay una grabación o borrador de audio en curso. ¿Querés descartarlo y cambiar a una nota de texto?"
           );
           if (!confirmed) {
             $("#sessionInputAudio").prop("checked", true);
             return false;
           }
+          clearRecordedWebAudio();
           discardCurrentWebAudioDraft();
         }
         $("#webAudioUploadSection").toggleClass("d-none", !audio);
@@ -7236,7 +7286,9 @@
             ? "La nota preparada aparecerá acá para que la revises..."
             : "Describe la sesión, observaciones, tratamiento aplicado..."
         );
-        if (!audio) {
+        if (audio) {
+          refreshRecordingAvailability();
+        } else {
           $("#webAudioTranscriptSection, #retryWebAudioBtn, #resumeWebAudioPollBtn, #discardWebAudioDraftBtn").addClass("d-none");
           $("#webAudioRawTranscript").val("");
           $("#webAudioStatus").text(webAudioHelpText);
@@ -7283,6 +7335,7 @@
         stopWebAudioPolling();
         if (currentWebAudioUploadController) currentWebAudioUploadController.abort();
         currentWebAudioUploadController = null;
+        clearRecordedWebAudio(); // release mic + any recorded-but-unsent audio
         clearPendingWebAudioUpload(idempotencyKey);
         $(webAudioLockedFields).prop("disabled", false);
         $("#webAudioFile").val("");
@@ -7436,6 +7489,197 @@
         }, 500);
       }
 
+      // ---- Direct in-browser recording (mobile web) ----
+      // The recorded audio feeds the SAME upload pipeline as a chosen file;
+      // nothing here creates a draft or a job on its own.
+      function webAudioRecordingSupported() {
+        return Boolean(
+          navigator.mediaDevices &&
+            typeof navigator.mediaDevices.getUserMedia === "function" &&
+            typeof window.MediaRecorder === "function"
+        );
+      }
+
+      function pickRecorderMimeType() {
+        if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+          return "";
+        }
+        const candidates = [
+          "audio/webm;codecs=opus",
+          "audio/webm",
+          "audio/mp4",
+          "audio/aac",
+          "audio/ogg;codecs=opus",
+          "audio/ogg",
+        ];
+        for (const type of candidates) {
+          if (MediaRecorder.isTypeSupported(type)) return type;
+        }
+        return "";
+      }
+
+      function recorderExtensionFor(mimeType) {
+        const base = String(mimeType || "").split(";")[0];
+        return { "audio/webm": "webm", "audio/mp4": "m4a", "audio/aac": "aac", "audio/ogg": "ogg" }[base] || "webm";
+      }
+
+      function clinicalDataReadyForRecording() {
+        const durationMinutes = Number($("#sessionDurationMinutes").val());
+        return Boolean(
+          $("#sessionPatient").val() &&
+            $("#sessionClinicalDate").val() &&
+            $("#sessionType").val() &&
+            $("#sessionCareModality").val() &&
+            Number.isInteger(durationMinutes) &&
+            durationMinutes >= 1 &&
+            durationMinutes <= 480
+        );
+      }
+
+      function updateRecordTimer() {
+        const elapsed = Math.max(0, Math.floor((Date.now() - webAudioRecordStartMs) / 1000));
+        const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+        const ss = String(elapsed % 60).padStart(2, "0");
+        $("#recordTimer").text(`${mm}:${ss}`);
+      }
+
+      // Stop the mic tracks and the timer (releases the recording indicator).
+      function releaseWebAudioMic() {
+        if (webAudioMediaStream) {
+          try { webAudioMediaStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+        }
+        webAudioMediaStream = null;
+        if (webAudioRecordTimer) { window.clearInterval(webAudioRecordTimer); webAudioRecordTimer = null; }
+      }
+
+      // Drop a recorded-but-not-uploaded audio (and stop any active recording).
+      // Does NOT cancel an already-uploaded draft.
+      function clearRecordedWebAudio() {
+        if (webAudioMediaRecorder) {
+          try {
+            webAudioMediaRecorder.ondataavailable = null;
+            webAudioMediaRecorder.onstop = null;
+            if (webAudioMediaRecorder.state === "recording") webAudioMediaRecorder.stop();
+          } catch (_) {}
+        }
+        webAudioMediaRecorder = null;
+        releaseWebAudioMic();
+        webAudioRecordedChunks = [];
+        webAudioRecordedFile = null;
+        if (webAudioRecordedUrl) { try { URL.revokeObjectURL(webAudioRecordedUrl); } catch (_) {} webAudioRecordedUrl = null; }
+        $("#recordPlayback").attr("src", "").addClass("d-none");
+        $("#recordTimer").addClass("d-none").text("00:00");
+        $("#stopAudioBtn, #rerecordAudioBtn").addClass("d-none");
+        $("#recordAudioBtn").removeClass("d-none").prop("disabled", false);
+      }
+
+      function hasUnsentRecording() {
+        return Boolean(webAudioRecordedFile) ||
+          Boolean(webAudioMediaRecorder && webAudioMediaRecorder.state === "recording");
+      }
+
+      // Reflect recorder support when entering audio mode.
+      function refreshRecordingAvailability() {
+        if (webAudioRecordingSupported()) {
+          $("#recordAudioBtn").prop("disabled", false);
+          if (!hasUnsentRecording()) $("#recordHint").text("");
+          return true;
+        }
+        $("#recordAudioBtn").prop("disabled", true);
+        $("#recordHint").text("Este navegador no permite grabar directamente. Podés subir un archivo de audio o escribir la nota.");
+        return false;
+      }
+
+      async function startWebAudioRecording() {
+        if (webAudioMediaRecorder && webAudioMediaRecorder.state === "recording") return; // ignore double taps
+        if (!webAudioRecordingSupported()) {
+          refreshRecordingAvailability();
+          notificaciones.advertencia("Grabación no disponible", "Tu navegador no permite grabar acá. Usá un archivo o texto.");
+          return;
+        }
+        if (!clinicalDataReadyForRecording()) {
+          notificaciones.error("Datos clínicos incompletos", "Elegí paciente, fecha, tipo, duración y modalidad antes de grabar.");
+          return;
+        }
+        clearRecordedWebAudio(); // never keep or upload a previous take
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (error) {
+          const denied = error && (error.name === "NotAllowedError" || error.name === "SecurityError" || error.name === "PermissionDeniedError");
+          $("#recordHint").text(
+            denied
+              ? "No diste permiso al micrófono. Habilitalo en el navegador, o subí un archivo o escribí la nota."
+              : "No pudimos acceder al micrófono. Podés subir un archivo de audio o escribir la nota."
+          );
+          notificaciones.advertencia("Micrófono no disponible", denied ? "Permiso de micrófono rechazado." : "No se pudo abrir el micrófono.");
+          return;
+        }
+        webAudioMediaStream = stream;
+        const mimeType = pickRecorderMimeType();
+        let recorder;
+        try {
+          recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        } catch (_) {
+          try { recorder = new MediaRecorder(stream); } catch (e) {
+            releaseWebAudioMic();
+            $("#recordHint").text("Este navegador no permite grabar directamente. Podés subir un archivo o escribir la nota.");
+            return;
+          }
+        }
+        webAudioMediaRecorder = recorder;
+        webAudioRecordedChunks = [];
+        recorder.ondataavailable = (e) => { if (e.data && e.data.size) webAudioRecordedChunks.push(e.data); };
+        recorder.onstop = () => {
+          releaseWebAudioMic(); // release the mic immediately on stop
+          const type = String(recorder.mimeType || mimeType || "audio/webm").split(";")[0];
+          const blob = new Blob(webAudioRecordedChunks, { type });
+          webAudioRecordedChunks = [];
+          if (!blob.size) {
+            $("#recordHint").text("La grabación quedó vacía. Probá de nuevo.");
+            clearRecordedWebAudio();
+            return;
+          }
+          const ext = recorderExtensionFor(type);
+          webAudioRecordedFile = new File([blob], `grabacion-${Date.now()}.${ext}`, { type, lastModified: Date.now() });
+          if (webAudioRecordedUrl) { try { URL.revokeObjectURL(webAudioRecordedUrl); } catch (_) {} }
+          webAudioRecordedUrl = URL.createObjectURL(blob);
+          $("#recordPlayback").attr("src", webAudioRecordedUrl).removeClass("d-none");
+          $("#recordTimer").addClass("d-none");
+          $("#stopAudioBtn, #recordAudioBtn").addClass("d-none");
+          $("#rerecordAudioBtn").removeClass("d-none");
+          $("#recordHint").text('Escuchá la grabación. Regrabá, o tocá “Subir y preparar nota” para usarla.');
+          $("#webAudioFile").val(""); // a recording takes precedence over any chosen file
+        };
+        try {
+          recorder.start();
+        } catch (_) {
+          releaseWebAudioMic();
+          webAudioMediaRecorder = null;
+          $("#recordHint").text("No se pudo iniciar la grabación. Podés subir un archivo o escribir la nota.");
+          return;
+        }
+        $(webAudioLockedFields).prop("disabled", true); // pin clinical data while audio exists
+        webAudioRecordStartMs = Date.now();
+        updateRecordTimer();
+        webAudioRecordTimer = window.setInterval(updateRecordTimer, 1000);
+        $("#recordAudioBtn, #rerecordAudioBtn").addClass("d-none");
+        $("#stopAudioBtn, #recordTimer").removeClass("d-none");
+        $("#recordPlayback").attr("src", "").addClass("d-none");
+        $("#recordHint").text('Grabando… tocá “Detener” cuando termines.');
+      }
+
+      function stopWebAudioRecording() {
+        if (webAudioMediaRecorder && webAudioMediaRecorder.state === "recording") {
+          try { webAudioMediaRecorder.stop(); } catch (_) { releaseWebAudioMic(); }
+        }
+      }
+
+      function rerecordWebAudio() {
+        clearRecordedWebAudio(); // drop the previous take; the mic is off until Grabar
+        startWebAudioRecording();
+      }
+
       function inferAudioMimeType(file) {
         if (file.type) return file.type;
         const extension = String(file.name || "").split(".").pop().toLowerCase();
@@ -7499,11 +7743,12 @@
           );
           return;
         }
-        const file = $("#webAudioFile")[0]?.files?.[0];
+        // A direct recording takes precedence over a chosen file.
+        const file = webAudioRecordedFile || $("#webAudioFile")[0]?.files?.[0];
         if (!file) {
           notificaciones.error(
             "Falta el audio",
-            "Elegí un archivo de audio antes de continuar."
+            "Grabá una nota o elegí un archivo de audio antes de continuar."
           );
           return;
         }
@@ -7560,6 +7805,13 @@
           currentWebAudioPollAttempts = 0;
           currentWebAudioPollFailures = 0;
           renderPreparedWebAudio(payload.draft);
+          // The audio is uploaded; release the local recording artifacts and
+          // hand the UI over to the draft flow.
+          webAudioRecordedFile = null;
+          if (webAudioRecordedUrl) { try { URL.revokeObjectURL(webAudioRecordedUrl); } catch (_) {} webAudioRecordedUrl = null; }
+          $("#recordPlayback").attr("src", "").addClass("d-none");
+          $("#recordAudioBtn, #stopAudioBtn, #rerecordAudioBtn, #recordTimer").addClass("d-none");
+          $("#recordHint").text("");
         } catch (error) {
           if (error.name !== "AbortError") {
             $("#webAudioStatus").text(error.message || "No se pudo preparar el audio.");
