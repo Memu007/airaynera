@@ -2,6 +2,31 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-18 — Bandeja de borradores y conflictos fuera del modal
+
+### Objetivo
+
+Que el profesional vea su trabajo sin confirmar sin tener que reabrir cada ficha. Cierra el pendiente de backlog "bandeja para recuperar borradores fuera del modal" (PRODUCT.md §Próximo dentro del núcleo). Fuera de alcance por pedido de la PM: grabación móvil directa y Gemini.
+
+### Qué se hizo
+
+- Panel `Trabajo sin confirmar` en el dashboard (`#draftsTrayRow`), oculto salvo que haya pendientes.
+- `renderDraftsTray()` lee los mismos registros por pestaña de `localStorage` que usa la ficha (`aira:conflict:<id>:<tab>` y `aira:pending:<id>:<tab>`), la única fuente de verdad, así bandeja y modal nunca se contradicen.
+- Cada entrada abre la ficha en su vista de conflicto o de recuperación (misma ruta `showSessionDetail`). Click y teclado (Enter/Espacio) mediante handlers delegados.
+- Se re-renderiza al crear o resolver trabajo: `loadDashboardData` (arranque/recarga), conflicto nuevo, agotar reintentos, `clearSessionConflict` (incluye "Usar la del servidor") y `discardRecovery`.
+- Reglas: un borrador cuyo guardado sigue en vuelo en la pestaña no aparece (no está atascado); un conflicto y un borrador de la misma sesión se muestran una sola vez (gana el conflicto); nombres y notas se renderizan con `.text()`, nunca como HTML.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **130/130** de edición de sesión, salida con código 0.
+- `npm run test:session-edit:browser`: **93/93** en Chromium real, sin errores de página (los 80 previos + 13 casos de la bandeja: aparece tras guardado agotado, lista y etiqueta el borrador, lo renderiza como texto y no como HTML, sobrevive a la recarga, abre la vista de recuperación al clickear, se limpia al descartar; muestra y etiqueta un conflicto pendiente, abre los ocho campos al clickear, y se oculta al resolver todo).
+- `npm run lint`: aprobado (sintaxis + contrato UI). `git diff --check`: limpio.
+- Gemini real: no ejecutado (sin credencial); proveedor por defecto `fake`.
+
+### Nota honesta
+
+Primera corrida de navegador: 91/93. Los dos rojos eran mis propias aserciones de "bandeja vacía", que suponían un `localStorage` limpio; sin embargo, secciones previas del suite dejan registros legítimos de otras sesiones. No era un defecto del producto: la bandeja mostraba correctamente ese trabajo pendiente. Se corrigió el test aislando la sección (limpia las claves de la pestaña antes de sus casos), no el comportamiento.
+
 ## 2026-07-16 — Modelo por intento: reverts, merge, recuperación y guardas
 
 ### Objetivo

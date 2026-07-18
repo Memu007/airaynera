@@ -731,6 +731,8 @@ async function main() {
     const t2c = await mk({ cleanNote: '2c-base' });
     const tDirty = await mk({ cleanNote: 'dirty-base' });
     const tCancel = await mk({ cleanNote: 'cancel-base' });
+    const tTrayDraft = await mk({ cleanNote: 'tray-draft-base' });
+    const tTrayConflict = await mk({ cleanNote: 'tray-conf-base' });
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.session-card', { timeout: 15000 });
 
@@ -920,6 +922,103 @@ async function main() {
     }));
     test('after cancel + response the modal is not stuck in a form/conflict', !cancelState.hasForm && !cancelState.hasConflict);
     await closeModal();
+
+    // ---- 5s. Drafts & conflicts tray surfaces unsaved work outside the modal ----
+    console.log('\n5️⃣s Drafts & conflicts tray surfaces unsaved work on the dashboard');
+    const showDashboard = async () => {
+      await page.evaluate(() => window.showSection && window.showSection('dashboard'));
+      await page.waitForTimeout(200);
+    };
+    const trayState = () =>
+      page.evaluate(() => {
+        const row = document.querySelector('#draftsTrayRow');
+        const items = Array.from(document.querySelectorAll('#draftsTrayList .drafts-tray-item'));
+        return {
+          visible: !!row && row.style.display !== 'none',
+          ids: items.map((el) => el.getAttribute('data-session-id')),
+          text: document.querySelector('#draftsTrayList')?.textContent || '',
+        };
+      });
+    // Earlier sections may legitimately leave unsaved records for their own
+    // sessions; clear the tab's tray storage so this section is self-contained.
+    const clearTrayStorage = () =>
+      page.evaluate(() => {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('aira:conflict:') || k.startsWith('aira:pending:'))
+          .forEach((k) => localStorage.removeItem(k));
+      });
+
+    // Tray starts empty when there is no unsaved work.
+    await clearTrayStorage();
+    await showDashboard();
+    const trayEmpty = await trayState();
+    test('tray is hidden when there is no unsaved work', trayEmpty.visible === false);
+
+    // (a) An exhausted/aborted save leaves a draft the tray shows.
+    await openDetail(tTrayDraft);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'TRAY-DRAFT <img src=x> <b>x</b>'); // note carries HTML
+    failPatchesForId = tTrayDraft;
+    await page.click('#saveSessionEditBtn');
+    await page.waitForTimeout(2000); // let recovery exhaust → persisted draft
+    failPatchesForId = null;
+    await closeModal();
+    await showDashboard();
+    const trayWithDraft = await trayState();
+    test('tray becomes visible after an exhausted save', trayWithDraft.visible === true);
+    test('tray lists the drafted session', trayWithDraft.ids.includes(String(tTrayDraft)));
+    test('tray labels it as an unsaved draft', /Borrador sin confirmar/.test(trayWithDraft.text));
+    const trayInjected = await page.evaluate(
+      () => !!document.querySelector('#draftsTrayList img, #draftsTrayList b, #draftsTrayList script')
+    );
+    test('tray renders the note as text, not HTML', trayInjected === false);
+    test('tray shows the note preview literally', /TRAY-DRAFT <img src=x>/.test(trayWithDraft.text));
+
+    // (b) The tray survives a full page reload (reads from localStorage).
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    await showDashboard();
+    const trayAfterReload = await trayState();
+    test('tray still lists the draft after a reload', trayAfterReload.ids.includes(String(tTrayDraft)));
+
+    // (c) Clicking a tray entry opens that session's recovery view.
+    await page.click(`#draftsTrayList .drafts-tray-item[data-session-id="${tTrayDraft}"]`);
+    await page.waitForSelector('#sessionDetailModal.show', { timeout: 5000 });
+    await page.waitForTimeout(200);
+    const draftOpensRecovery = (await page.locator('#recoveryRetryBtn').count()) === 1;
+    test('clicking a draft entry opens its recovery view', draftOpensRecovery);
+    // Discarding the draft removes it from the tray.
+    await page.click('#recoveryDiscardBtn');
+    await closeModal();
+    await showDashboard();
+    const trayAfterDiscard = await trayState();
+    test('tray drops the draft after it is discarded', trayAfterDiscard.ids.includes(String(tTrayDraft)) === false);
+
+    // (d) A pending edit conflict also appears in the tray and routes to the conflict view.
+    await openDetail(tTrayConflict);
+    await enterEdit();
+    await page.fill('#editSessionContent', 'TRAY-CONFLICT');
+    await otherClient(tTrayConflict, { careModality: 'video' });
+    await Promise.all([waitPatch(tTrayConflict), page.click('#saveSessionEditBtn')]); // 409
+    await page.waitForTimeout(300);
+    await closeModal();
+    await showDashboard();
+    const trayWithConflict = await trayState();
+    test('tray shows a pending edit conflict', trayWithConflict.ids.includes(String(tTrayConflict)));
+    test('tray labels the conflict entry', /Conflicto de edición/.test(trayWithConflict.text));
+    await page.click(`#draftsTrayList .drafts-tray-item[data-session-id="${tTrayConflict}"]`);
+    await page.waitForSelector('#sessionDetailModal.show', { timeout: 5000 });
+    await page.waitForTimeout(200);
+    const conflictRows = await page.evaluate(
+      () => document.querySelectorAll('#sessionDetailBody table tbody tr').length
+    );
+    test('clicking a conflict entry opens the 8-field conflict view', conflictRows === 8);
+    // Resolving with the server version clears it from the tray.
+    await page.click('#conflictUseServerBtn');
+    await closeModal();
+    await showDashboard();
+    const trayResolved = await trayState();
+    test('tray hides again once all unsaved work is resolved', trayResolved.visible === false);
 
     // ---- 5c. Names and notes render literally in the session list ----
     console.log('\n5️⃣c Session cards render names and notes as text, not HTML');
