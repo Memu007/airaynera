@@ -733,6 +733,9 @@ async function main() {
     const tCancel = await mk({ cleanNote: 'cancel-base' });
     const tTrayDraft = await mk({ cleanNote: 'tray-draft-base' });
     const tTrayConflict = await mk({ cleanNote: 'tray-conf-base' });
+    const tOrphan = await mk({ cleanNote: 'orphan-base' });
+    const tRetrySync = await mk({ cleanNote: 'retry-base' });
+    const tIso = await mk({ cleanNote: 'iso-base' });
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.session-card', { timeout: 15000 });
 
@@ -1019,6 +1022,114 @@ async function main() {
     await showDashboard();
     const trayResolved = await trayState();
     test('tray hides again once all unsaved work is resolved', trayResolved.visible === false);
+
+    // Helper: leave a persisted draft for a session via an exhausted save.
+    const leaveDraft = async (id, note) => {
+      await openDetail(id);
+      await enterEdit();
+      await page.fill('#editSessionContent', note);
+      failPatchesForId = id;
+      await page.click('#saveSessionEditBtn');
+      await page.waitForTimeout(2000); // recovery exhausts → persisted draft
+      failPatchesForId = null;
+      await closeModal();
+    };
+
+    // ---- 5t. A record for a deleted/inaccessible session is discardable, never a dead card ----
+    console.log('\n5️⃣t Orphaned record (deleted session) is discardable, not a dead card');
+    await clearTrayStorage();
+    await leaveDraft(tOrphan, 'ORPHAN-NOTE');
+    // Delete the session server-side so it becomes inaccessible.
+    const delResp = await fetch(`${base}/api/sessions/${tOrphan}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    test('session delete succeeded (200)', delResp.status === 200);
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
+    await showDashboard();
+    const orphanView = await page.evaluate((id) => {
+      const list = document.querySelector('#draftsTrayList');
+      const rows = Array.from(list.querySelectorAll('.drafts-tray-row'));
+      const openable = list.querySelector(`.drafts-tray-item[data-session-id="${id}"]`);
+      const discardBtn = list.querySelector(`.drafts-tray-discard[data-session-id="${id}"]`);
+      return {
+        visible: document.querySelector('#draftsTrayRow').style.display !== 'none',
+        rowCount: rows.length,
+        isOpenable: !!openable,
+        hasDiscard: !!discardBtn,
+        text: list.textContent,
+      };
+    }, String(tOrphan));
+    test('orphan record still appears in the tray', orphanView.visible && orphanView.rowCount >= 1);
+    test('orphan entry is not openable (no dead card)', orphanView.isOpenable === false);
+    test('orphan entry offers a discard action', orphanView.hasDiscard === true);
+    test('orphan entry is labelled unavailable', /Sesión no disponible/.test(orphanView.text));
+    // Clicking the orphan row body (not the discard button) must not open a modal.
+    await page.click('#draftsTrayList .drafts-tray-patient');
+    await page.waitForTimeout(300);
+    test('clicking an orphan row opens no modal', (await page.locator('#sessionDetailModal.show').count()) === 0);
+    // Discard clears it from the tray.
+    await page.click(`#draftsTrayList .drafts-tray-discard[data-session-id="${tOrphan}"]`);
+    await page.waitForTimeout(200);
+    const afterOrphanDiscard = await trayState();
+    test('discarding an orphan clears it from the tray', afterOrphanDiscard.ids.includes(String(tOrphan)) === false);
+
+    // ---- 5u. A successful recovery retry clears the entry and tray immediately (no reload) ----
+    console.log('\n5️⃣u Successful recovery retry clears the tray entry immediately');
+    await clearTrayStorage();
+    await leaveDraft(tRetrySync, 'RETRY-SYNC');
+    await showDashboard();
+    const beforeRetry = await trayState();
+    test('draft is present before the retry', beforeRetry.ids.includes(String(tRetrySync)));
+    await page.click(`#draftsTrayList .drafts-tray-item[data-session-id="${tRetrySync}"]`);
+    await page.waitForSelector('#recoveryRetryBtn', { timeout: 5000 });
+    await Promise.all([waitPatch(tRetrySync), page.click('#recoveryRetryBtn')]);
+    await getSessionEventually(tRetrySync, (s) => s.cleanNote === 'RETRY-SYNC', 8000);
+    await closeModal();
+    // No reload here: the tray must already reflect the resolution.
+    const afterRetry = await trayState();
+    test('retry removes the entry without a reload', afterRetry.ids.includes(String(tRetrySync)) === false);
+    test('tray hides after the only draft is retried', afterRetry.visible === false);
+
+    // ---- 5v. Account isolation: A's local work is invisible to B in the same tab ----
+    console.log('\n5️⃣v Account isolation: user B never sees user A\'s pending work');
+    await api('POST', '/api/auth/register', { dni: '30999888', pin: '1234', name: 'Dr Bravo' });
+    await clearTrayStorage();
+    await leaveDraft(tIso, 'SECRETO-DE-A');
+    await showDashboard();
+    const aSees = await trayState();
+    test('user A sees their own pending note', /SECRETO-DE-A/.test(aSees.text));
+    // Log out (real UI flow clears the token + in-memory state), then log in as B.
+    await page.evaluate(() => window.logout());
+    await page.waitForFunction(() => !localStorage.getItem('authToken'), { timeout: 6000 });
+    await page.evaluate(() => window.showLoginFromLanding());
+    await page.fill('#dni', '30999888');
+    await page.fill('#pin', '1234');
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/api/login') && r.request().method() === 'POST', { timeout: 8000 }),
+      page.click("#loginForm button[type='submit']"),
+    ]);
+    await page.waitForSelector('#dashboardScreen:not(.d-none)', { timeout: 8000 });
+    await page.waitForTimeout(400);
+    const bView = await page.evaluate(() => ({
+      trayVisible: document.querySelector('#draftsTrayRow').style.display !== 'none',
+      trayText: document.querySelector('#draftsTrayList').textContent,
+      bodyHasSecret: document.body.textContent.includes('SECRETO-DE-A'),
+    }));
+    test('B does not see the tray populated by A', bView.trayVisible === false);
+    test('B does not see A\'s entry', /SECRETO-DE-A/.test(bView.trayText) === false);
+    test('B does not see A\'s note text anywhere on the page', bView.bodyHasSecret === false);
+    const aRecordSurvives = await page.evaluate(() =>
+      Object.keys(localStorage).some(
+        (k) => k.startsWith('aira:pending:') && (localStorage.getItem(k) || '').includes('SECRETO-DE-A')
+      )
+    );
+    test('A\'s record still exists in storage (scoped out, not destroyed)', aRecordSurvives === true);
+    // Restore user A for the remaining sections (clear leftovers, reload → auto-login A).
+    await clearTrayStorage();
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.session-card', { timeout: 15000 });
 
     // ---- 5c. Names and notes render literally in the session list ----
     console.log('\n5️⃣c Session cards render names and notes as text, not HTML');

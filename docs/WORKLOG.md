@@ -2,6 +2,25 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-18 — Bandeja: aislamiento por cuenta, huérfanos y sync de reintento
+
+### Objetivo
+
+Dos correcciones acotadas antes de cerrar el hito de la bandeja: aislar el trabajo local por cuenta y mantener la bandeja sincronizada sin recargar. Fuera de alcance: repetir la auditoría general de concurrencia, grabación móvil, Gemini, reconstruir `fa42c73` (Codex reconcilia esa política aparte).
+
+### Qué se hizo
+
+- **Aislamiento por cuenta (P0 de fuga de datos).** Las claves locales ahora incluyen la cuenta autenticada: `aira:conflict:<cuenta>:<id>:<tab>` y `aira:pending:<cuenta>:<id>:<tab>`, con `<cuenta>` derivada del `sub` del JWT (`accountScope()`). La bandeja y la ficha sólo leen registros de la cuenta actual, así una nota/conflicto/recuperación de un profesional nunca se ve bajo otra cuenta en la misma pestaña. Al cerrar sesión se limpia el estado en memoria (`sessionSaveState`) y se vacía la bandeja.
+- **Registros huérfanos.** Un registro cuya sesión fue borrada o es inaccesible ya no genera una tarjeta que no se puede abrir ni descartar: se muestra como `Sesión no disponible` con **sólo** un botón Descartar (no abre ficha), y descartarlo limpia el registro local.
+- **Sync de reintento.** Tras un reintento exitoso de recuperación, la entrada y la bandeja desaparecen de inmediato (vía `finishSaveChain → renderDraftsTray`), sin recargar.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **130/130** de edición de sesión, salida con código 0.
+- `npm run test:session-edit:browser`: **108/108** en Chromium real, sin errores de página (93 previos + 15 nuevos). Secciones nuevas: 5t huérfano descartable (borra la sesión vía API, verifica tarjeta no-abrible, descarta), 5u reintento que limpia entrada+bandeja sin recargar, 5v aislamiento real (A deja `SECRETO-DE-A`, `window.logout()`, login de B en la misma pestaña vía formulario, B no ve texto ni entradas de A; el registro de A sigue en `localStorage`, sólo fuera de alcance por la cuenta).
+- `npm run lint`: aprobado (sintaxis + contrato UI). `git diff --check`: limpio.
+- Gemini real: no ejecutado (sin credencial); proveedor por defecto `fake`.
+
 ## 2026-07-18 — Bandeja de borradores y conflictos fuera del modal
 
 ### Objetivo
