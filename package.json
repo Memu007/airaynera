@@ -6,9 +6,11 @@
   "scripts": {
     "start": "node scripts/start-runtime.js",
     "dev": "nodemon --signal SIGTERM --watch server.js --watch services --watch workers --watch db --watch utils --watch scripts/start-runtime.js --ext js,json --exec \"node scripts/start-runtime.js\"",
-    "test": "npm run test:migrations && npm run test:whatsapp-link && npm run test:whatsapp-conversation && npm run test:audio-pipeline && npm run test:audio-upload-worker && npm run test:gemini-provider && npm run test:functional && npm run test:session-edit",
+    "test": "npm run test:migrations && npm run test:whatsapp-link && npm run test:whatsapp-conversation && npm run test:audio-pipeline && npm run test:audio-upload-worker && npm run test:mobile-recording && npm run test:gemini-provider && npm run test:functional && npm run test:session-edit",
     "test:session-edit": "node scripts/session-edit-tests.js",
     "test:session-edit:browser": "node scripts/session-edit-browser-tests.js",
+    "test:mobile-recording": "node scripts/mobile-recording-tests.js",
+    "test:mobile-recording:browser": "node scripts/mobile-recording-browser-tests.js",
     "test:migrations": "node scripts/migration-tests.js",
     "test:whatsapp-link": "node scripts/whatsapp-link-tests.js",
     "test:whatsapp-conversation": "node scripts/whatsapp-conversation-tests.js",

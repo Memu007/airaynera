@@ -41,6 +41,31 @@ Publicar la política de colaboración que había quedado solamente en el commit
 - `npm run build`, `npm run lint` y `git diff --check`: aprobados.
 - Gemini real: no ejecutado; no forma parte de este hito documental y el proveedor predeterminado sigue siendo `fake`.
 
+## 2026-07-18 — Grabación directa desde web móvil
+
+### Objetivo
+
+Que el profesional grabe una nota post-sesión desde el celular y la envíe por el pipeline existente (almacenamiento temporal → worker → borrador → revisión → confirmación), sin crear otro pipeline.
+
+### Qué se hizo
+
+- UI de grabación en el modo audio del modal: `Grabar → Detener → escuchar → Regrabar/Usar`, con temporizador y reproducción. El micrófono se pide **sólo al tocar Grabar** (`getUserMedia` + `MediaRecorder`).
+- La grabación se convierte en un `File` y se envía por el **mismo** `prepareWebAudioDraft` (idempotencia por huella + clave, polling acotado, recuperación). No hay pipeline nuevo ni conversión: WebM/Opus (Android/Chrome) y MP4/AAC (iOS/Safari) se aceptan tal cual; el store ya los sniff-ea y valida.
+- Paciente y datos clínicos se exigen antes de grabar y quedan fijados mientras exista audio. El micrófono y el audio temporal se liberan al detener, regrabar, descartar, cambiar a texto, cerrar o salir (tracks `stop()` + `revokeObjectURL`).
+- Permiso denegado o navegador incompatible: se explica el problema y quedan las alternativas de archivo y texto. Se advierte al cerrar el modal o recargar con una grabación sin enviar.
+- Límite: la toma en curso no se persiste entre recargas (no guardamos audio crudo en el navegador, por privacidad/tamaño); la idempotencia evita duplicados si se reintenta la subida.
+
+### Verificaciones (resultados exactos)
+
+- `npm test`: **129/129** funcionales + **130/130** de edición + **15/15** de grabación móvil (`scripts/mobile-recording-tests.js`), salida con código 0.
+- `npm run test:mobile-recording:browser`: **18/18** en Chromium con micrófono simulado (`--use-fake-device-for-media-stream`): grabar→usar→nota `fake`→confirmar→persistir tras recargar; micrófono liberado al detener; permiso denegado sin borrador/sesión y con alternativas; regrabar descarta la toma previa; preparar deshabilitado durante la subida; respuesta perdida + reintento sin duplicar; cerrar con grabación sin enviar advierte.
+- `npm run test:session-edit:browser`: **108/108** (sin regresiones). `npm run lint`: aprobado. `git diff --check`: limpio.
+- `AUDIO_TRANSCRIBER=fake` por defecto. Gemini real: no ejecutado (sin credencial).
+
+### Bloqueo de validación (declarado, no oculto)
+
+- **Sin acceso a iPhone/Android reales** desde este entorno, no se ejecutó el smoke en dispositivos físicos. La grabación quedó verificada con micrófono simulado en Chromium headless; **no se declara soporte móvil completo** hasta correr el smoke real en Safari/iOS y Chrome/Android. Es el siguiente paso recomendado antes de pilotear.
+
 ## 2026-07-18 — Bandeja: aislamiento por cuenta, huérfanos y sync de reintento
 
 ### Objetivo

@@ -167,6 +167,8 @@ Idempotency-Key: web-upload-...
 
 El endpoint responde `202` con el borrador y el estado público del job. El cliente consulta `GET /api/audio-drafts/:id` hasta que el borrador queda revisable o falla. El límite predeterminado es 25 MB y la retención máxima del archivo es 24 horas; ambos son configurables.
 
+La grabación directa desde web móvil usa **este mismo** endpoint: el `MediaRecorder` del navegador produce WebM/Opus (Android/Chrome) o MP4/AAC (iOS/Safari) y se sube como cuerpo con su `Content-Type`, sin conversión. `temporaryAudioStore` sniff-ea el contenedor real y rechaza `AUDIO_TYPE_MISMATCH` si el tipo declarado no coincide, `UNSUPPORTED_AUDIO_TYPE` si el contenedor es desconocido y `AUDIO_FILE_TOO_LARGE` sobre el límite. No hay endpoint ni contrato nuevo para grabar.
+
 `POST /api/audio-drafts` requiere `Idempotency-Key`. La misma clave y entrada devuelve el mismo borrador; reutilizarla con otro paciente, fecha, fixture o metadato funcional devuelve `409 IDEMPOTENCY_CONFLICT`.
 
 El pipeline persiste:

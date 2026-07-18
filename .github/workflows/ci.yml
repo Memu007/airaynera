@@ -62,3 +62,6 @@ jobs:
 
       - name: Run session edit browser tests
         run: npm run test:session-edit:browser
+
+      - name: Run mobile recording browser tests
+        run: npm run test:mobile-recording:browser
