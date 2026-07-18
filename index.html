@@ -4489,6 +4489,8 @@
       let webAudioRecordedUrl = null; // object URL for playback (revoked on cleanup)
       let webAudioRecordTimer = null;
       let webAudioRecordStartMs = 0;
+      let webAudioAcquiringMic = false; // a getUserMedia() call is in flight
+      let webAudioMicRequestId = 0; // bumped to invalidate a pending acquisition
       const pendingWebAudioUploadStorageKey = "aira.pendingWebAudioUpload";
       const maxWebAudioPollAttempts = 240;
       const maxWebAudioPollFailures = 3;
@@ -4834,6 +4836,20 @@
             currentUser = null;
             isDemoMode = false;
             $("#dni, #pin").val("");
+
+            // Tear down any in-progress audio note: abort an upload, stop the
+            // recorder/mic and release the local recording, and drop the draft
+            // pointers so nothing carries into the next login.
+            try {
+              if (currentWebAudioUploadController) currentWebAudioUploadController.abort();
+              currentWebAudioUploadController = null;
+              stopWebAudioPolling();
+              clearRecordedWebAudio(); // stops recorder/tracks, invalidates pending mic, frees blob
+              currentWebAudioDraftId = null;
+              currentWebAudioDraftPatientId = null;
+              currentWebAudioIdempotencyKey = null;
+              currentWebAudioRequestFingerprint = null;
+            } catch (_) {}
 
             // Drop any in-memory unsaved edit state and empty the tray so a next
             // login in the same tab can never see the previous account's work.
@@ -7553,8 +7569,12 @@
       }
 
       // Drop a recorded-but-not-uploaded audio (and stop any active recording).
-      // Does NOT cancel an already-uploaded draft.
+      // Also invalidates a pending mic acquisition so a late getUserMedia()
+      // result is discarded and its stream stopped. Does NOT cancel an
+      // already-uploaded draft.
       function clearRecordedWebAudio() {
+        webAudioMicRequestId += 1; // invalidate any in-flight getUserMedia()
+        webAudioAcquiringMic = false;
         if (webAudioMediaRecorder) {
           try {
             webAudioMediaRecorder.ondataavailable = null;
@@ -7575,6 +7595,7 @@
 
       function hasUnsentRecording() {
         return Boolean(webAudioRecordedFile) ||
+          webAudioAcquiringMic ||
           Boolean(webAudioMediaRecorder && webAudioMediaRecorder.state === "recording");
       }
 
@@ -7591,7 +7612,9 @@
       }
 
       async function startWebAudioRecording() {
-        if (webAudioMediaRecorder && webAudioMediaRecorder.state === "recording") return; // ignore double taps
+        // Ignore double taps while recording or while a mic request is in flight.
+        if (webAudioAcquiringMic) return;
+        if (webAudioMediaRecorder && webAudioMediaRecorder.state === "recording") return;
         if (!webAudioRecordingSupported()) {
           refreshRecordingAvailability();
           notificaciones.advertencia("Grabación no disponible", "Tu navegador no permite grabar acá. Usá un archivo o texto.");
@@ -7601,20 +7624,36 @@
           notificaciones.error("Datos clínicos incompletos", "Elegí paciente, fecha, tipo, duración y modalidad antes de grabar.");
           return;
         }
-        clearRecordedWebAudio(); // never keep or upload a previous take
+        clearRecordedWebAudio(); // never keep or upload a previous take (also bumps the request id)
+        webAudioAcquiringMic = true;
+        const requestId = webAudioMicRequestId;
+        $("#recordAudioBtn").prop("disabled", true); // visual double-tap guard
+        $("#recordHint").text("Pidiendo acceso al micrófono…");
         let stream;
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         } catch (error) {
-          const denied = error && (error.name === "NotAllowedError" || error.name === "SecurityError" || error.name === "PermissionDeniedError");
-          $("#recordHint").text(
-            denied
-              ? "No diste permiso al micrófono. Habilitalo en el navegador, o subí un archivo o escribí la nota."
-              : "No pudimos acceder al micrófono. Podés subir un archivo de audio o escribir la nota."
-          );
-          notificaciones.advertencia("Micrófono no disponible", denied ? "Permiso de micrófono rechazado." : "No se pudo abrir el micrófono.");
+          if (requestId === webAudioMicRequestId) {
+            webAudioAcquiringMic = false;
+            $("#recordAudioBtn").prop("disabled", false);
+            const denied = error && (error.name === "NotAllowedError" || error.name === "SecurityError" || error.name === "PermissionDeniedError");
+            $("#recordHint").text(
+              denied
+                ? "No diste permiso al micrófono. Habilitalo en el navegador, o subí un archivo o escribí la nota."
+                : "No pudimos acceder al micrófono. Podés subir un archivo de audio o escribir la nota."
+            );
+            notificaciones.advertencia("Micrófono no disponible", denied ? "Permiso de micrófono rechazado." : "No se pudo abrir el micrófono.");
+          }
           return;
         }
+        // If the request was invalidated while awaiting (modal closed, switched
+        // to text, logout, or a newer take started), stop this stream now.
+        if (requestId !== webAudioMicRequestId) {
+          try { stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+          return;
+        }
+        webAudioAcquiringMic = false;
+        $("#recordAudioBtn").prop("disabled", false);
         webAudioMediaStream = stream;
         const mimeType = pickRecorderMimeType();
         let recorder;
@@ -7816,7 +7855,10 @@
           if (error.name !== "AbortError") {
             $("#webAudioStatus").text(error.message || "No se pudo preparar el audio.");
           }
-          if (!currentWebAudioDraftId) {
+          // Keep the clinical data pinned while unsent audio (a recording or a
+          // chosen file for this attempt) still exists, so a retry stays tied to
+          // the same patient. Only unlock when nothing recoverable remains.
+          if (!currentWebAudioDraftId && !hasUnsentRecording()) {
             $(webAudioLockedFields).prop("disabled", false);
           }
         } finally {
