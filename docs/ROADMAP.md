@@ -1,6 +1,6 @@
 # Roadmap del MVP de AIRA
 
-Última actualización: 2026-07-16.
+Última actualización: 2026-07-18.
 
 Estado general: vertical web, texto por WhatsApp simulado y carga de archivo real desde la web aprobados localmente. El archivo se almacena temporalmente y se procesa en un worker SQLite. Gemini ya está implementado como proveedor opt-in, pero la corrida real y el benchmark humano siguen pendientes; también faltan descarga desde Meta y Meta real.
 
@@ -42,14 +42,13 @@ Las estimaciones no incluyen posibles demoras de configuración o aprobación de
 
 El orden después del estado actual es:
 
-1. bandeja de borradores y conflictos fuera del modal;
-2. grabación directa desde web móvil;
-3. probe/smoke real de Gemini y benchmark humano comparable;
-4. un formato de nota validado, copiar/exportar e instrumentación;
-5. piloto de AIRA Notas con cinco psicólogos;
-6. Google Calendar V1 si al menos 3 de 5 pilotos lo usan;
-7. Meta real como canal de entrada sólo si el núcleo demuestra hábito;
-8. discovery de seguimiento de medicación con psiquiatras, sin construirlo antes de su gate.
+1. grabación directa desde web móvil;
+2. probe/smoke real de Gemini y benchmark humano comparable;
+3. un formato de nota validado, copiar/exportar e instrumentación;
+4. piloto de AIRA Notas con cinco psicólogos;
+5. Google Calendar V1 si al menos 3 de 5 pilotos lo usan;
+6. Meta real como canal de entrada sólo si el núcleo demuestra hábito;
+7. discovery de seguimiento de medicación con psiquiatras, sin construirlo antes de su gate.
 
 La fuente de verdad para posicionamiento, mercado, precio y gates es [`PRODUCT.md`](PRODUCT.md).
 
@@ -99,7 +98,7 @@ Criterio de salida:
 
 Tag sugerido: `mvp-v0.1-web-core`.
 
-Estado: el criterio principal registro → paciente → sesión → recarga fue aprobado localmente. El formulario ya usa borrador y confirmación; falta una pantalla para recuperar/editar borradores pendientes antes de etiquetar la etapa.
+Estado: cumplido. El criterio registro → paciente → sesión → recarga fue aprobado; el formulario usa borrador y confirmación, y la bandeja `Trabajo sin confirmar` recupera ediciones y conflictos fuera del modal con aislamiento por cuenta.
 
 ## Etapa 2 — Vinculación web–WhatsApp
 
@@ -421,13 +420,14 @@ Ramas sugeridas:
 
 Reglas:
 
-- Push frecuente de la rama de trabajo.
-- Pull request en borrador por vertical.
 - Commits pequeños con una conducta verificable.
-- Merge a `main` solamente con el criterio de salida cumplido.
+- Durante el prototipo interno, publicación directa en `main` sólo con el criterio de salida cumplido, conforme a la instrucción vigente de la PM.
+- Al activarse la protección prepiloto, rama de trabajo y pull request en borrador por hito; merge solamente con los checks requeridos en verde.
 - Tag después de cada demostración aceptada.
-- Actualizar `HANDOFF.md` y `WORKLOG.md` en cada PR.
+- Actualizar `HANDOFF.md` y `WORKLOG.md` en cada hito.
 - No subir secretos, bases, audios, transcripciones ni datos reales.
+
+Gate prepiloto: dev y lead deben activar y probar la protección de `main` antes de invitar o cargar a la primera persona externa. Las reglas y el gatillo anticipado están únicamente en [`ROLES_AND_REVIEW.md`](ROLES_AND_REVIEW.md).
 
 GitHub respalda código y documentación. El respaldo de la base del piloto será un proceso separado.
 

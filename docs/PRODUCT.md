@@ -1,6 +1,6 @@
 # Producto AIRA
 
-Última actualización: 2026-07-16.
+Última actualización: 2026-07-18.
 
 ## Definición
 
@@ -164,12 +164,12 @@ El piloto debe requerir una señal económica real —depósito acreditable o ac
 - Transcripción literal separada de la nota limpia.
 - Borrador antes del guardado definitivo.
 - Guardar, cancelar, reintentar y editar.
+- Bandeja visible para recuperar ediciones y conflictos sin confirmar fuera del modal.
 - Historial visible en la ficha web.
 - Vinculación y recorrido de WhatsApp mediante adaptador simulado.
 
 ### Próximo dentro del núcleo
 
-- Bandeja visible de borradores y conflictos fuera del modal.
 - Grabación directa desde web móvil.
 - Smoke real y benchmark humano del proveedor de audio.
 - Un formato de nota validado con profesionales.
@@ -203,7 +203,7 @@ El piloto debe requerir una señal económica real —depósito acreditable o ac
 
 ## Orden de implementación y validación
 
-1. Cerrar la bandeja de borradores y la grabación móvil.
+1. Cerrar la grabación móvil; la bandeja de trabajo sin confirmar ya fue aceptada.
 2. Repetir el smoke de Gemini y ejecutar el benchmark humano.
 3. Validar un formato de nota y agregar copiar/exportar e instrumentación.
 4. Pilotear AIRA Notas con cinco psicólogos durante dos semanas.

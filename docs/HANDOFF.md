@@ -8,11 +8,11 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
-- Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
-- Último hito funcional: bandeja de borradores/conflictos fuera del modal con aislamiento por cuenta — código en `cf5c165` (`drafts tray: isolate local work by account; discardable orphans; instant retry sync`) y pruebas/documentación en `1875de1` (`test+docs: account-isolation, orphan and retry-sync browser cases (108/108)`), que es el `HEAD` publicado en `main`. Antecede el modelo por intento (`{seq, desired, base, appliedBase, wireDelta, revision}`) con reverts correctos, merge de 3 vías que no pisa campos remotos, recuperación local por pestaña y guardas de formulario sucio (incluso inválido).
+- Política de trabajo vigente: partir del último `airaynera/main`, aislar cada hito localmente y publicar el resultado verificado en `main` mientras continúe el prototipo interno.
+- Último hito funcional: bandeja de borradores/conflictos fuera del modal con aislamiento por cuenta — código en `cf5c165` (`drafts tray: isolate local work by account; discardable orphans; instant retry sync`) y pruebas/documentación en `1875de1` (`test+docs: account-isolation, orphan and retry-sync browser cases (108/108)`), ambos integrados en `main`. Antecede el modelo por intento (`{seq, desired, base, appliedBase, wireDelta, revision}`) con reverts correctos, merge de 3 vías que no pisa campos remotos, recuperación local por pestaña y guardas de formulario sucio (incluso inválido).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
 - Estrategia de producto: `docs/PRODUCT.md` quedó actualizada como fuente de verdad para posicionamiento, mercado, precio, Google Calendar, piloto y la hipótesis futura de seguimiento por WhatsApp. El núcleo continúa siendo documentación post-sesión; no se amplió el MVP a diagnóstico, agenda integral ni monitoreo del paciente.
-- Operación de agentes: `AGENTS.md` fija el orden de lectura y los briefs de un solo hito. `docs/ROLES_AND_REVIEW.md` establece autoridad por tipo de decisión, autonomía de la dev, derecho a discutir al auditor con evidencia, uso proporcional de multiagentes, severidades P0–P3 y límite de dos rondas generales para evitar auditorías infinitas.
+- Operación de agentes: `AGENTS.md` fija el orden de lectura y los briefs de un solo hito; `docs/ROLES_AND_REVIEW.md` es la fuente normativa de roles y proceso proporcional. Como la PM no programa, dev y lead resuelven los hechos técnicos y sólo le escalan decisiones de producto, costo, prioridad o riesgo en lenguaje común. La protección de `main` sigue inactiva durante el prototipo interno; dev y lead deben activarla y probarla antes del primer piloto externo o si se cumple el gatillo anticipado del protocolo.
 - Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite, desactivado por defecto. Una credencial temporal autenticó el modelo; la primera corrida real detectó y corrigió un shape inválido de `user_input` (integrado desde `536c11c`), y queda pendiente repetir el probe/smoke. El smoke sintético de 40 WAV quedó generado y validado offline. La edición de sesión ahora tiene control de concurrencia real (revisión optimista + modelo por intento en cliente). La batería aprobó **129/129** funcionales más **130/130** de contrato/concurrencia de edición (`npm test`), y **108/108** en navegador real (incluye la bandeja fuera del modal y el aislamiento por cuenta).
 - Próximo objetivo: la bandeja de borradores y conflictos fuera del modal quedó cerrada (2026-07-18); resta la grabación directa desde web móvil; repetir el probe/smoke de Gemini y preparar el corpus humano decisorio; agregar copiar/exportar e instrumentación; pilotear AIRA Notas con cinco psicólogos. Google Calendar se implementa como contexto de solo lectura si el piloto confirma uso. Meta real y seguimiento de medicación quedan detrás de gates separados.
 
@@ -252,7 +252,7 @@ La alternativa de lockfile únicamente fue descartada porque mantenía casi la m
 
 ## Próximo bloque de trabajo
 
-Rama prevista: `agent/01-web-core`.
+Base prevista: último `airaynera/main`, en una rama local aislada para el hito.
 
 ### Etapa 0
 
@@ -329,7 +329,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 
 ## Historial y estado de publicación
 
-- Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`. Publicación inicial 2026-07-15; `HEAD` publicado `1875de1` (código del hito en `cf5c165`).
+- Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`. Publicación inicial 2026-07-15; último hito funcional aceptado en `cf5c165` (código) y `1875de1` (pruebas/documentación), ambos integrados. Cambios documentales posteriores pueden avanzar el `HEAD` sin cambiar ese hito.
 - Verificación del hito actual: `npm test` con 129/129 funcionales + 130/130 de edición, navegador real 108/108, build, contrato UI, sintaxis embebida y `git diff --check` aprobados.
 - Implementación de la auditoría: `4a0a082` (backend/worker), `e533eb9` (flujo web) y `f1472c4` (operación/contratos).
 - Benchmark operativo del worker: `6ebe43b` (`benchmark controlled audio worker throughput`).
@@ -352,7 +352,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 2. Revisar `git status -sb` y `git diff`.
 3. Confirmar que solamente estén los cambios documentales esperados.
 4. Confirmar que `airaynera/main` tenga el último commit publicado.
-5. Retomar `agent/01-web-core`.
+5. Crear o actualizar una rama local aislada desde el último `airaynera/main`.
 6. Ejecutar `npm test`, `npm run test:session-edit:browser`, `npm run test:runtime-supervisor`, `npm run build` y `npm run lint` antes de cada publicación; la batería actual aprueba 129/129 + 130/130 y 108/108 en navegador.
 7. Confirmar `npm run build`, sintaxis del JavaScript embebido y `git diff --check`.
 8. Publicar el siguiente hito verificado en `airaynera/main` y registrar el resultado aquí y en `docs/WORKLOG.md`.

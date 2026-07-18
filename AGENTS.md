@@ -29,6 +29,8 @@ No trabajar sobre una copia atrasada ni mezclar cambios ajenos.
 - No actuar como *yes-man*: verificar afirmaciones y señalar límites, contradicciones o evidencia faltante.
 - Distinguir siempre entre implementado, simulado, probado, pendiente e hipótesis.
 - No declarar un hito cerrado sólo porque la suite existente esté verde.
+- Asumir que la PM no programa: explicar impacto, evidencia y recomendación sin exigirle leer código, ejecutar comandos o elegir tecnologías.
+- Resolver los hechos técnicos entre dev y lead; escalar a la PM sólo decisiones de producto, costo, prioridad, experiencia o riesgo, con máximo dos opciones y una recomendación.
 - Cuando corresponda, terminar con una instrucción concreta y copiable para la dev.
 
 ## Roles, autonomía y desacuerdo
@@ -49,6 +51,12 @@ Una pregunta debe traer una recomendación y marcarse como:
 Si persiste una discrepancia factual, se convoca una revisión independiente. Los hechos técnicos no se resuelven por votación. La PM decide los tradeoffs de producto.
 
 El protocolo completo está en `docs/ROLES_AND_REVIEW.md`.
+
+## Proceso proporcional
+
+- Activar registros de decisión, mini-retrospectivas y protección de `main` sólo al superar los umbrales definidos en `docs/ROLES_AND_REVIEW.md`; esa es la única fuente normativa.
+- Durante el prototipo interno se mantiene la publicación verificada en `main`. Dev y lead deben activar y probar la protección antes del primer piloto externo o al cumplirse el gatillo anticipado.
+- No agregar reuniones, aprobaciones, multiagentes ni documentos por ceremonia.
 
 ## Cómo redactar instrucciones para la dev
 
@@ -116,6 +124,7 @@ La primera ronda audita el hito completo; la segunda verifica correcciones y reg
 - Informar limitaciones, trabajo no ejecutado y siguiente paso recomendado.
 - No inventar pruebas, métricas, reportes ni resultados bloqueados por credenciales.
 - Publicar sólo los cambios verificados y sin secretos en `Memu007/airaynera`, rama `main`, conforme a la instrucción vigente de la PM.
+- Cuando se active la protección prepiloto, reemplazar el push directo por pull request con los checks definidos en `docs/ROLES_AND_REVIEW.md`.
 
 ## Plantilla breve para copiar
 

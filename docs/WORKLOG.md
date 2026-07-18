@@ -2,6 +2,45 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-18 — Reconciliación de proceso proporcional y PM no técnica
+
+### Objetivo
+
+Publicar la política de colaboración que había quedado solamente en el commit local `fa42c73`, reconciliándola con el hito posterior de la bandeja sin sobrescribir sus cambios ni sus resultados.
+
+### Análisis adversarial
+
+- Tres revisores trabajaron independientemente: uno intentó refutar la propuesta por burocrática, otro defendió calidad y mantenibilidad, y el tercero buscó el corte mínimo medible.
+- Coincidieron en que una carpeta formal de ADR duplicaría `WORKLOG`, `PRODUCT`, `ROADMAP` y `DOMAIN_CONTRACTS`; también en que aprobar con una sola identidad de GitHub sería una apariencia de control y en que bugs detenidos antes del cierre no justifican un postmortem.
+- El desacuerdo principal fue cuándo proteger `main`: inmediatamente o antes del piloto. Se eligió activación progresiva porque el proyecto sigue siendo un prototipo interno, con gatillo anticipado si un nuevo P0/P1 escapa a `main` después de haber sido declarado cerrado.
+- Una revisión adversarial final no encontró bloqueantes y sí corrigió duplicación normativa, una métrica sin base, el dueño del gate prepiloto, la evidencia de independencia y el umbral de bypass.
+
+### Decisión material
+
+- **Decisión:** proceso dormido por umbral, sin documentos nuevos ni reuniones obligatorias.
+- **Motivo:** conservar trazabilidad y prevención sin duplicar trabajo ni frenar el MVP.
+- **Alternativas descartadas:** ADR por archivo; postmortem para todo P0/P1; PR obligatorio inmediato sin un smoke central estable.
+- **Consecuencia:** decisiones materiales y mini-retrospectivas viven en `WORKLOG`; la protección de `main` se activa antes del piloto o ante un nuevo escape P0/P1.
+- **Revisar o revertir si:** después de cuatro semanas desde la activación u ocho PR los checks no detectan defectos antes del merge, producen falsos fallos o agregan demora observable sin señal.
+
+### Reglas adoptadas
+
+- La PM no necesita programar ni arbitrar hechos técnicos: dev y lead los resuelven con evidencia y escalan sólo decisiones de producto, costo, prioridad, experiencia o riesgo, en lenguaje común y con una recomendación.
+- Registrar una decisión material sólo si dura más de un hito y cambia contratos/datos, proveedor/costo, concurrencia/recuperación, conducta de producto o es costosa de revertir.
+- Hacer mini-retrospectiva sin culpa sólo ante impacto externo/real o una segunda recurrencia sistémica; máximo 20 minutos y tres acciones verificables.
+- Antes del piloto, dev y lead deben activar y probar PR, CI determinista, smoke del núcleo, revisión independiente de solo lectura y prohibición de `force-push`; la PM sólo autoriza iniciar el piloto.
+- No convertir Gemini, servicios externos, cantidad de agentes, documentos o pruebas en gates ceremoniales.
+
+### Reconciliación y verificación
+
+- `fa42c73` no estaba publicado en ninguna rama remota. Se tomó el contenido del commit local real y se aplicó manualmente sobre el `main` vigente para conservar intactos el código, las pruebas y la documentación posterior de la bandeja.
+- `PRODUCT` y `ROADMAP` ahora reflejan que la bandeja está aceptada y que el próximo objetivo técnico es grabación directa desde web móvil.
+- `npm test`: **129/129** funcionales + **130/130** de edición de sesión, salida 0.
+- `npm run test:session-edit:browser`: **108/108** en Chromium real, salida 0.
+- `npm run test:runtime-supervisor`: health, upload, worker, estado `ready` y apagado limpio, salida 0.
+- `npm run build`, `npm run lint` y `git diff --check`: aprobados.
+- Gemini real: no ejecutado; no forma parte de este hito documental y el proveedor predeterminado sigue siendo `fake`.
+
 ## 2026-07-18 — Bandeja: aislamiento por cuenta, huérfanos y sync de reintento
 
 ### Objetivo

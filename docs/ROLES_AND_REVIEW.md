@@ -1,6 +1,6 @@
 # Roles, desacuerdo y revisión en AIRA
 
-Última actualización: 2026-07-16.
+Última actualización: 2026-07-18.
 
 ## Objetivo
 
@@ -9,6 +9,10 @@ Definir cómo colaboran la PM, la dev y el lead/auditor sin obediencia ciega, bu
 Principio central:
 
 > Ningún rol tiene razón por jerarquía. La evidencia decide los hechos; la PM decide el valor, el alcance y los riesgos de producto.
+
+Principio de proceso:
+
+> Toda ceremonia debe prevenir un riesgo observable. Si sólo duplica documentación o aprobación, se elimina.
 
 ## Roles
 
@@ -24,6 +28,8 @@ Responsable de:
 - aceptación consciente de riesgos comerciales o de producto.
 
 La PM no decide por mayoría si un bug existe. Cuando el desacuerdo es factual o técnico, debe recibir la evidencia y las alternativas, no convertirse en árbitro de preferencias de implementación.
+
+La PM no necesita saber programar ni revisar código para cumplir su rol. Dev y lead deben traducir toda escalación a lenguaje de producto y no pedirle que elija librerías, consultas, arquitectura o comandos.
 
 ### Dev
 
@@ -65,6 +71,43 @@ El lead/auditor no amplía el producto, no inventa requisitos y no puede exigir 
 | Gates y evidencia de cierre | Lead + dev | PM resuelve sólo tradeoffs de producto |
 | Precio, proveedor pago o costo externo | PM | Dev/lead aportan costo y riesgo |
 | Publicación | Dev presenta evidencia; lead recomienda | No se publica con P0/P1 abiertos |
+
+## Interfaz con una PM no técnica
+
+Dev y lead resuelven entre sí los hechos técnicos mediante código, pruebas, contratos y reproducciones. Solamente escalan a la PM una decisión de producto, costo, prioridad, experiencia o riesgo aceptado.
+
+Toda escalación a la PM debe poder entenderse sin abrir el repositorio y contener, en este orden:
+
+```text
+Qué cambia para la persona usuaria:
+Qué comprobamos, en lenguaje común:
+Riesgo o costo de no actuar:
+Recomendación de dev y lead:
+Decisión de producto necesaria, si existe:
+```
+
+No se le pide a la PM ejecutar comandos, interpretar un diff, elegir entre tecnologías equivalentes ni desempatar un hecho técnico. Si dev y lead discrepan sobre un hecho, deben producir mejor evidencia o convocar revisión independiente. Si discrepan sobre valor, alcance, costo o tolerancia al riesgo, presentan máximo dos opciones y una recomendación.
+
+## Registro de decisiones materiales
+
+No se crea una carpeta de ADR ni un documento nuevo por cada decisión. AIRA usa una única sección breve dentro de la entrada correspondiente de `WORKLOG.md` cuando la decisión:
+
+- se espera que sobreviva a más de un hito; y
+- cambia un contrato o dato persistente, proveedor o costo externo, estrategia de concurrencia/recuperación, conducta de producto, o costaría más de una jornada revertirla.
+
+Formato máximo:
+
+```text
+Decisión material:
+Motivo:
+Alternativas descartadas: máximo dos
+Consecuencia:
+Revisar o revertir si:
+```
+
+La dev propone y explicita el costo técnico; el lead desafía supuestos y compatibilidad; la PM interviene solamente si cambia producto, costo o riesgo aceptado. La fuente de verdad afectada —`PRODUCT`, `ROADMAP` o `DOMAIN_CONTRACTS`— se actualiza sin repetir allí toda la justificación.
+
+No se registra una decisión material por nombres, refactors locales, organización interna, estrategia de pruebas o elecciones técnicas reversibles dentro de un hito. No se reconstruyen decisiones históricas.
 
 ## Cuándo la dev pregunta
 
@@ -215,6 +258,44 @@ Una preocupación hipotética sin reproducción ni contrato violado se registra 
 5. P2/P3 nuevos se documentan sin ampliar silenciosamente el hito.
 6. Si quedan P0/P1 después de dos rondas, se escala a la PM con evidencia y opciones; no se declara cerrado.
 7. Si el mismo tipo de fallo reaparece, se revisa la estrategia o arquitectura en vez de sumar parches y conteos de pruebas indefinidamente.
+
+## Mini-retrospectiva sin culpa
+
+No todo bug necesita un postmortem. Una mini-retrospectiva se activa únicamente si:
+
+- un P0/P1 afectó a una persona externa, un piloto o datos reales; o
+- la misma condición sistémica produjo por segunda vez un P1 después de que el hito anterior había sido declarado cerrado.
+
+Un P0/P1 detenido por pruebas o por la revisión prevista antes del cierre significa que el proceso funcionó y no activa esta ceremonia. Tampoco la activan P2/P3, CI rojo ni riesgos hipotéticos.
+
+La mini-retrospectiva vive en `WORKLOG.md`, tarda como máximo 20 minutos y registra:
+
+```text
+Impacto observable:
+Cómo escapó:
+Condición sistémica, no persona:
+Corrección:
+Prueba o gate que evita la recurrencia:
+```
+
+La dev aporta reproducción y corrección; el lead revisa qué faltó en brief, prueba o gate; la PM es informada en lenguaje común y sólo recibe una decisión si cambia prioridad, alcance, costo o riesgo aceptado. Debe terminar con un máximo de tres acciones verificables. No se usan culpables, reuniones obligatorias ni `faltó atención` como causa.
+
+## Protección progresiva de `main`
+
+Durante el prototipo interno continúa vigente la instrucción de la PM de publicar hitos verificados en `main`. La protección por pull request se activa antes del primer piloto externo o antes si, desde esta política, un nuevo P0/P1 escapa a `main` después de haber sido declarado cerrado. La PM sólo autoriza iniciar el piloto: dev y lead son responsables de activar y probar la protección antes de invitar o cargar a la primera persona externa.
+
+La activación es un hito operativo separado y mínimo:
+
+- todo cambio entra por pull request;
+- sólo bloquean checks deterministas, estables y sin credenciales externas: suite funcional, sintaxis/contrato UI y navegador cuando corresponda;
+- antes de activarla, CI debe cubrir al menos un smoke completo del núcleo: registro, paciente, texto o audio, borrador, confirmación y persistencia tras recarga;
+- no se permite merge con checks requeridos en rojo, `force-push` ni borrado de `main`;
+- la dev presenta alcance, resultados y riesgos; el lead resume en el PR una revisión de solo lectura realizada por otra persona o agente, incluidos hallazgos y resolución; el autor no puede ser su único revisor aunque compartan identidad de publicación;
+- se exige aprobación formal sólo cuando existan dos identidades reales de GitHub; compartir cuenta no se disfraza de revisión independiente;
+- Gemini, proveedores externos y checks dependientes de red o credenciales no bloquean `main`;
+- un bypass sólo se permite para restaurar un flujo caído o detener un P0/P1 en curso, nunca para evitar un check rojo o acelerar una función; se documenta en `WORKLOG.md` y se revisa inmediatamente después.
+
+Después de cuatro semanas desde la activación o de ocho pull requests, lo que ocurra primero, dev y lead revisan qué defectos detectaron los checks antes del merge, si hubo bypasses o falsos fallos y si agregaron demora observable. Se quitan o corrigen checks inestables o sin señal; no se debilitan gates P0/P1 sólo por comodidad. No se mide calidad por cantidad de documentos, pruebas, agentes o aprobaciones.
 
 ## Condición de entrega
 
