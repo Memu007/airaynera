@@ -9,7 +9,7 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Repositorio de publicación vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), rama `main`.
 - Repositorio histórico preservado: `Memu007/Aira.final` (sus PR #1 y #2 no son el destino de los próximos cambios).
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
-- Último hito funcional: código en `72a9c9b` (`per-attempt save records: correct reverts, merges, recovery, dirty guards`) y pruebas/documentación en `bb4c05d` (`test+docs: per-attempt concurrency acceptance cases`), que es el `HEAD` publicado en `main`. Modelo por intento (`{seq, desired, base, appliedBase, wireDelta, revision}`) con reverts correctos, merge de 3 vías que no pisa campos remotos, recuperación local por pestaña y guardas de formulario sucio (incluso inválido).
+- Último hito funcional: bandeja de borradores/conflictos fuera del modal con aislamiento por cuenta — código en `cf5c165` (`drafts tray: isolate local work by account; discardable orphans; instant retry sync`) y pruebas/documentación en `1875de1` (`test+docs: account-isolation, orphan and retry-sync browser cases (108/108)`), que es el `HEAD` publicado en `main`. Antecede el modelo por intento (`{seq, desired, base, appliedBase, wireDelta, revision}`) con reverts correctos, merge de 3 vías que no pisa campos remotos, recuperación local por pestaña y guardas de formulario sucio (incluso inválido).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
 - Estrategia de producto: `docs/PRODUCT.md` quedó actualizada como fuente de verdad para posicionamiento, mercado, precio, Google Calendar, piloto y la hipótesis futura de seguimiento por WhatsApp. El núcleo continúa siendo documentación post-sesión; no se amplió el MVP a diagnóstico, agenda integral ni monitoreo del paciente.
 - Operación de agentes: `AGENTS.md` fija el orden de lectura y los briefs de un solo hito. `docs/ROLES_AND_REVIEW.md` establece autoridad por tipo de decisión, autonomía de la dev, derecho a discutir al auditor con evidencia, uso proporcional de multiagentes, severidades P0–P3 y límite de dos rondas generales para evitar auditorías infinitas.
@@ -329,7 +329,7 @@ No bloquean el vertical con archivo real y transcripción simulada ya aprobado.
 
 ## Historial y estado de publicación
 
-- Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`. Publicación inicial 2026-07-15; `HEAD` publicado `bb4c05d` (código en `72a9c9b`), rebasado sobre `263b8b0` (roles) tras converger con la otra instancia.
+- Destino vigente: [`Memu007/airaynera`](https://github.com/Memu007/airaynera), `main`. Publicación inicial 2026-07-15; `HEAD` publicado `1875de1` (código del hito en `cf5c165`).
 - Verificación del hito actual: `npm test` con 129/129 funcionales + 130/130 de edición, navegador real 108/108, build, contrato UI, sintaxis embebida y `git diff --check` aprobados.
 - Implementación de la auditoría: `4a0a082` (backend/worker), `e533eb9` (flujo web) y `f1472c4` (operación/contratos).
 - Benchmark operativo del worker: `6ebe43b` (`benchmark controlled audio worker throughput`).
