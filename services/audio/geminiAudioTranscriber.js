@@ -219,6 +219,24 @@ function modelText(interaction) {
     .trim();
 }
 
+function extractTranscriptText(modelOutput) {
+  // The structured `response_format` asks for {"transcript": "..."}, but Gemini can
+  // still answer with a fenced code block or plain literal text. Accept all three so
+  // a single formatting quirk never discards a valid transcription.
+  let candidate = modelOutput.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(candidate);
+  if (fenced) candidate = fenced[1].trim();
+  if (candidate.startsWith('{') || candidate.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed?.transcript === 'string') return parsed.transcript.trim();
+    } catch (_) {
+      // Not valid JSON despite the leading brace; fall back to the literal text.
+    }
+  }
+  return candidate.trim();
+}
+
 function transcriptFromInteraction(interaction) {
   if (interaction?.status !== 'completed') {
     throw providerError(
@@ -233,15 +251,7 @@ function transcriptFromInteraction(interaction) {
       retryable: false,
     });
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (_) {
-    throw providerError('GEMINI_INVALID_RESPONSE', 'Gemini did not return the requested JSON', {
-      retryable: false,
-    });
-  }
-  const transcript = String(parsed?.transcript || '').trim();
+  const transcript = extractTranscriptText(text);
   if (!transcript) {
     throw providerError('EMPTY_TRANSCRIPT', 'No speech was found in the audio', {
       retryable: false,
@@ -374,9 +384,18 @@ function createGeminiTranscriber(options = {}) {
           model,
           store: false,
           system_instruction: TRANSCRIPTION_INSTRUCTION,
+          // Interactions API v1 events are typed; the caller's text and audio must be
+          // wrapped in a single `user_input` event with a `content` array. A flat
+          // `input: [{type:'text'}, {type:'audio'}]` is rejected with HTTP 400
+          // ("The value 'text' is not supported for 'type' at 'input[0]'").
           input: [
-            { type: 'text', text: 'Transcribí todo el audio.' },
-            { type: 'audio', uri: file.uri, mime_type: mimeType },
+            {
+              type: 'user_input',
+              content: [
+                { type: 'text', text: 'Transcribí todo el audio.' },
+                { type: 'audio', uri: file.uri, mime_type: mimeType },
+              ],
+            },
           ],
           response_format: {
             type: 'text',
@@ -456,6 +475,7 @@ module.exports = {
   DEFAULT_MODEL,
   TRANSCRIPTION_INSTRUCTION,
   createGeminiTranscriber,
+  extractTranscriptText,
   normalizedGeminiMimeType,
   transcriptFromInteraction,
 };

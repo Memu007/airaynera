@@ -2,7 +2,7 @@
 
 Este es el documento operativo que debe leerse primero al retomar el proyecto.
 
-Última actualización: 2026-07-15.
+Última actualización: 2026-07-24.
 
 ## Estado actual
 
@@ -11,8 +11,9 @@ Este es el documento operativo que debe leerse primero al retomar el proyecto.
 - Rama local de trabajo: `agent/01-web-core`; el destino publicado sigue siendo `airaynera/main`.
 - Último hito funcional: `74a6ba3` (`add gemini audio worker integration`).
 - Etapa de producto: planificación del MVP terminada; seguridad avanzada y estética están diferidas por decisión de producto.
-- Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline ya acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite; sigue desactivado por defecto y no se hizo una llamada real porque este entorno no tiene clave. El smoke sintético de 40 WAV quedó generado y validado offline. La batería funcional aprobó 129/129.
-- Próximo objetivo: configurar `GEMINI_API_KEY` localmente, ejecutar el smoke integrado y conservar el reporte. Después corresponde preparar el corpus humano decisorio y comparar los mismos bytes con otros proveedores antes de aprobar uso clínico. Meta real se incorpora después y solamente cuando existan credenciales.
+- Etapa técnica: la carga real, almacenamiento temporal, job SQLite y worker están aprobados. El pipeline ya acepta proveedores asíncronos y contiene un adaptador Gemini 3.1 Flash-Lite; sigue desactivado por defecto (`fake` es el default). La batería funcional aprobó 129/129.
+- Corrección 2026-07-24 (ver `docs/WORKLOG.md`): al probar Gemini con clave, la interacción devolvía HTTP 400 y daba 0/40. Se verificó contra la API en vivo que la Interactions API v1 exige envolver el contenido en un evento `user_input` con `content` (la forma plana `input:[{type:'text'},{type:'audio'}]` se rechaza). Se corrigió el adaptador, se hizo tolerante el parser del transcript y se endureció el mock del contrato para que rechace la forma plana (era la razón por la que la CI daba verde sobre código roto). Verificado en vivo: la estructura correcta y el audio `{uri,mime_type}` devuelven HTTP 200 procesando audio.
+- Próximo objetivo: con una **clave fresca**, correr `npm run smoke:gemini -- --probe` (una llamada, corre en Linux) para confirmar en vivo el payload completo — `system_instruction`+`response_format`+`generation_config` no se re-verificaron antes de que expirara la clave efímera. Si el probe da `payloadAccepted:true`, sigue el corpus humano decisorio (el corpus TTS de 40 WAV requiere macOS). Meta real se incorpora después y solamente cuando existan credenciales.
 
 ## Dirección del producto acordada
 
@@ -78,7 +79,7 @@ Registro web
 - El deploy de prueba declara `WHATSAPP_ADAPTER=fake`; debe reemplazarse por Meta antes de producción real.
 - Un audio fallido queda asociado a la conversación y puede reintentarse por etapa o cancelarse.
 - La respuesta de audio listo muestra la nota preparada antes de guardar.
-- No existe todavía un webhook real de Meta, envío real de respuestas ni descarga de audio. Gemini está implementado para uploads web, pero sigue desactivado y sin smoke real ejecutado.
+- No existe todavía un webhook real de Meta, envío real de respuestas ni descarga de audio. Gemini está implementado para uploads web y su payload Interactions v1 fue corregido y verificado en vivo (estructura + audio), pero sigue desactivado por defecto y el smoke completo con corpus todavía no se ejecutó.
 - Los endpoints heredados que escribían directamente en `sessions` ahora devuelven `410`.
 - El reconocimiento y envío n8n restantes siguen siendo prototipos y no forman parte del vertical nuevo.
 
@@ -250,7 +251,7 @@ Rama prevista: `agent/01-web-core`.
 - [x] Ejecutar el benchmark operativo del worker con 40 WAV controlados.
 - [x] Habilitar proveedores asíncronos y agregar el adaptador Gemini detrás del worker.
 - [x] Generar y validar offline el smoke sintético de 40 WAV.
-- [ ] Ejecutar el smoke real Gemini con clave local y conservar el reporte.
+- [~] Payload Interactions v1 corregido y verificado en vivo (estructura `user_input` + audio `{uri,mime_type}` → HTTP 200). Falta confirmar el payload completo (`system_instruction`+`response_format`+`generation_config`) con `npm run smoke:gemini -- --probe` usando clave fresca, y luego el smoke de corpus y su reporte.
 - [ ] Ejecutar el benchmark Groq/Gemini/OpenAI.
 - [x] Separar el procesamiento de archivos reales en un worker SQLite antes de conectar un proveedor o WhatsApp real.
 

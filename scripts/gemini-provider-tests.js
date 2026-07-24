@@ -5,7 +5,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { Readable } = require('node:stream');
-const { createGeminiTranscriber } = require('../services/audio/geminiAudioTranscriber');
+const {
+  createGeminiTranscriber,
+  extractTranscriptText,
+} = require('../services/audio/geminiAudioTranscriber');
 const {
   aggregateScores,
   normalizeTranscript,
@@ -39,6 +42,40 @@ function jsonResponse(value, options = {}) {
   });
 }
 
+// Empirically verified against the live Interactions API v1 (2026-07-15):
+// - input[] items are typed events; user content must be a `user_input` event.
+// - the event carries a `content` array (not `parts`).
+// - content items are one of image | document | text | audio.
+// - an audio item references the uploaded file with `uri` + `mime_type`
+//   (`file_uri` and `file:{uri}` are rejected with HTTP 400).
+const VALID_CONTENT_TYPES = new Set(['image', 'document', 'text', 'audio']);
+function validateInteractionInput(input) {
+  if (!Array.isArray(input) || input.length === 0) return 'Invalid input received.';
+  for (let i = 0; i < input.length; i += 1) {
+    const event = input[i];
+    if (event?.type === 'text' || event?.type === 'audio') {
+      return `The value '${event.type}' is not supported for 'type' at 'input[${i}]'.`;
+    }
+    if (event?.type !== 'user_input') {
+      return `The value '${event?.type}' is not supported for 'type' at 'input[${i}]'.`;
+    }
+    if (event.parts) return `Unknown parameter 'parts' at 'input[${i}]'.`;
+    if (!Array.isArray(event.content)) return `Invalid input received.`;
+    for (let j = 0; j < event.content.length; j += 1) {
+      const item = event.content[j];
+      if (!VALID_CONTENT_TYPES.has(item?.type)) {
+        return `The value '${item?.type}' is not supported for 'type' at 'input[${i}].content[${j}]'.`;
+      }
+      if (item.type === 'audio') {
+        if (item.file_uri) return `Unknown parameter 'file_uri' at 'input[${i}].content[${j}]'.`;
+        if (item.file) return `Unknown parameter 'file' at 'input[${i}].content[${j}]'.`;
+        if (!item.uri || !item.mime_type) return 'Invalid input received.';
+      }
+    }
+  }
+  return null;
+}
+
 function createMockGemini(options = {}) {
   const calls = [];
   let starts = 0;
@@ -67,6 +104,16 @@ function createMockGemini(options = {}) {
       });
     }
     if (String(url).endsWith('/v1/interactions')) {
+      // Mirror the real Interactions API v1 contract so a regression to the flat
+      // `input: [{type:'text'}, {type:'audio'}]` shape is caught without a network.
+      const body = JSON.parse(init.body);
+      const structureError = validateInteractionInput(body.input);
+      if (structureError) {
+        return jsonResponse({ error: { message: structureError, code: 'invalid_request' } }, {
+          status: 400,
+        });
+      }
+      const responseText = options.interactionText || '{"transcript":"Niega ideación suicida."}';
       return jsonResponse({
         id: 'interaction-test-1',
         model: 'gemini-3.1-flash-lite',
@@ -75,7 +122,7 @@ function createMockGemini(options = {}) {
           ? []
           : [{
               type: 'model_output',
-              content: [{ type: 'text', text: '{"transcript":"Niega ideación suicida."}' }],
+              content: [{ type: 'text', text: responseText }],
             }],
         usage: { total_tokens: 42 },
       });
@@ -118,7 +165,14 @@ async function testProviderContract(tempWav) {
   assert.equal(body.model, 'gemini-3.1-flash-lite');
   assert.equal(body.store, false);
   assert.equal(body.response_format.schema.required[0], 'transcript');
-  assert.equal(body.input[1].mime_type, 'audio/wav');
+  // The user content is a single `user_input` event whose `content` array carries
+  // the text prompt followed by the audio reference (real Interactions v1 shape).
+  assert.equal(body.input.length, 1);
+  assert.equal(body.input[0].type, 'user_input');
+  assert.equal(body.input[0].content[0].type, 'text');
+  assert.equal(body.input[0].content[1].type, 'audio');
+  assert.equal(body.input[0].content[1].uri, 'https://file.test/aira-test');
+  assert.equal(body.input[0].content[1].mime_type, 'audio/wav');
   assert.equal(interactionCall.init.headers['x-goog-api-key'], 'test-only-key');
   assert.ok(mock.calls.some((call) => call.init.method === 'DELETE'));
 }
@@ -328,6 +382,36 @@ async function testWorkerHeartbeat(tempDir) {
   store.remove(staleMedia.reference);
 }
 
+async function testTranscriptExtraction(tempWav) {
+  // Direct unit coverage of the tolerant extractor.
+  assert.equal(extractTranscriptText('{"transcript":"hola mundo"}'), 'hola mundo');
+  assert.equal(extractTranscriptText('```json\n{"transcript":"con fence"}\n```'), 'con fence');
+  assert.equal(extractTranscriptText('transcripción literal en texto plano'), 'transcripción literal en texto plano');
+  assert.equal(extractTranscriptText('{not valid json'), '{not valid json');
+
+  // End-to-end: a fenced JSON answer must still yield the transcript.
+  const fencedMock = createMockGemini({ interactionText: '```json\n{"transcript":"Niega ideación suicida."}\n```' });
+  const fenced = createGeminiTranscriber({
+    apiKey: 'test-only-key',
+    fetchFn: fencedMock.fetchFn,
+    timeoutMs: 1000,
+    maxRetries: 0,
+  });
+  const fencedResult = await fenced.transcribe({ mediaPath: tempWav, mimeType: 'audio/wav' });
+  assert.equal(fencedResult.text, 'Niega ideación suicida.');
+
+  // End-to-end: a plain-text answer (no JSON envelope) is treated as the transcript.
+  const plainMock = createMockGemini({ interactionText: 'Refiere insomnio desde hace tres días.' });
+  const plain = createGeminiTranscriber({
+    apiKey: 'test-only-key',
+    fetchFn: plainMock.fetchFn,
+    timeoutMs: 1000,
+    maxRetries: 0,
+  });
+  const plainResult = await plain.transcribe({ mediaPath: tempWav, mimeType: 'audio/wav' });
+  assert.equal(plainResult.text, 'Refiere insomnio desde hace tres días.');
+}
+
 function testMetrics() {
   assert.equal(normalizeTranscript('Ideación, SUICIDA.'), 'ideacion suicida');
   const perfect = scoreTranscription(
@@ -360,11 +444,12 @@ async function main() {
   fs.writeFileSync(tempWav, makeWav());
   try {
     await testProviderContract(tempWav);
+    await testTranscriptExtraction(tempWav);
     await testRetryAndCleanup(tempWav);
     await testValidationAndAbort(tempWav);
     testMetrics();
     await testWorkerHeartbeat(path.join(tempDir, 'runtime'));
-    console.log('✅ Gemini contract, retries, cancellation, scoring and worker heartbeat passed');
+    console.log('✅ Gemini contract, transcript extraction, retries, cancellation, scoring and worker heartbeat passed');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

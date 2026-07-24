@@ -2,6 +2,47 @@
 
 Este archivo es acumulativo. Agregar entradas nuevas sin borrar el historial anterior. No incluir secretos, datos clínicos reales, audios ni transcripciones.
 
+## 2026-07-24 — Corrección verificada del payload Interactions v1 de Gemini
+
+### Objetivo
+
+Cerrar el fallo real detectado al probar Gemini con clave: la primera corrida terminó 0/40 porque la interacción devolvía HTTP 400. Verificar la causa contra la API en vivo antes de tocar código, en lugar de parchear a ciegas.
+
+### Diagnóstico empírico contra la API real
+
+Se usó una clave efímera provista para probar (formato `AQ.…`, no `AIza…`; expiró sola a los ~15 minutos). Antes de expirar se confirmó contra `generativelanguage.googleapis.com`:
+
+- La Interactions API v1 (`POST /v1/interactions`) **existe** y `gemini-3.1-flash-lite` es un modelo real (ambos posteriores al corte de conocimiento; no eran alucinación).
+- El adaptador enviaba `input: [{type:'text'}, {type:'audio'}]`. La API rechaza eso con HTTP 400: *"The value 'text' is not supported for 'type' at 'input[0]'"*. Los eventos de `input[]` son tipados; el contenido del usuario debe ir en un evento `user_input` con un array `content`.
+- Estructura correcta confirmada con HTTP 200 (procesó 50 tokens de audio): `input: [{type:'user_input', content:[{type:'text'}, {type:'audio', uri, mime_type}]}]`.
+- Nombres de campo del audio: `uri` + `mime_type`. `file_uri` y `file:{uri}` devuelven 400 (*Unknown parameter*).
+- Tipos de `content` válidos: `image | document | text | audio`.
+- El parseo existente (`steps[].model_output.content[].text`) es correcto: una interacción de texto en vivo devolvió exactamente esa forma.
+
+### Trabajo realizado
+
+- `geminiAudioTranscriber.js`: se envolvió `input` en un único evento `user_input` con `content` (el fix central, probado en vivo).
+- Se hizo tolerante la extracción del transcript (`extractTranscriptText`): acepta el envelope `{"transcript":…}`, JSON con fences ```` ```json ````, o texto plano. Antes, cualquier respuesta no-JSON se descartaba con `GEMINI_INVALID_RESPONSE`.
+- `gemini-provider-tests.js`: el mock ahora **valida como la API real** y rechaza la forma plana (`input[0].type==='text'`), `parts`, `file_uri`/`file` y audio sin `uri`/`mime_type`. Esta es la razón por la que la CI daba verde sobre código roto: el mock anterior nunca validaba la estructura.
+- Se corrigieron las assertions del contrato para la forma real y se agregó cobertura del parser tolerante (envelope, fenced, texto plano).
+- `gemini-audio-smoke.js`: nuevo modo `--probe` — una sola llamada en vivo (upload → ACTIVE → interacción → parse) con un WAV-tono generado in-process. Corre en Linux (el corpus TTS sigue requiriendo macOS) y distingue *payload aceptado* de *param rechazado (400)*, imprimiendo el mensaje exacto de la API.
+
+### Verificaciones
+
+- `npm test`: 129/129 pruebas funcionales, incluidos el contrato Gemini endurecido y el parser tolerante.
+- `npm run test:runtime-supervisor`, `npm run lint` (sintaxis + contrato UI) y `git diff --check`: aprobados.
+- En vivo (antes de que expirara la clave): estructura `user_input` + audio `{uri,mime_type}` → HTTP 200 con audio procesado; round-trip de texto → 200; forma de parseo confirmada.
+
+### Pendiente (requiere clave fresca)
+
+- **No** se confirmó todavía en vivo el payload completo con `system_instruction` + `response_format` + `generation_config` juntos sobre una interacción exitosa: sólo se validó en vivo el payload mínimo antes de que expirara la clave. Estos tres params son plausibles pero no re-verificados.
+- Con una clave nueva: `npm run smoke:gemini -- --probe --report=benchmarks/audio/results/gemini-probe.json`. Si `payloadAccepted:true`, los tres params son válidos y sigue el smoke de corpus (macOS). Si alguno devuelve 400, el probe imprime el mensaje exacto y el arreglo es un renombre de param.
+- El corpus TTS de 40 WAV no puede generarse en este entorno Linux (`say`/`afconvert` son de macOS); el smoke decisorio de volumen queda para un host macOS con clave.
+
+### Higiene de la clave
+
+La clave provista en el chat era efímera y ya expiró sola. No se escribió en archivos, `.env`, reportes ni commits; se usó sólo como variable de entorno en memoria. Igual conviene revocarla porque quedó en el historial del chat.
+
 ## 2026-07-15 — Gemini detrás del worker asíncrono
 
 ### Objetivo

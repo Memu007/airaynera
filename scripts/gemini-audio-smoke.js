@@ -90,6 +90,94 @@ function validateCorpus(generated) {
   return aggregate;
 }
 
+function makeProbeWav({ seconds = 3, rate = 16000, freq = 220 } = {}) {
+  const samples = seconds * rate;
+  const dataBytes = samples * 2;
+  const wav = Buffer.alloc(44 + dataBytes);
+  wav.write('RIFF', 0, 'ascii');
+  wav.writeUInt32LE(36 + dataBytes, 4);
+  wav.write('WAVE', 8, 'ascii');
+  wav.write('fmt ', 12, 'ascii');
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24);
+  wav.writeUInt32LE(rate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36, 'ascii');
+  wav.writeUInt32LE(dataBytes, 40);
+  for (let i = 0; i < samples; i += 1) {
+    wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * freq * i) / rate) * 12000), 44 + i * 2);
+  }
+  return wav;
+}
+
+// Single live call that exercises the real adapter end-to-end (Files API upload →
+// ACTIVE → Interactions v1 → parse) with a synthetic tone. It does NOT measure
+// transcription quality — it confirms the request payload (user_input wrapping,
+// system_instruction, response_format, generation_config) is accepted by the live
+// API. Runs anywhere (no macOS corpus needed), so it is the fast pre-check before
+// the macOS-generated corpus smoke.
+async function runProbe(options = {}) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) throw new Error('Configure GEMINI_API_KEY locally before running the probe');
+  const transcriber = createGeminiTranscriber({ apiKey });
+  const runtimeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'aira-gemini-probe-'));
+  const wavPath = path.join(runtimeDirectory, 'probe.wav');
+  fs.writeFileSync(wavPath, makeProbeWav());
+  const startedAt = performance.now();
+  let outcome;
+  try {
+    const result = await transcriber.transcribe({
+      mediaPath: wavPath,
+      mimeType: 'audio/wav',
+      durationHintSeconds: 3,
+    });
+    outcome = {
+      probe: 'ok',
+      payloadAccepted: true,
+      note: 'Live payload accepted; transcript content is not meaningful for a synthetic tone.',
+      transcriptChars: result.text.length,
+      providerRequestId: result.providerRequestId,
+      providerModel: result.providerModel,
+      usage: result.usage,
+    };
+  } catch (error) {
+    // EMPTY_TRANSCRIPT still means the interaction returned model_output (payload was
+    // accepted); the tone simply had no speech. Any other error means the payload or
+    // pipeline was rejected — surface the raw API message so a bad param is obvious.
+    if (error.code === 'EMPTY_TRANSCRIPT') {
+      outcome = {
+        probe: 'ok',
+        payloadAccepted: true,
+        note: 'Live payload accepted; model returned an empty transcript for the synthetic tone.',
+      };
+    } else {
+      outcome = {
+        probe: 'failed',
+        payloadAccepted: false,
+        errorCode: error.code || 'GEMINI_PROBE_FAILED',
+        httpStatus: error.status || null,
+        apiMessage: error.message,
+        providerPayload: error.providerPayload || null,
+      };
+    }
+  } finally {
+    fs.rmSync(runtimeDirectory, { recursive: true, force: true });
+  }
+  outcome.model = transcriber.model;
+  outcome.latencyMs = Math.round(performance.now() - startedAt);
+  outcome.commit = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim() || null;
+  outcome.createdAt = new Date().toISOString();
+  if (options.reportPath) {
+    const absolute = path.resolve(options.reportPath);
+    fs.mkdirSync(path.dirname(absolute), { recursive: true });
+    fs.writeFileSync(absolute, `${JSON.stringify(outcome, null, 2)}\n`);
+  }
+  return outcome;
+}
+
 async function runLiveSmoke(generated, options) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
@@ -257,6 +345,13 @@ async function runLiveSmoke(generated, options) {
 }
 
 async function main() {
+  if (process.argv.includes('--probe')) {
+    const outcome = await runProbe({ reportPath: argumentValue('report') });
+    console.log(JSON.stringify(outcome, null, 2));
+    if (!outcome.payloadAccepted) process.exitCode = 1;
+    return;
+  }
+
   const validateOnly = process.argv.includes('--validate-only');
   const count = integerArgument('count', 40);
   const delayMs = integerArgument('delay-ms', 4000);
